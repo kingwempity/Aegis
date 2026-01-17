@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  # 后端 API
+  aegis-api:
+    build: .
+    container_name: aegis-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=mysql+pymysql://root:aegis_password@aegis-db/aegis
+      - REDIS_URL=redis://aegis-redis:6379/0
+    depends_on:
+      - aegis-db
+      - aegis-redis
+
+  # 数据库
+  aegis-db:
+    image: mysql:8.0
+    container_name: aegis-db
+    environment:
+      MYSQL_DATABASE: aegis
+      MYSQL_ROOT_PASSWORD: aegis_password
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+
+  # 缓存
+  aegis-redis:
+    image: redis:alpine
+    container_name: aegis-redis
+

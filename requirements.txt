@@ -1,11 +1,29 @@
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
+# Core FastAPI and web framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
 gunicorn==21.2.0
-sqlalchemy==2.0.25
+
+# Database
+sqlalchemy==1.4.49  # Use stable 1.4.x for better compatibility
+alembic==1.13.1
 pymysql==1.1.0
-celery==5.3.6
+
+# Async and HTTP
+httpx==0.25.2
+aiohttp==3.9.1
+
+# Task queue and cache
+celery==5.3.4
 redis==5.0.1
-httpx==0.26.0
+
+# Data processing
 pyyaml==6.0.1
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Web scraping
 playwright==1.40.0
 
+# Utilities
+python-dotenv==1.0.0
+click==8.1.7

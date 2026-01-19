@@ -2,11 +2,13 @@
 扫描任务相关的数据验证模型
 ==========================
 包含创建、更新、响应等各种场景的Pydantic模型。
+兼容Python 3.6环境。
 """
 
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field, validator, HttpUrl
+from pydantic import BaseModel, Field, validator
+from urllib.parse import urlparse
 
 
 class ScanConfig(BaseModel):
@@ -31,6 +33,13 @@ class ScanTaskCreate(BaseModel):
         """验证目标URL格式"""
         if not v.startswith(('http://', 'https://')):
             raise ValueError('目标URL必须以http://或https://开头')
+        # 基本URL格式验证
+        try:
+            parsed = urlparse(v)
+            if not parsed.netloc:
+                raise ValueError('无效的URL格式')
+        except Exception:
+            raise ValueError('无效的URL格式')
         return v
 
 
@@ -52,23 +61,23 @@ class ScanTaskUpdate(BaseModel):
 
 class ScanTaskResponse(BaseModel):
     """扫描任务响应模型"""
-    id: str
-    name: str
-    target_url: str
-    status: str
-    progress: float
-    total_urls: int
-    scanned_urls: int
-    found_vulnerabilities: int
-    severity_stats: Dict[str, int]
-    created_at: datetime
-    started_at: Optional[datetime]
-    completed_at: Optional[datetime]
-    duration: Optional[int]
-    error_message: Optional[str]
+    id: str = Field(..., description="任务ID")
+    name: str = Field(..., description="任务名称")
+    target_url: str = Field(..., description="目标URL")
+    status: str = Field(..., description="任务状态")
+    progress: float = Field(..., description="扫描进度")
+    total_urls: int = Field(..., description="发现的总URL数")
+    scanned_urls: int = Field(..., description="已扫描URL数")
+    found_vulnerabilities: int = Field(..., description="发现漏洞数")
+    severity_stats: Dict[str, int] = Field(..., description="严重程度统计")
+    created_at: datetime = Field(..., description="创建时间")
+    started_at: Optional[datetime] = Field(None, description="开始时间")
+    completed_at: Optional[datetime] = Field(None, description="完成时间")
+    duration: Optional[int] = Field(None, description="执行时长(秒)")
+    error_message: Optional[str] = Field(None, description="错误信息")
 
     class Config:
-        from_attributes = True
+        orm_mode = True  # pydantic v1.x uses orm_mode instead of from_attributes
 
 
 class ScanTaskList(BaseModel):
@@ -105,7 +114,7 @@ class VulnerabilityResponse(BaseModel):
     created_at: datetime
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 
 class VulnerabilityList(BaseModel):
@@ -155,7 +164,7 @@ class ReportTaskResponse(BaseModel):
     error_message: Optional[str]
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 
 class ScanLogResponse(BaseModel):
@@ -176,7 +185,7 @@ class ScanLogResponse(BaseModel):
     created_at: datetime
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 
 class ScanLogList(BaseModel):

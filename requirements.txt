@@ -1,28 +1,15 @@
-# Core FastAPI and web framework (Python 3.6 compatible versions)
-fastapi==0.68.1  # Compatible with Python 3.6
-uvicorn==0.15.0  # Remove [standard] for compatibility
-gunicorn==20.1.0
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+gunicorn==21.2.0
+sqlalchemy==2.0.25
+pymysql==1.1.0
+celery==5.3.6
+redis==5.0.1
+httpx==0.26.0
+pyyaml==6.0.1
+playwright==1.40.0
 
-# Database
-sqlalchemy==1.4.46  # Use more stable version
-alembic==1.7.7
-pymysql==1.0.2
-
-# Async and HTTP (Python 3.6 compatible)
-httpx==0.18.2  # Older version for Python 3.6
-aiohttp==3.8.1  # Use stable version
-
-# Task queue and cache
-celery==5.2.3  # Use existing stable version
-redis==4.3.6  # Use stable version
-
-# Data processing
-pyyaml==5.4.1
-pydantic==1.10.13  # Use v1.x for Python 3.6 compatibility
-
-# Web scraping - 先不安装，后面单独处理
-# playwright==1.21.0
-
-# Utilities
-python-dotenv==0.19.2
-click==8.0.4
+# Additional dependencies for Aegis
+pydantic==2.5.0
+python-dotenv==1.0.0
+alembic==1.13.1

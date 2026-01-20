@@ -11,11 +11,18 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.pool import QueuePool
 
-# 导入配置
-from app.config import settings
+# 从环境变量获取数据库配置
+DB_HOST = os.getenv("DB_HOST", "aegis-db")
+DB_PORT = int(os.getenv("DB_PORT", "3306"))
+DB_NAME = os.getenv("DB_NAME", "aegis")
+DB_USER = os.getenv("DB_USER", "root")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "aegis_password")
 
-# 使用配置对象（支持向后兼容的环境变量）
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", settings.database_url)
+# 完整的数据库URL
+SQLALCHEMY_DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+)
 
 # 创建优化的引擎配置
 engine = create_engine(
@@ -30,6 +37,7 @@ engine = create_engine(
 
     # 其他配置
     echo=False,            # 生产环境关闭SQL日志
+    future=True,           # 使用SQLAlchemy 2.0风格
 )
 
 # 创建会话工厂
@@ -65,7 +73,7 @@ def create_database_if_not_exists():
     注意：需要使用root权限连接MySQL
     """
     # 连接到MySQL服务器（不指定数据库）
-    root_url = f"mysql+pymysql://{settings.mysql_user}:{settings.mysql_password}@{settings.mysql_host}:{settings.mysql_port}"
+    root_url = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}"
     root_engine = create_engine(root_url, pool_pre_ping=True)
 
     try:

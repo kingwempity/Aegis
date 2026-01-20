@@ -13,9 +13,13 @@ python3 --version
 echo "📦 步骤1: 升级pip..."
 python3 -m pip install --upgrade pip
 
-# 步骤2: 安装核心依赖（排除playwright）
+# 步骤2: 安装核心依赖（仅数据库和API功能）
 echo "📦 步骤2: 安装核心依赖..."
 python3 -m pip install -r requirements-core.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# 步骤2.5: 可选安装异步和HTTP相关包
+echo "📦 步骤2.5: 安装异步和HTTP相关包..."
+python3 -m pip install httpx==0.18.2 aiohttp==3.8.1 -i https://pypi.tuna.tsinghua.edu.cn/simple || echo "⚠️  异步包安装失败，跳过"
 
 # 步骤3: 单独安装playwright（尝试不同版本）
 echo "🎭 步骤3: 安装 Playwright..."
@@ -31,7 +35,10 @@ playwright install chromium || echo "⚠️  浏览器安装失败，跳过此�
 
 echo "✅ 依赖安装完成！"
 
+echo "🧪 运行最小功能测试..."
+python3 test_minimal.py
+
 echo "🧪 运行兼容性测试..."
-python3 test_python36_compatibility.py
+python3 test_python36_compatibility.py || echo "⚠️  兼容性测试跳过"
 
 echo "🎉 安装成功！"

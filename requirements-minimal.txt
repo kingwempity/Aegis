@@ -1,0 +1,10 @@
+# Minimal dependencies for Aegis (Python 3.6 compatible)
+# 只包含最核心的依赖，避免版本冲突
+
+fastapi==0.68.1
+uvicorn==0.15.0
+sqlalchemy==1.4.46
+pymysql==1.0.2
+pyyaml==5.4.1
+pydantic==1.10.13
+python-dotenv==0.19.2

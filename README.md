@@ -18,11 +18,18 @@
 git clone <repository-url>
 cd aegis
 
-# 安装Python依赖 (使用清华源加速)
-pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+# 推荐: 使用分步安装脚本 (兼容Python 3.6)
+./install_deps_step_by_step.sh
 
-# 安装Playwright浏览器
-pip install playwright
+# 或手动分步安装:
+# 1. 安装核心依赖 (数据库+API功能)
+pip install -r requirements-core.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# 2. 可选: 安装Celery和Redis (任务队列)
+./install_celery_optional.sh
+
+# 3. 可选: 安装Playwright (网页爬取功能)
+pip install playwright==1.17.2
 playwright install chromium
 ```
 

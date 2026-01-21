@@ -1,27 +1,28 @@
-"""
-Aegis 主入口文件
-----------------
-负责初始化 FastAPI 应用、注册路由及全局配置。
-"""
+import logging
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.api.v1.endpoints import tasks, reports
 
-# 初始化 FastAPI 实例
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("uvicorn")
+
 app = FastAPI(
     title="Aegis API",
-    description="基于模拟攻击的 Web 漏洞检测系统 API",
     version="1.0.0"
 )
 
+# 允许所有来源跨域 (生产环境应限制)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["Tasks"])
+app.include_router(reports.router, prefix="/api/v1/reports", tags=["Reports"])
+
 @app.get("/")
 async def root():
-    """健康检查接口"""
-    return {
-        "status": "online",
-        "message": "Welcome to Aegis Security Platform",
-        "docs": "/docs"
-    }
-
-# 后续在这里注册路由
-# from app.api.v1 import tasks
-# app.include_router(tasks.router, prefix="/api/v1")
-
+    return {"status": "online"}

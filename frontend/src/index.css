@@ -19,6 +19,22 @@
   --gapL: 24px;
   --radiusS: 6px;
   --radiusM: 10px;
+  
+  /* AWVS 风格色彩系统 */
+  --awvs-critical: #ff4d4f;  /* 高危 - 红色 */
+  --awvs-high: #ff7a45;      /* 高危变体 */
+  --awvs-medium: #ffa940;    /* 中危 - 橙色 */
+  --awvs-low: #1890ff;       /* 低危 - 蓝色 */
+  --awvs-info: #52c41a;      /* 信息 - 绿色 */
+  
+  /* 扩展的背景和文本色彩 */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f5;
+  --bg-tertiary: #fafafa;
+  --text-primary: #000000;
+  --text-secondary: #595959;
+  --text-tertiary: #8c8c8c;
+  --text-disabled: #bfbfbf;
 }
 
 @layer base {
@@ -45,5 +61,43 @@
   ::-webkit-scrollbar-thumb {
     background: #ccc;
     border-radius: 3px;
+  }
+}
+
+/* AWVS 风格组件样式 */
+@layer components {
+  /* 漏洞严重等级指示器 */
+  .severity-critical {
+    @apply text-[#ff4d4f];
+  }
+  
+  .severity-high {
+    @apply text-[#ff7a45];
+  }
+  
+  .severity-medium {
+    @apply text-[#ffa940];
+  }
+  
+  .severity-low {
+    @apply text-[#1890ff];
+  }
+  
+  .severity-info {
+    @apply text-[#52c41a];
+  }
+  
+  /* 卡片样式 */
+  .card-awvs {
+    @apply bg-white rounded-lg border border-gray-200 shadow-sm;
+  }
+  
+  /* 按钮样式 */
+  .btn-primary {
+    @apply px-4 py-2 bg-[#2d2d2d] text-white rounded-md hover:bg-[#3d3d3d] transition-colors duration-200;
+  }
+  
+  .btn-secondary {
+    @apply px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 transition-colors duration-200;
   }
 }

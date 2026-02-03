@@ -5,13 +5,13 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   css: {
-    // Tailwind CSS v4 推荐在遇到 LightningCSS 兼容性问题时显式配置
+    // 使用 postcss 处理 CSS，这是 Tailwind v4 的标准处理方式
     transformer: 'postcss',
-    minify: true,
   },
   build: {
-    // 使用 esbuild 压缩 CSS 以避免 LightningCSS 对 Tailwind v4 语法的误报
-    cssMinify: 'esbuild',
+    // 移除显式的 esbuild 配置，使用 Vite 7 默认的压缩器
+    // 这样可以避免因缺少 esbuild 包导致的构建失败
+    cssMinify: true,
     reportCompressedSize: false,
   }
 })

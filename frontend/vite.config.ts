@@ -3,15 +3,14 @@ import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: './',
+  // 移除 base: './' 以避免在某些服务器配置下路径解析错误
+  // 如果是部署在根目录，默认的 '/' 是最稳妥的
   plugins: [react()],
   css: {
-    // 使用 postcss 处理 CSS，这是 Tailwind v4 的标准处理方式
-    transformer: 'postcss',
+    // 显式启用 PostCSS 处理
+    postcss: './postcss.config.js',
   },
   build: {
-    // 移除显式的 esbuild 配置，使用 Vite 7 默认的压缩器
-    // 这样可以避免因缺少 esbuild 包导致的构建失败
     cssMinify: true,
     reportCompressedSize: false,
   }

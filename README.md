@@ -56,7 +56,7 @@ Aegis（宙斯盾）是一款面向小型团队与个人的轻量级 DAST（动�
   python init_db.py
 - 启动后端（示例）：
   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-  （如果项目入��不同，请根据项目实际入口调整）
+  （如果项目入端口不同，请根据项目实际入口调整）
 - 启动前端（若独立）：
   cd frontend
   npm install

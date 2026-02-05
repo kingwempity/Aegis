@@ -25,11 +25,15 @@ export interface Vulnerability {
 export interface Target {
   id: number;
   url: string;
-  is_active: boolean;
-  last_scanned: string;
-  critical_vulns: number;
-  high_vulns: number;
-  low_vulns: number;
+  description?: string;
+  status: string;
+  created_at: string;
+  // 兼容旧版 UI 字段
+  is_active?: boolean;
+  last_scanned?: string;
+  critical_vulns?: number;
+  high_vulns?: number;
+  low_vulns?: number;
 }
 
 export interface Asset {
@@ -125,19 +129,25 @@ export const api = {
 
   // 获取目标列表
   async getTargets(): Promise<Target[]> {
-    const response = await fetch(`${API_BASE_URL}/targets`);
-    if (!response.ok) {
-      console.warn('Targets API not implemented, returning mock data');
-      return [
-        { id: 1, url: '192.168.10.156', is_active: true, last_scanned: new Date().toISOString(), critical_vulns: 0, high_vulns: 8, low_vulns: 2 }
-      ];
-    }
+    const response = await fetch(`${API_BASE_URL}/discovery/targets`);
+    if (!response.ok) throw new Error('Failed to fetch targets');
+    return response.json();
+  },
+
+  // 添加新目标
+  async addTarget(url: string, description?: string): Promise<Target> {
+    const response = await fetch(`${API_BASE_URL}/discovery/targets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, description }),
+    });
+    if (!response.ok) throw new Error('Failed to add target');
     return response.json();
   },
 
   // 获取资产发现列表
   async getAssets(): Promise<Asset[]> {
-    const response = await fetch(`${API_BASE_URL}/discovery`);
+    const response = await fetch(`${API_BASE_URL}/discovery/assets`);
     if (!response.ok) throw new Error('Failed to fetch assets');
     return response.json();
   },
@@ -145,12 +155,7 @@ export const api = {
   // 获取报告列表
   async getReports(): Promise<Report[]> {
     const response = await fetch(`${API_BASE_URL}/reports`);
-    if (!response.ok) {
-      console.warn('Reports API not implemented, returning mock data');
-      return [
-        { id: 1, task_id: 1, target_url: 'https://demo.test', risk_score: 85, vuln_count: 12, created_at: new Date().toISOString() }
-      ];
-    }
+    if (!response.ok) throw new Error('Failed to fetch reports');
     return response.json();
   },
 

@@ -1,24 +1,23 @@
-import React from 'react';
-
-interface DashboardProps {
-  onCreateScan?: () => void;
-}
+import React, { useEffect, useState } from 'react';
+import { api, DashboardStats } from '../api';
 
 /**
  * Figma 风格的大型环形图表
  */
 const LargeDonutChart: React.FC<{
   value: number;
+  total: number;
   color: string;
   label: string;
-}> = ({ value, color, label }) => {
+}> = ({ value, total, color, label }) => {
   const size = 180;
   const strokeWidth = 16;
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
-  // 假设最大值为 10，用于计算进度
-  const progress = Math.min(value / 10, 1);
-  const offset = circumference - progress * circumference;
+  
+  // 计算进度百分比
+  const percentage = total > 0 ? Math.min(value / total, 1) : 0;
+  const offset = circumference - percentage * circumference;
 
   return (
     <div className="flex flex-col items-center gap-6">
@@ -57,37 +56,88 @@ const LargeDonutChart: React.FC<{
   );
 };
 
-const Dashboard: React.FC<DashboardProps> = () => {
+const Dashboard: React.FC = () => {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchStats = async () => {
+    try {
+      const data = await api.getStats();
+      setStats(data);
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStats();
+    // 每 30 秒自动刷新一次仪表盘数据
+    const interval = setInterval(fetchStats, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading && !stats) {
+    return (
+      <div className="w-full h-full flex items-center justify-center py-20">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#ff6b00]"></div>
+      </div>
+    );
+  }
+
+  const totalVulns = stats ? (
+    stats.vulnerabilities.critical + 
+    stats.vulnerabilities.high + 
+    stats.vulnerabilities.medium + 
+    stats.vulnerabilities.low
+  ) : 0;
+
   return (
     <div className="flex flex-col gap-8 max-w-7xl mx-auto">
       {/* ==================== 第一行：大型漏洞统计图表 ==================== */}
       <div className="bg-white rounded-2xl p-12 shadow-sm border border-gray-100 flex justify-around items-center">
-        <LargeDonutChart value={0} color="#343a40" label="高严重性漏洞" />
-        <LargeDonutChart value={8} color="#ff7a00" label="中严重性漏洞" />
-        <LargeDonutChart value={2} color="#4dabf7" label="低严重性漏洞" />
+        <LargeDonutChart 
+          value={stats?.vulnerabilities.critical || 0} 
+          total={totalVulns}
+          color="#343a40" 
+          label="高严重性漏洞" 
+        />
+        <LargeDonutChart 
+          value={stats?.vulnerabilities.high || 0} 
+          total={totalVulns}
+          color="#ff7a00" 
+          label="中严重性漏洞" 
+        />
+        <LargeDonutChart 
+          value={stats?.vulnerabilities.low || 0} 
+          total={totalVulns}
+          color="#4dabf7" 
+          label="低严重性漏洞" 
+        />
       </div>
 
       {/* ==================== 第二行：横向数据指标 ==================== */}
       <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 grid grid-cols-5 divide-x divide-gray-100">
         <div className="flex flex-col items-center gap-2">
-          <span className="text-gray-500 text-xs font-medium">扫描正在运行</span>
-          <span className="text-3xl font-bold text-red-500">0</span>
+          <span className="text-gray-500 text-xs font-medium uppercase tracking-wider">扫描正在运行</span>
+          <span className="text-3xl font-bold text-red-500">{stats?.running_scans || 0}</span>
         </div>
         <div className="flex flex-col items-center gap-2">
-          <span className="text-gray-500 text-xs font-medium">扫描等待</span>
-          <span className="text-3xl font-bold text-red-500">0</span>
+          <span className="text-gray-500 text-xs font-medium uppercase tracking-wider">扫描等待</span>
+          <span className="text-3xl font-bold text-red-500">{stats?.pending_scans || 0}</span>
         </div>
         <div className="flex flex-col items-center gap-2">
-          <span className="text-gray-500 text-xs font-medium">时间的总扫描数</span>
-          <span className="text-3xl font-bold text-red-500">1</span>
+          <span className="text-gray-500 text-xs font-medium uppercase tracking-wider">时间的总扫描数</span>
+          <span className="text-3xl font-bold text-red-500">{stats?.total_scans || 0}</span>
         </div>
         <div className="flex flex-col items-center gap-2">
-          <span className="text-gray-500 text-xs font-medium">开放端口</span>
-          <span className="text-3xl font-bold text-red-500">10</span>
+          <span className="text-gray-500 text-xs font-medium uppercase tracking-wider">开放端口</span>
+          <span className="text-3xl font-bold text-red-500">{stats?.open_ports || 0}</span>
         </div>
         <div className="flex flex-col items-center gap-2">
-          <span className="text-gray-500 text-xs font-medium">目标总数</span>
-          <span className="text-3xl font-bold text-red-500">1</span>
+          <span className="text-gray-500 text-xs font-medium uppercase tracking-wider">目标总数</span>
+          <span className="text-3xl font-bold text-red-500">{stats?.total_targets || 0}</span>
         </div>
       </div>
 

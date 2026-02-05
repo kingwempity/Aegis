@@ -1,229 +1,156 @@
-import React, { useState } from 'react';
-
-interface Task {
-  id: string;
-  target: string;
-  status: string;
-  progress: string;
-  vulnerabilities: number;
-  updateTime: string;
-}
+import React, { useEffect, useState } from 'react';
+import { api, ScanTask } from '../api';
 
 interface TaskListProps {
-  onImportYAML?: () => void;
   onCreateTask?: () => void;
-  onViewTask?: (taskId: string) => void;
-  onStopTask?: (taskId: string) => void;
 }
 
-const TaskList: React.FC<TaskListProps> = ({
-  onImportYAML,
-  onCreateTask,
-  onViewTask,
-  onStopTask
-}) => {
+const TaskList: React.FC<TaskListProps> = ({ onCreateTask }) => {
+  const [tasks, setTasks] = useState<ScanTask[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('全部');
 
-  const tasks: Task[] = [
-    {
-      id: 'T-24018',
-      target: 'https://demo.test',
-      status: '运行中',
-      progress: '62%',
-      vulnerabilities: 3,
-      updateTime: '刚刚'
-    },
-    {
-      id: 'T-24017',
-      target: 'https://shop.example',
-      status: '已完成',
-      progress: '100%',
-      vulnerabilities: 12,
-      updateTime: '2 分钟前'
-    },
-    {
-      id: 'T-24016',
-      target: 'https://staging.app',
-      status: '已暂停',
-      progress: '41%',
-      vulnerabilities: 2,
-      updateTime: '8 分钟前'
+  const fetchTasks = async () => {
+    try {
+      const data = await api.getTasks();
+      setTasks(data);
+    } catch (error) {
+      console.error('Error fetching tasks:', error);
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
+
+  useEffect(() => {
+    fetchTasks();
+    // 每 5 秒高频轮询任务状态，确保进度条实时更新
+    const interval = setInterval(fetchTasks, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleStopTask = async (taskId: number) => {
+    try {
+      await api.stopTask(taskId);
+      fetchTasks(); // 立即刷新状态
+    } catch (error) {
+      alert('停止任务失败');
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'RUNNING':
+        return <span className="px-2 py-1 bg-blue-100 text-blue-600 rounded text-[10px] font-bold">RUNNING</span>;
+      case 'COMPLETED':
+        return <span className="px-2 py-1 bg-green-100 text-green-600 rounded text-[10px] font-bold">COMPLETED</span>;
+      case 'FAILED':
+        return <span className="px-2 py-1 bg-red-100 text-red-600 rounded text-[10px] font-bold">FAILED</span>;
+      default:
+        return <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-[10px] font-bold">PENDING</span>;
+    }
+  };
+
+  const filteredTasks = tasks.filter(task => 
+    task.target_url.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    task.id.toString().includes(searchQuery)
+  );
 
   return (
-    <div className="flex flex-col gap-4 w-full h-full">
+    <div className="flex flex-col gap-6 max-w-7xl mx-auto">
       {/* Toolbar */}
-      <div className="w-full flex items-center justify-between">
-        {/* Left Section */}
-        <div className="flex-1 h-10 flex items-center gap-3">
-          {/* Search */}
-          <div className="w-[360px] h-9 bg-[var(--card)] rounded-[6px] border border-solid border-[var(--border)] flex items-center gap-2 px-[10px] py-3">
-            <div className="text-[var(--mutedText)] w-4 h-4 flex items-center justify-center">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4 flex-1">
+          <h2 className="text-2xl font-bold text-[#2d3343]">扫描任务</h2>
+          <div className="relative flex-1 max-w-md">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg className="h-4 w-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="11" cy="11" r="8" />
                 <path d="m21 21-4.35-4.35" />
               </svg>
             </div>
             <input
               type="text"
-              placeholder="搜索目标/任务ID"
+              placeholder="搜索目标 URL 或 任务 ID..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 bg-transparent text-[var(--mutedText)] font-inter text-[13px] font-normal outline-none placeholder-[var(--mutedText)]"
+              className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-xl text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#ff6b00]/20 focus:border-[#ff6b00] transition-all"
             />
           </div>
-
-          {/* Filter */}
-          <div className="h-9 bg-[var(--card)] rounded-[6px] border border-solid border-[var(--border)] flex items-center gap-2 px-[10px] py-3 cursor-pointer hover:bg-gray-50 transition-colors">
-            <div className="text-[var(--mutedText)] w-4 h-4 flex items-center justify-center">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-              </svg>
-            </div>
-            <span className="text-[var(--bodyText)] font-inter text-[13px] font-[600]">
-              状态：{statusFilter}
-            </span>
-          </div>
         </div>
-
-        {/* Right Section - Actions */}
-        <div className="h-10 flex items-center gap-[10px]">
-          {/* Import YAML Button */}
-          <button
-            onClick={onImportYAML}
-            className="h-9 bg-[var(--card)] rounded-[6px] border border-solid border-[var(--border)] flex items-center gap-2 px-[10px] py-3 hover:bg-gray-50 transition-colors"
-          >
-            <div className="text-[var(--titleText)] w-4 h-4 flex items-center justify-center">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17 8 12 3 7 8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-            </div>
-            <span className="text-[var(--titleText)] font-inter text-[14px] font-[600]">
-              导入 YAML
-            </span>
-          </button>
-
-          {/* Create Task Button */}
-          <button
-            onClick={onCreateTask}
-            className="h-9 bg-[#2d2d2d] rounded-[6px] gap-2 px-[10px] py-3 flex items-center text-[var(--card)] hover:bg-[#3d3d3d] transition-colors"
-          >
-            <div className="w-4 h-4 flex items-center justify-center">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-            </div>
-            <span className="font-inter text-[14px] font-[600]">
-              创建任务
-            </span>
-          </button>
-        </div>
+        <button 
+          onClick={onCreateTask}
+          className="px-6 py-2.5 bg-[#ff6b00] text-white rounded-xl font-bold text-sm hover:bg-[#e66000] transition-all shadow-lg shadow-orange-200 flex items-center gap-2"
+        >
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          新建扫描
+        </button>
       </div>
 
       {/* Task Table */}
-      <div className="flex-1 bg-[var(--card)] rounded-[10px] border border-solid border-[var(--border)] flex flex-col overflow-auto">
-        {/* Table Header */}
-        <div className="w-full h-11 bg-[var(--background)] border-b border-solid border-[var(--border)] flex items-center gap-3 px-[10px] py-[14px]">
-          <div className="text-[var(--mutedText)] font-inter text-[12px] font-[700]">
-            ID
-          </div>
-          <div className="text-[var(--mutedText)] font-inter text-[12px] font-[700]">
-            目标
-          </div>
-          <div className="text-[var(--mutedText)] font-inter text-[12px] font-[700]">
-            状态
-          </div>
-          <div className="text-[var(--mutedText)] font-inter text-[12px] font-[700]">
-            进度
-          </div>
-          <div className="text-[var(--mutedText)] font-inter text-[12px] font-[700]">
-            漏洞
-          </div>
-          <div className="text-[var(--mutedText)] font-inter text-[12px] font-[700]">
-            更新时间
-          </div>
-          <div className="text-[var(--mutedText)] font-inter text-[12px] font-[700]">
-            操作
-          </div>
-        </div>
-
-        {/* Table Rows */}
-        {tasks.map((task, index) => (
-          <div key={index} className="w-full h-13 border-b border-solid border-[var(--border)] flex items-center gap-3 px-[10px] py-[14px]">
-            <div className="text-[var(--titleText)] font-inter text-[13px] font-[600]">
-              {task.id}
-            </div>
-            <div className="text-[var(--bodyText)] font-inter text-[13px] font-normal">
-              {task.target}
-            </div>
-            <div className="text-[var(--titleText)] font-inter text-[13px] font-[600]">
-              {task.status}
-            </div>
-            <div className="text-[var(--bodyText)] font-inter text-[13px] font-normal">
-              {task.progress}
-            </div>
-            <div className="text-[var(--titleText)] font-inter text-[13px] font-[600]">
-              {task.vulnerabilities}
-            </div>
-            <div className="text-[var(--mutedText)] font-inter text-[13px] font-normal">
-              {task.updateTime}
-            </div>
-            <div className="h-8 flex items-center gap-2">
-              {/* View Button */}
-              <button
-                onClick={() => onViewTask?.(task.id)}
-                className="w-8 h-8 bg-[var(--card)] rounded-[8px] border border-solid border-[var(--border)] flex items-center justify-center hover:bg-gray-50 transition-colors"
-              >
-                <div className="text-[var(--titleText)] w-4 h-4 flex items-center justify-center">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                    <circle cx="12" cy="12" r="3" />
-                  </svg>
-                </div>
-              </button>
-
-              {/* Stop Button (only show for running tasks) */}
-              {task.status === '运行中' && (
-                <button
-                  onClick={() => onStopTask?.(task.id)}
-                  className="w-8 h-8 bg-[var(--card)] rounded-[8px] border border-solid border-[var(--destructive)] flex items-center justify-center hover:bg-red-50 transition-colors"
-                >
-                  <div className="text-[var(--destructive)] w-4 h-4 flex items-center justify-center">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                    </svg>
-                  </div>
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-
-        {/* Table Footer */}
-        <div className="w-full h-11 bg-[var(--background)] flex items-center justify-between px-[10px] py-[14px]">
-          <div className="text-[var(--mutedText)] font-inter text-[13px] font-normal">
-            共 3 个任务
-          </div>
-          <div className="h-8 flex items-center gap-2">
-            {/* Page 1 */}
-            <div className="w-8 h-8 bg-[var(--card)] rounded-[8px] border border-solid border-[var(--border)] flex items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors">
-              <span className="text-[var(--titleText)] font-inter text-[13px] font-[600]">
-                1
-              </span>
-            </div>
-            {/* Page 2 */}
-            <div className="w-8 h-8 bg-[var(--card)] rounded-[8px] border border-solid border-[var(--border)] flex items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors">
-              <span className="text-[var(--mutedText)] font-inter text-[13px] font-[600]">
-                2
-              </span>
-            </div>
-          </div>
-        </div>
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-100">
+              <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">ID</th>
+              <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">目标 URL</th>
+              <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">状态</th>
+              <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">进度</th>
+              <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">创建时间</th>
+              <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {loading && tasks.length === 0 ? (
+              <tr><td colSpan={6} className="px-8 py-12 text-center text-gray-400">加载中...</td></tr>
+            ) : filteredTasks.length === 0 ? (
+              <tr><td colSpan={6} className="px-8 py-12 text-center text-gray-400">暂无匹配的扫描任务</td></tr>
+            ) : (
+              filteredTasks.map((task) => (
+                <tr key={task.id} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="px-8 py-5 text-xs font-bold text-gray-400">#{task.id}</td>
+                  <td className="px-8 py-5 font-bold text-[#2d3343]">{task.target_url}</td>
+                  <td className="px-8 py-5">{getStatusBadge(task.status)}</td>
+                  <td className="px-8 py-5">
+                    <div className="flex items-center gap-3 w-48">
+                      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-[#ff6b00] transition-all duration-500" 
+                          style={{ width: \`\${task.progress}%\` }}
+                        ></div>
+                      </div>
+                      <span className="text-xs font-bold text-gray-400">{task.progress}%</span>
+                    </div>
+                  </td>
+                  <td className="px-8 py-5 text-gray-400 text-xs">{new Date(task.created_at).toLocaleString()}</td>
+                  <td className="px-8 py-5 text-right">
+                    <div className="flex justify-end gap-2">
+                      {task.status === 'RUNNING' && (
+                        <button 
+                          onClick={() => handleStopTask(task.id)}
+                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          title="停止任务"
+                        >
+                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                          </svg>
+                        </button>
+                      )}
+                      <button className="p-2 text-gray-400 hover:bg-gray-50 rounded-lg transition-colors" title="查看详情">
+                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                          <circle cx="12" cy="12" r="3" />
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );

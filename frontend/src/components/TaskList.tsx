@@ -118,7 +118,7 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask }) => {
                       <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-[#ff6b00] transition-all duration-500" 
-                          style={{ width: \`\${task.progress}%\` }}
+                          style={{ width: `${task.progress}%` }}
                         ></div>
                       </div>
                       <span className="text-xs font-bold text-gray-400">{task.progress}%</span>

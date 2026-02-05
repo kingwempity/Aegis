@@ -1,7 +1,7 @@
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1.endpoints import tasks, reports
+from app.api.v1.endpoints import tasks, reports, stats, vulnerabilities, ws
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("uvicorn")
@@ -20,8 +20,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 注册路由
 app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["Tasks"])
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["Reports"])
+app.include_router(stats.router, prefix="/api/v1/stats", tags=["Stats"])
+app.include_router(vulnerabilities.router, prefix="/api/v1/vulnerabilities", tags=["Vulnerabilities"])
+app.include_router(ws.router, tags=["WebSocket"])
 
 @app.get("/")
 async def root():

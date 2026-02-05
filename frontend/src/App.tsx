@@ -4,6 +4,10 @@ import Dashboard from './components/Dashboard';
 import TaskList from './components/TaskList';
 import VulnerabilityList from './components/VulnerabilityList';
 import TargetList from './components/TargetList';
+import Discovery from './components/Discovery';
+import Reports from './components/Reports';
+import Users from './components/Users';
+import ScanProfiles from './components/ScanProfiles';
 import NewScanModal from './components/NewScanModal';
 
 const App: React.FC = () => {
@@ -75,6 +79,10 @@ const App: React.FC = () => {
     switch (currentPage) {
       case 'overview':
         return <Dashboard />;
+      case 'discovery':
+        return <Discovery />;
+      case 'targets':
+        return <TargetList />;
       case 'scans':
         return (
           <TaskList
@@ -83,19 +91,14 @@ const App: React.FC = () => {
         );
       case 'vulnerabilities':
         return <VulnerabilityList />;
-      case 'targets':
-        return <TargetList />;
+      case 'reports':
+        return <Reports />;
+      case 'users':
+        return <Users />;
+      case 'settings':
+        return <ScanProfiles />;
       default:
-        return (
-          <div className="w-full h-full flex items-center justify-center bg-white rounded-2xl border border-gray-100 shadow-sm">
-            <div className="text-center">
-              <div className="text-[#2d3343] text-2xl font-bold mb-2">
-                {currentPage.charAt(0).toUpperCase() + currentPage.slice(1)}
-              </div>
-              <p className="text-gray-400">页面正在根据 Figma 设计稿开发中...</p>
-            </div>
-          </div>
-        );
+        return <Dashboard />;
     }
   };
 

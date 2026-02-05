@@ -32,6 +32,39 @@ export interface Target {
   low_vulns: number;
 }
 
+export interface Asset {
+  id: number;
+  ip: string;
+  hostname: string;
+  ports: number[];
+  services: string[];
+  last_seen: string;
+}
+
+export interface Report {
+  id: number;
+  task_id: number;
+  target_url: string;
+  risk_score: number;
+  vuln_count: number;
+  created_at: string;
+}
+
+export interface User {
+  id: number;
+  username: string;
+  email: string;
+  role: string;
+  status: string;
+}
+
+export interface ScanProfile {
+  id: number;
+  name: string;
+  description: string;
+  is_default: boolean;
+}
+
 export interface DashboardStats {
   running_scans: number;
   pending_scans: number;
@@ -94,12 +127,44 @@ export const api = {
   async getTargets(): Promise<Target[]> {
     const response = await fetch(`${API_BASE_URL}/targets`);
     if (!response.ok) {
-      // 如果后端还没实现该接口，返回 Mock 数据以防前端崩溃
       console.warn('Targets API not implemented, returning mock data');
       return [
         { id: 1, url: '192.168.10.156', is_active: true, last_scanned: new Date().toISOString(), critical_vulns: 0, high_vulns: 8, low_vulns: 2 }
       ];
     }
+    return response.json();
+  },
+
+  // 获取资产发现列表
+  async getAssets(): Promise<Asset[]> {
+    const response = await fetch(`${API_BASE_URL}/discovery`);
+    if (!response.ok) throw new Error('Failed to fetch assets');
+    return response.json();
+  },
+
+  // 获取报告列表
+  async getReports(): Promise<Report[]> {
+    const response = await fetch(`${API_BASE_URL}/reports`);
+    if (!response.ok) {
+      console.warn('Reports API not implemented, returning mock data');
+      return [
+        { id: 1, task_id: 1, target_url: 'https://demo.test', risk_score: 85, vuln_count: 12, created_at: new Date().toISOString() }
+      ];
+    }
+    return response.json();
+  },
+
+  // 获取用户列表
+  async getUsers(): Promise<User[]> {
+    const response = await fetch(`${API_BASE_URL}/users`);
+    if (!response.ok) throw new Error('Failed to fetch users');
+    return response.json();
+  },
+
+  // 获取扫描配置列表
+  async getProfiles(): Promise<ScanProfile[]> {
+    const response = await fetch(`${API_BASE_URL}/profiles`);
+    if (!response.ok) throw new Error('Failed to fetch profiles');
     return response.json();
   }
 };

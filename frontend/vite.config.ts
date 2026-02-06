@@ -3,15 +3,24 @@ import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 export default defineConfig({
-  // 移除 base: './' 以避免在某些服务器配置下路径解析错误
-  // 如果是部署在根目录，默认的 '/' 是最稳妥的
   plugins: [react()],
   css: {
     // 显式启用 PostCSS 处理
     postcss: './postcss.config.js',
   },
   build: {
-    cssMinify: true,
-    reportCompressedSize: false,
+    // 针对服务器环境优化构建性能
+    cssMinify: 'esbuild', // 如果 esbuild 不可用，Vite 会自动回退，但 esbuild 通常比 lightningcss 更快
+    minify: 'esbuild',
+    reportCompressedSize: false, // 禁用压缩大小报告以节省计算资源
+    chunkSizeWarningLimit: 1000, // 提高分包警告阈值
+    rollupOptions: {
+      output: {
+        // 分包策略：将第三方库打包到独立文件，减少单个文件的处理压力
+        manualChunks: {
+          'vendor': ['react', 'react-dom', 'lucide-react'],
+        }
+      }
+    }
   }
 })

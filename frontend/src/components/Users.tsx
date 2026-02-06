@@ -1,21 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { api, User } from '../api';
+import AddUserModal from './AddUserModal';
 
 const Users: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const fetchData = async () => {
+    try {
+      const data = await api.getUsers();
+      setUsers(data);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const data = await api.getUsers();
-        setUsers(data);
-      } catch (error) {
-        console.error('Error fetching users:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchData();
   }, []);
 
@@ -23,7 +26,10 @@ const Users: React.FC = () => {
     <div className="flex flex-col gap-6 max-w-7xl mx-auto">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-[#2d3343]">用户管理</h2>
-        <button className="btn-new-scan">
+        <button 
+          onClick={() => setIsModalOpen(true)}
+          className="px-6 py-2.5 bg-[#ff6b00] text-white rounded-xl font-bold text-sm hover:bg-[#e66000] transition-all shadow-lg shadow-orange-200 flex items-center gap-2"
+        >
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
             <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
             <circle cx="9" cy="7" r="4" />
@@ -65,7 +71,7 @@ const Users: React.FC = () => {
                   </td>
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                      <div className={`w-2 h-2 rounded-full ${user.status === 'Active' ? 'bg-green-500' : 'bg-gray-300'}`}></div>
                       <span className="text-xs font-bold text-gray-600">{user.status}</span>
                     </div>
                   </td>
@@ -84,6 +90,12 @@ const Users: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      <AddUserModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        onSuccess={fetchData}
+      />
     </div>
   );
 };

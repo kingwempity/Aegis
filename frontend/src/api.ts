@@ -1,6 +1,6 @@
 /**
  * Aegis 前端 API 客户端
- * 负责与 FastAPI 后端进行通信
+ * 负责 with FastAPI 后端进行通信
  */
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
@@ -163,6 +163,20 @@ export const api = {
   async getUsers(): Promise<User[]> {
     const response = await fetch(`${API_BASE_URL}/users`);
     if (!response.ok) throw new Error('Failed to fetch users');
+    return response.json();
+  },
+
+  // 添加新用户
+  async addUser(username: string, email: string, role: string, status: string = "Active"): Promise<User> {
+    const response = await fetch(`${API_BASE_URL}/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, email, role, status }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to add user');
+    }
     return response.json();
   },
 

@@ -9,18 +9,16 @@ export default defineConfig({
     postcss: './postcss.config.js',
   },
   build: {
-    // 针对服务器环境优化构建性能
-    minify: 'esbuild',
-    reportCompressedSize: false, // 禁用压缩大小报告以节省计算资源
-    chunkSizeWarningLimit: 2000, // 进一步提高分包警告阈值
+    // 移除 minify: 'esbuild'，让 Vite 7 自动使用内置的 Oxc 压缩器
+    reportCompressedSize: false,
+    chunkSizeWarningLimit: 2000,
     rollupOptions: {
       output: {
-        // 使用函数形式的 manualChunks 以兼容 Vite 7 (Rolldown)
         manualChunks(id) {
           if (id.includes('node_modules')) {
             if (id.includes('react')) return 'vendor-react';
             if (id.includes('lucide')) return 'vendor-icons';
-            return 'vendor'; // 其他第三方库
+            return 'vendor';
           }
         }
       }

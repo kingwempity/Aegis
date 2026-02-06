@@ -152,6 +152,14 @@ export const api = {
     return response.json();
   },
 
+  // 触发网络发现扫描
+  async startNetworkScan(): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/discovery/scan`, {
+      method: 'POST',
+    });
+    if (!response.ok) throw new Error('Failed to start network scan');
+  },
+
   // 获取报告列表
   async getReports(): Promise<Report[]> {
     const response = await fetch(`${API_BASE_URL}/reports`);

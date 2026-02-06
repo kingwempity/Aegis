@@ -10,15 +10,18 @@ export default defineConfig({
   },
   build: {
     // 针对服务器环境优化构建性能
-    cssMinify: 'esbuild', // 如果 esbuild 不可用，Vite 会自动回退，但 esbuild 通常比 lightningcss 更快
     minify: 'esbuild',
     reportCompressedSize: false, // 禁用压缩大小报告以节省计算资源
-    chunkSizeWarningLimit: 1000, // 提高分包警告阈值
+    chunkSizeWarningLimit: 2000, // 进一步提高分包警告阈值
     rollupOptions: {
       output: {
-        // 分包策略：将第三方库打包到独立文件，减少单个文件的处理压力
-        manualChunks: {
-          'vendor': ['react', 'react-dom', 'lucide-react'],
+        // 使用函数形式的 manualChunks 以兼容 Vite 7 (Rolldown)
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react')) return 'vendor-react';
+            if (id.includes('lucide')) return 'vendor-icons';
+            return 'vendor'; // 其他第三方库
+          }
         }
       }
     }

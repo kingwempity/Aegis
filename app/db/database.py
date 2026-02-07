@@ -1,25 +1,41 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+import os
 
-# 数据库连接 URL，这里使用 MySQL
-# 格式：mysql+mysqlconnector://user:password@host:port/database
-# 实际项目中应从配置文件或环境变量中读取
-SQLALCHEMY_DATABASE_URL = "mysql+mysqlconnector://user:password@localhost:3306/aegis_db"
+# 数据库连接配置
+# 优先从环境变量读取，否则使用默认值
+# 格式：mysql+pymysql://user:password@host:port/database
+DB_USER = os.getenv("DB_USER", "root")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "root123456") # 请替换为您的实际密码
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = os.getenv("DB_PORT", "3306")
+DB_NAME = os.getenv("DB_NAME", "aegis")
 
-# 创建 SQLAlchemy 引擎
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+SQLALCHEMY_DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}?charset=utf8mb4"
 
-# 创建数据库会话类
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+try:
+    # 创建 SQLAlchemy 引擎
+    # pool_pre_ping=True 用于自动重连
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+        echo=False
+    )
 
-# 声明式基类，用于定义 ORM 模型
-Base = declarative_base()
+    # 创建数据库会话类
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    # 声明式基类
+    Base = declarative_base()
+except Exception as e:
+    print(f"Error initializing database engine: {e}")
+    raise
 
 def get_db():
     """
     获取数据库会话的依赖项。
-    每次请求都会创建一个新的会话，并在请求完成后关闭。
     """
     db = SessionLocal()
     try:

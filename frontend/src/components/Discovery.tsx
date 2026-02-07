@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { api, Asset, DiscoveryScanStatus } from '../api';
-import { Play, StopCircle, RefreshCw, Wifi, Info } from 'lucide-react';
+import { Play, StopCircle, RefreshCw, Wifi, Info, Trash2 } from 'lucide-react';
 
 const Discovery: React.FC = () => {
   const [assets, setAssets] = useState<Asset[]>([]);

@@ -2,9 +2,14 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.endpoints import tasks, reports, stats, vulnerabilities, ws, discovery, users, profiles
+from app.db.database import engine, Base
+from app.models import discovery # 导入模型以确保其被 SQLAlchemy 识别
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("uvicorn")
+
+# 创建数据库表
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Aegis API",

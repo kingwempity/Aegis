@@ -38,10 +38,14 @@ export interface Target {
 
 export interface Asset {
   id: number;
-  ip: string;
+  ip_address: string;
   hostname: string;
-  ports: number[];
+  mac_address: string;
+  open_ports: number[];
+  os_info: string;
   services: string[];
+  network_range: string;
+  status: string;
   last_seen: string;
 }
 
@@ -85,6 +89,14 @@ export interface DashboardStats {
   };
 }
 
+export interface DiscoveryScanStatus {
+  is_scanning: boolean;
+  progress: number;
+  message: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
 export const api = {
   // 获取仪表盘统计数据
   async getStats(): Promise<DashboardStats> {
@@ -121,22 +133,23 @@ export const api = {
 
   // 获取漏洞列表
   async getVulnerabilities(severity?: string): Promise<Vulnerability[]> {
-    const url = severity 
-      ? `${API_BASE_URL}/vulnerabilities?severity=${severity}`
-      : `${API_BASE_URL}/vulnerabilities`;
+    const url =
+      severity
+        ? `${API_BASE_URL}/vulnerabilities?severity=${severity}`
+        : `${API_BASE_URL}/vulnerabilities`;
     const response = await fetch(url);
     if (!response.ok) throw new Error('Failed to fetch vulnerabilities');
     return response.json();
   },
 
-  // 获取目标列表
+  // 获取目标列表 (Discovery 模块)
   async getTargets(): Promise<Target[]> {
     const response = await fetch(`${API_BASE_URL}/discovery/targets`);
     if (!response.ok) throw new Error('Failed to fetch targets');
     return response.json();
   },
 
-  // 添加新目标
+  // 添加新目标 (Discovery 模块)
   async addTarget(url: string, description?: string): Promise<Target> {
     const response = await fetch(`${API_BASE_URL}/discovery/targets`, {
       method: 'POST',
@@ -147,19 +160,54 @@ export const api = {
     return response.json();
   },
 
-  // 获取资产发现列表
+  // 获取资产发现列表 (Discovery 模块)
   async getAssets(): Promise<Asset[]> {
     const response = await fetch(`${API_BASE_URL}/discovery/assets`);
     if (!response.ok) throw new Error('Failed to fetch assets');
     return response.json();
   },
 
-  // 触发网络发现扫描
-  async startNetworkScan(): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/discovery/scan`, {
+  // 触发网络发现扫描 (Discovery 模块)
+  async startDiscoveryScan(networkRange: string = "192.168.1.0/24"): Promise<{ status: string; message: string; task_id: string }> {
+    const response = await fetch(`${API_BASE_URL}/discovery/scan/start?network_range=${networkRange}`, {
       method: 'POST',
     });
-    if (!response.ok) throw new Error('Failed to start network scan');
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to start network scan');
+    }
+    return response.json();
+  },
+
+  // 获取网络扫描状态 (Discovery 模块)
+  async getDiscoveryScanStatus(): Promise<DiscoveryScanStatus> {
+    const response = await fetch(`${API_BASE_URL}/discovery/scan/status`);
+    if (!response.ok) throw new Error('Failed to fetch scan status');
+    return response.json();
+  },
+
+  // 停止网络扫描 (Discovery 模块)
+  async stopDiscoveryScan(): Promise<{ status: string; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/discovery/scan/stop`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to stop network scan');
+    }
+    return response.json();
+  },
+
+  // 清除网络发现结果 (Discovery 模块)
+  async clearDiscoveryResults(): Promise<{ deleted: number; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/discovery/results`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to clear discovery results');
+    }
+    return response.json();
   },
 
   // 获取报告列表
@@ -177,7 +225,7 @@ export const api = {
   },
 
   // 添加新用户
-  async addUser(username: string, email: string, role: string, status: string = "Active"): Promise<User> {
+  async addUser(username: string, email: string, role: string, status: string = 'Active'): Promise<User> {
     const response = await fetch(`${API_BASE_URL}/users`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -206,5 +254,5 @@ export const api = {
     });
     if (!response.ok) throw new Error('Failed to add profile');
     return response.json();
-  }
+  },
 };

@@ -67,6 +67,8 @@ export interface ScanProfile {
   name: string;
   description: string;
   is_default: boolean;
+  speed?: string;
+  vulnerability_types?: string[];
 }
 
 export interface DashboardStats {
@@ -192,6 +194,17 @@ export const api = {
   async getProfiles(): Promise<ScanProfile[]> {
     const response = await fetch(`${API_BASE_URL}/profiles`);
     if (!response.ok) throw new Error('Failed to fetch profiles');
+    return response.json();
+  },
+
+  // 添加新扫描配置
+  async addProfile(name: string, description: string, speed: string, vulnerability_types: string[]): Promise<ScanProfile> {
+    const response = await fetch(`${API_BASE_URL}/profiles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description, speed, vulnerability_types }),
+    });
+    if (!response.ok) throw new Error('Failed to add profile');
     return response.json();
   }
 };

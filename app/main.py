@@ -10,10 +10,17 @@ logger = logging.getLogger("uvicorn")
 
 # 创建数据库表
 try:
-    Base.metadata.create_all(bind=engine)
-    logger.info("Database tables created successfully.")
+    # 使用 checkfirst=True 是 SQLAlchemy 的标准做法，它会先检查表是否存在
+    Base.metadata.create_all(bind=engine, checkfirst=True)
+    logger.info("Database tables verified/created successfully.")
 except Exception as e:
-    logger.warning(f"Database tables creation skipped or failed: {e}")
+    logger.error(f"Database initialization error: {e}")
+    # 在某些情况下，如果表已存在但 create_all 仍报错，我们可以选择忽略它
+    if "already exists" in str(e):
+        logger.info("Tables already exist, skipping creation.")
+    else:
+        # 如果是其他错误（如连接失败），则可能需要关注
+        pass
 
 app = FastAPI(
     title="Aegis API",

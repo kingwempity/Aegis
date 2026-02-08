@@ -3,7 +3,24 @@
  * 负责 with FastAPI 后端进行通信
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+// 动态获取 API 基础地址
+// 如果在浏览器中运行，自动将 localhost 替换为当前访问的服务器 IP
+const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  
+  // 如果是浏览器环境
+  if (typeof window !== 'undefined') {
+    const { hostname } = window.location;
+    // 如果是通过 IP 或域名访问，则后端地址也应该是该 IP/域名的 8000 端口
+    if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+      return `http://${hostname}:8000/api/v1`;
+    }
+  }
+  
+  return 'http://localhost:8000/api/v1';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 export interface ScanTask {
   id: number;

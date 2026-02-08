@@ -8,7 +8,15 @@ RUN rm -rf /etc/apt/sources.list.d/* &&     echo "deb http://mirrors.tuna.tsingh
 
 # 安装依赖
 # 增加 ca-certificates 以防后续 HTTPS 请求报错
-RUN apt-get update && apt-get install -y --no-install-recommends     ca-certificates     libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2     libxkbcommon0 libxcomposite1 libxdamage1 libxext6 libxfixes3     libxrandr2 libgbm1 libasound2 libpango-1.0-0 libcairo2     libpangoft2-1.0-0 libgdk-pixbuf2.0-0 libffi-dev shared-mime-info     libopenjp2-7 fonts-wqy-microhei     && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    nmap \
+    libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+    libxkbcommon0 libxcomposite1 libxdamage1 libxext6 libxfixes3 \
+    libxrandr2 libgbm1 libasound2 libpango-1.0-0 libcairo2 \
+    libpangoft2-1.0-0 libgdk-pixbuf2.0-0 libffi-dev shared-mime-info \
+    libopenjp2-7 fonts-wqy-microhei \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

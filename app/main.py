@@ -9,7 +9,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("uvicorn")
 
 # 创建数据库表
-Base.metadata.create_all(bind=engine)
+try:
+    Base.metadata.create_all(bind=engine)
+    logger.info("Database tables created successfully.")
+except Exception as e:
+    logger.warning(f"Database tables creation skipped or failed: {e}")
 
 app = FastAPI(
     title="Aegis API",

@@ -1,9 +1,14 @@
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1.endpoints import tasks, reports, stats, vulnerabilities, ws, discovery, users, profiles
+# 使用别名导入以避免命名冲突
+from app.api.v1.endpoints import (
+    tasks, reports, stats, vulnerabilities, ws, 
+    discovery as discovery_router, # 别名区分路由
+    users, profiles
+)
 from app.db.database import engine, Base
-from app.models import discovery # 导入模型以确保其被 SQLAlchemy 识别
+from app.models import discovery as discovery_model # 别名区分模型
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("uvicorn")
@@ -14,13 +19,11 @@ try:
     Base.metadata.create_all(bind=engine, checkfirst=True)
     logger.info("Database tables verified/created successfully.")
 except Exception as e:
-    logger.error(f"Database initialization error: {e}")
-    # 在某些情况下，如果表已存在但 create_all 仍报错，我们可以选择忽略它
+    # 如果表已存在但 create_all 仍报错，记录警告并继续
     if "already exists" in str(e):
         logger.info("Tables already exist, skipping creation.")
     else:
-        # 如果是其他错误（如连接失败），则可能需要关注
-        pass
+        logger.error(f"Database initialization error: {e}")
 
 app = FastAPI(
     title="Aegis API",
@@ -36,12 +39,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 注册路由
+# 注册路由 - 使用别名后的 discovery_router
 app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["Tasks"])
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["Reports"])
 app.include_router(stats.router, prefix="/api/v1/stats", tags=["Stats"])
 app.include_router(vulnerabilities.router, prefix="/api/v1/vulnerabilities", tags=["Vulnerabilities"])
-app.include_router(discovery.router, prefix="/api/v1/discovery", tags=["Discovery"])
+app.include_router(discovery_router.router, prefix="/api/v1/discovery", tags=["Discovery"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
 app.include_router(profiles.router, prefix="/api/v1/profiles", tags=["Profiles"])
 app.include_router(ws.router, tags=["WebSocket"])

@@ -43,14 +43,14 @@ class NetworkScanner:
             )
             
             for host in scan_result.all_hosts():
-                if scan_result[host][\'status\'][\'state\'] == \'up\':
+                if scan_result[host]['status']['state'] == 'up':
                     host_info = {
-                        \'ip\': host,
-                        \'hostname\': self._get_hostname(host),
-                        \'mac\': self._get_mac_address(scan_result, host),
-                        \'ports\': self._get_open_ports(scan_result, host),
-                        \'os\': self._get_os_info(scan_result, host),
-                        \'services\': self._get_services(scan_result, host)
+                        'ip': host,
+                        'hostname': self._get_hostname(host),
+                        'mac': self._get_mac_address(scan_result, host),
+                        'ports': self._get_open_ports(scan_result, host),
+                        'os': self._get_os_info(scan_result, host),
+                        'services': self._get_services(scan_result, host)
                     }
                     results.append(host_info)
         
@@ -71,7 +71,7 @@ class NetworkScanner:
         Returns:
             nmap.PortScanner: 包含 nmap 扫描结果的 PortScanner 对象。
         """
-        self.nm.scan(hosts=network_range, arguments=\'-sS -sV -O -F\')
+        self.nm.scan(hosts=network_range, arguments='-sS -sV -O -F')
         return self.nm
     
     def _get_hostname(self, ip: str) -> str:
@@ -88,7 +88,7 @@ class NetworkScanner:
             hostname, _, _ = socket.gethostbyaddr(ip)
             return hostname
         except:
-            return \'\'
+            return ''
     
     def _get_mac_address(self, scan_result, host: str) -> str:
         """
@@ -102,16 +102,16 @@ class NetworkScanner:
             str: 设备的 MAC 地址，如果无法获取则返回空字符串。
         """
         try:
-            return scan_result[host][\'addresses\'].get(\'mac\', \'\')
+            return scan_result[host]['addresses'].get('mac', '')
         except:
-            return \'\'
+            return ''
     
     def _get_open_ports(self, scan_result, host: str) -> List[int]:
         """
         从 nmap 扫描结果中获取开放端口列表。
 
         Args:
-            scan_result: nmap 扫描结果对象。
+            scan_result: nmap 扫描结果对象.
             host (str): 主机 IP 地址。
 
         Returns:
@@ -119,9 +119,9 @@ class NetworkScanner:
         """
         ports = []
         try:
-            if \'tcp\' in scan_result[host]:
-                for port in scan_result[host][\'tcp\']:
-                    if scan_result[host][\'tcp\'][port][\'state\'] == \'open\':
+            if 'tcp' in scan_result[host]:
+                for port in scan_result[host]['tcp']:
+                    if scan_result[host]['tcp'][port]['state'] == 'open':
                         ports.append(port)
         except:
             pass
@@ -139,12 +139,12 @@ class NetworkScanner:
             str: 设备的操作系统信息，如果无法获取则返回 "Unknown"。
         """
         try:
-            if \'osmatch\' in scan_result[host]:
-                if scan_result[host][\'osmatch\']:
-                    return scan_result[host][\'osmatch\'][0][\'name\']
+            if 'osmatch' in scan_result[host]:
+                if scan_result[host]['osmatch']:
+                    return scan_result[host]['osmatch'][0]['name']
         except:
             pass
-        return \'Unknown\'
+        return 'Unknown'
     
     def _get_services(self, scan_result, host: str) -> List[str]:
         """
@@ -159,9 +159,9 @@ class NetworkScanner:
         """
         services = []
         try:
-            if \'tcp\' in scan_result[host]:
-                for port in scan_result[host][\'tcp\']:
-                    service = scan_result[host][\'tcp\'][port].get(\'name\', \'\')
+            if 'tcp' in scan_result[host]:
+                for port in scan_result[host]['tcp']:
+                    service = scan_result[host]['tcp'][port].get('name', '')
                     if service:
                         services.append(f"{service}:{port}")
         except:
@@ -191,12 +191,12 @@ class NetworkScanner:
         for ip, is_alive in ping_results:
             if is_alive:
                 results.append({
-                    \'ip\': ip,
-                    \'hostname\': self._get_hostname(ip),
-                    \'mac\': \'\',
-                    \'ports\': await self._scan_common_ports(ip),
-                    \'os\': \'Unknown\',
-                    \'services\': []
+                    'ip': ip,
+                    'hostname': self._get_hostname(ip),
+                    'mac': '',
+                    'ports': await self._scan_common_ports(ip),
+                    'os': 'Unknown',
+                    'services': []
                 })
         
         return results
@@ -212,8 +212,8 @@ class NetworkScanner:
             tuple: 包含 IP 地址和主机是否在线的布尔值的元组。
         """
         try:
-            param = \'-n\' if platform.system().lower() == \'windows\' else \'-c\'
-            command = [\'ping\', param, \'1\', \'-W\', \'1\', ip]
+            param = '-n' if platform.system().lower() == 'windows' else '-c'
+            command = ['ping', param, '1', '-W', '1', ip]
             
             process = await asyncio.create_subprocess_exec(
                 *command,

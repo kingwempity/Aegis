@@ -13,17 +13,26 @@ from app.models import discovery as discovery_model # 别名区分模型
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("uvicorn")
 
-# 创建数据库表
-try:
-    # 使用 checkfirst=True 是 SQLAlchemy 的标准做法，它会先检查表是否存在
-    Base.metadata.create_all(bind=engine, checkfirst=True)
-    logger.info("Database tables verified/created successfully.")
-except Exception as e:
-    # 如果表已存在但 create_all 仍报错，记录警告并继续
-    if "already exists" in str(e):
-        logger.info("Tables already exist, skipping creation.")
-    else:
-        logger.error(f"Database initialization error: {e}")
+# 创建数据库表 (带重试逻辑，适配 Docker 启动顺序)
+import time
+max_retries = 5
+retry_interval = 5
+
+for i in range(max_retries):
+    try:
+        Base.metadata.create_all(bind=engine, checkfirst=True)
+        logger.info("Database tables verified/created successfully.")
+        break
+    except Exception as e:
+        if "already exists" in str(e):
+            logger.info("Tables already exist, skipping creation.")
+            break
+        
+        if i < max_retries - 1:
+            logger.warning(f"Database connection failed (attempt {i+1}/{max_retries}). Retrying in {retry_interval}s... Error: {e}")
+            time.sleep(retry_interval)
+        else:
+            logger.error(f"Could not connect to database after {max_retries} attempts. Proceeding without table creation.")
 
 app = FastAPI(
     title="Aegis API",

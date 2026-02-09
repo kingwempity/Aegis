@@ -27,3 +27,17 @@ class DiscoveryResponse(DiscoveryCreate):
 
     class Config:
         from_attributes = True
+
+class TargetCreate(BaseModel):
+    url: str
+    description: Optional[str] = None
+
+class TargetResponse(BaseModel):
+    id: int
+    url: str
+    description: Optional[str] = None
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

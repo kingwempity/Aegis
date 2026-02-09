@@ -7,7 +7,7 @@ from app.services.network_scanner import NetworkScanner
 from app.db.database import get_db
 from sqlalchemy.orm import Session
 from app.models.discovery import DiscoveryResult
-from app.schemas.discovery import DiscoveryCreate, DiscoveryResponse
+from app.schemas.discovery import DiscoveryCreate, DiscoveryResponse, TargetCreate, TargetResponse
 
 router = APIRouter()
 scanner = NetworkScanner()
@@ -21,6 +21,11 @@ scanning_status = {
     "completed_at": None
 }
 
+# 模拟目标存储（实际应用中应使用数据库模型）
+_mock_targets = [
+    {"id": 1, "url": "192.168.10.156", "description": "内网测试服务器", "status": "active", "created_at": datetime.now()}
+]
+
 @router.post("/scan/start")
 async def start_network_scan(
     background_tasks: BackgroundTasks,
@@ -29,17 +34,6 @@ async def start_network_scan(
 ):
     """
     启动网络扫描任务。
-
-    Args:
-        background_tasks (BackgroundTasks): FastAPI 后台任务管理器。
-        network_range (str): 要扫描的网络范围，默认为 "192.168.1.0/24"。
-        db (Session): 数据库会话依赖。
-
-    Raises:
-        HTTPException: 如果扫描任务正在进行中。
-
-    Returns:
-        dict: 扫描任务启动状态和信息。
     """
     global scanning_status
     
@@ -67,13 +61,6 @@ async def start_network_scan(
 async def perform_network_scan(network_range: str, db: Session):
     """
     执行网络扫描的异步函数。
-
-    Args:
-        network_range (str): 要扫描的网络范围。
-        db (Session): 数据库会话。
-
-    Raises:
-        Exception: 扫描过程中发生的任何错误。
     """
     global scanning_status
     
@@ -129,9 +116,6 @@ async def perform_network_scan(network_range: str, db: Session):
 async def get_scan_status():
     """
     获取当前网络扫描任务的状态。
-
-    Returns:
-        dict: 包含扫描任务是否进行中、进度、消息、开始时间、完成时间等信息。
     """
     return scanning_status
 
@@ -139,12 +123,6 @@ async def get_scan_status():
 async def stop_network_scan():
     """
     停止当前网络扫描任务。
-
-    Raises:
-        HTTPException: 如果没有正在进行的扫描任务。
-
-    Returns:
-        dict: 扫描任务停止状态和信息。
     """
     global scanning_status
     
@@ -160,15 +138,6 @@ async def stop_network_scan():
 async def clear_discovery_results(db: Session = Depends(get_db)):
     """
     清除所有网络发现扫描结果。
-
-    Args:
-        db (Session): 数据库会话依赖。
-
-    Raises:
-        HTTPException: 清除过程中发生数据库错误。
-
-    Returns:
-        dict: 清除结果，包括删除的记录数。
     """
     try:
         count = db.query(DiscoveryResult).count()
@@ -183,12 +152,6 @@ async def clear_discovery_results(db: Session = Depends(get_db)):
 async def get_assets(db: Session = Depends(get_db)):
     """
     获取所有已发现的资产列表。
-
-    Args:
-        db (Session): 数据库会话依赖。
-
-    Returns:
-        List[DiscoveryResponse]: 发现的资产列表。
     """
     results = db.query(DiscoveryResult).all()
     return [
@@ -202,39 +165,31 @@ async def get_assets(db: Session = Depends(get_db)):
             services=[s for s in r.services.split(",")] if r.services else [],
             network_range=r.network_range,
             status=r.status,
-            last_seen=r.last_seen
+            last_seen=r.last_seen,
+            created_at=r.created_at,
+            updated_at=r.updated_at
         )
         for r in results
     ]
 
-# 以下是旧的模拟数据和接口，需要根据实际情况移除或调整
-# class TargetCreate(BaseModel):
-#     url: str
-#     description: Optional[str] = None
+@router.get("/targets", response_model=List[TargetResponse])
+async def get_targets():
+    """
+    获取目标列表（兼容旧接口）。
+    """
+    return _mock_targets
 
-# class Target(BaseModel):
-#     id: int
-#     url: str
-#     description: Optional[str]
-#     status: str
-#     created_at: datetime
-
-# _mock_targets = [
-#     {"id": 1, "url": "192.168.10.156", "description": "内网测试服务器", "status": "active", "created_at": datetime.now()}
-# ]
-
-# @router.get("/targets", response_model=List[Target])
-# async def get_targets():
-#     return _mock_targets
-
-# @router.post("/targets", response_model=Target)
-# async def create_target(target_in: TargetCreate):
-#     new_target = {
-#         "id": len(_mock_targets) + 1,
-#         "url": target_in.url,
-#         "description": target_in.description,
-#         "status": "active",
-#         "created_at": datetime.now()
-#     }
-#     _mock_targets.append(new_target)
-#     return new_target
+@router.post("/targets", response_model=TargetResponse)
+async def create_target(target_in: TargetCreate):
+    """
+    添加新目标（兼容旧接口）。
+    """
+    new_target = {
+        "id": len(_mock_targets) + 1,
+        "url": target_in.url,
+        "description": target_in.description,
+        "status": "active",
+        "created_at": datetime.now()
+    }
+    _mock_targets.append(new_target)
+    return new_target

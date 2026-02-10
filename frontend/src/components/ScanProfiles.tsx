@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { api, ScanProfile } from '../api';
 import AddProfileModal from './AddProfileModal';
-import { Plus, Settings2, Trash2, ShieldCheck } from 'lucide-react';
+// 优化导入方式，直接从子路径导入
+import Plus from 'lucide-react/dist/esm/icons/plus';
+import Settings2 from 'lucide-react/dist/esm/icons/settings-2';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check';
 
 const ScanProfiles: React.FC = () => {
   const [profiles, setProfiles] = useState<ScanProfile[]>([]);
@@ -91,7 +95,7 @@ const ScanProfiles: React.FC = () => {
                 <div className="flex flex-col">
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">检测类型</span>
                   <span className="text-xs font-bold text-[#2d3343]">
-                    {Array.isArray(profile.vuln_types) ? profile.vuln_types.length : 0} 项
+                    {Array.isArray(profile.vulnerability_types) ? profile.vulnerability_types.length : 0} 项
                   </span>
                 </div>
               </div>

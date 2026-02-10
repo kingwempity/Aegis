@@ -3,9 +3,10 @@ import { api, ScanTask } from '../api';
 
 interface TaskListProps {
   onCreateTask?: () => void;
+  onViewReport?: (taskId: number) => void;
 }
 
-const TaskList: React.FC<TaskListProps> = ({ onCreateTask }) => {
+const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
   const [tasks, setTasks] = useState<ScanTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -118,10 +119,10 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask }) => {
                       <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-[#ff6b00] transition-all duration-500" 
-                          style={{ width: `${task.progress}%` }}
+                          style={{ width: `${task.progress || (task.status === 'COMPLETED' ? 100 : 0)}%` }}
                         ></div>
                       </div>
-                      <span className="text-xs font-bold text-gray-400">{task.progress}%</span>
+                      <span className="text-xs font-bold text-gray-400">{task.progress || (task.status === 'COMPLETED' ? 100 : 0)}%</span>
                     </div>
                   </td>
                   <td className="px-8 py-5 text-gray-400 text-xs">{new Date(task.created_at).toLocaleString()}</td>
@@ -138,12 +139,18 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask }) => {
                           </svg>
                         </button>
                       )}
-                      <button className="p-2 text-gray-400 hover:bg-gray-50 rounded-lg transition-colors" title="查看详情">
-                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                          <circle cx="12" cy="12" r="3" />
-                        </svg>
-                      </button>
+                      {task.status === 'COMPLETED' && (
+                        <button 
+                          onClick={() => onViewReport && onViewReport(task.id)}
+                          className="p-2 text-[#ff6b00] hover:bg-orange-50 rounded-lg transition-colors" 
+                          title="查看报告"
+                        >
+                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                            <circle cx="12" cy="12" r="3" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

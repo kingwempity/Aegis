@@ -75,6 +75,11 @@ const App: React.FC = () => {
     setCurrentPage('scans');
   };
 
+  const handleViewReport = (taskId: number) => {
+    console.log(`Navigating to report for task ${taskId}`);
+    setCurrentPage('reports');
+  };
+
   const renderContent = () => {
     switch (currentPage) {
       case 'overview':
@@ -87,6 +92,7 @@ const App: React.FC = () => {
         return (
           <TaskList
             onCreateTask={() => setIsNewScanModalOpen(true)}
+            onViewReport={handleViewReport}
           />
         );
       case 'vulnerabilities':

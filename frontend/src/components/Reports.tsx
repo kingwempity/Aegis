@@ -5,24 +5,52 @@ const Reports: React.FC = () => {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const fetchReports = async () => {
+    try {
+      const data = await api.getReports();
+      setReports(data);
+    } catch (error) {
+      console.error('Error fetching reports:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const data = await api.getReports();
-        setReports(data);
-      } catch (error) {
-        console.error('Error fetching reports:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
+    fetchReports();
   }, []);
+
+  const handleViewReport = (taskId: number) => {
+    // 获取 API 基础地址
+    const getApiBaseUrl = () => {
+      if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+      if (typeof window !== 'undefined') {
+        const { hostname } = window.location;
+        if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+          return `http://${hostname}:8000/api/v1`;
+        }
+      }
+      return 'http://localhost:8000/api/v1';
+    };
+    
+    const baseUrl = getApiBaseUrl();
+    // 在新窗口打开报告
+    window.open(`${baseUrl}/reports/${taskId}/html`, '_blank');
+  };
 
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-[#2d3343]">扫描报告</h2>
+        <button 
+          onClick={fetchReports}
+          className="p-2 text-gray-400 hover:text-[#ff6b00] transition-colors"
+          title="刷新列表"
+        >
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+          </svg>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -36,7 +64,7 @@ const Reports: React.FC = () => {
               <div className="flex justify-between items-start">
                 <div className="flex flex-col">
                   <span className="font-bold text-[#2d3343] truncate max-w-[200px]">{report.target_url}</span>
-                  <span className="text-xs text-gray-400">{new Date(report.created_at).toLocaleDateString()}</span>
+                  <span className="text-xs text-gray-400">{new Date(report.created_at).toLocaleString()}</span>
                 </div>
                 <div className={`px-3 py-1 rounded-lg text-xs font-bold ${
                   report.risk_score > 70 ? 'bg-red-100 text-red-600' : 
@@ -51,7 +79,10 @@ const Reports: React.FC = () => {
                 </svg>
                 发现 {report.vuln_count} 个漏洞
               </div>
-              <button className="mt-2 w-full py-2 bg-gray-50 text-[#2d3343] rounded-lg text-sm font-bold group-hover:bg-[#ff6b00] group-hover:text-white transition-all">
+              <button 
+                onClick={() => handleViewReport(report.task_id)}
+                className="mt-2 w-full py-2 bg-gray-50 text-[#2d3343] rounded-lg text-sm font-bold group-hover:bg-[#ff6b00] group-hover:text-white transition-all"
+              >
                 查看详细报告
               </button>
             </div>

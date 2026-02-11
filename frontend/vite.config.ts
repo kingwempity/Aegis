@@ -10,15 +10,14 @@ export default defineConfig({
   build: {
     reportCompressedSize: false,
     chunkSizeWarningLimit: 2000,
-    // 针对低配服务器优化构建性能
     target: 'esnext',
-    minify: 'esbuild', // 强制使用 esbuild 压缩，速度最快
+    minify: 'esbuild',
+    sourcemap: false, // 禁用 sourcemap 以节省内存和磁盘空间
     rollupOptions: {
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
             if (id.includes('react')) return 'vendor-react';
-            // 将 lucide-react 单独分包，避免主包过大
             if (id.includes('lucide-react')) return 'vendor-lucide';
             return 'vendor';
           }
@@ -26,8 +25,9 @@ export default defineConfig({
       }
     }
   },
-  // 优化依赖预构建
-  optimizeDeps: {
-    include: ['lucide-react'],
+  // 针对低配服务器的 worker 限制
+  worker: {
+    format: 'es',
+    plugins: () => [react()]
   }
 })

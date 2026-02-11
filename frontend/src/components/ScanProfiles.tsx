@@ -1,11 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { api, ScanProfile } from '../api';
 import AddProfileModal from './AddProfileModal';
-// 优化导入方式，直接从子路径导入
-import Plus from 'lucide-react/dist/esm/icons/plus';
-import Settings2 from 'lucide-react/dist/esm/icons/settings-2';
-import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
-import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check';
+// 恢复为标准的解构导入，解决 "not exported" 错误
+import { Plus, Settings2, Trash2, ShieldCheck } from 'lucide-react';
 
 const ScanProfiles: React.FC = () => {
   const [profiles, setProfiles] = useState<ScanProfile[]>([]);

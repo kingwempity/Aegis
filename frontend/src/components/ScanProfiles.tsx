@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { api, ScanProfile } from '../api';
 import AddProfileModal from './AddProfileModal';
-// 恢复为标准的解构导入，解决 "not exported" 错误
-import { Plus, Settings2, Trash2, ShieldCheck } from 'lucide-react';
+// 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
+import { Plus, Settings2, Trash2, ShieldCheck } from './Icons';
 
 const ScanProfiles: React.FC = () => {
   const [profiles, setProfiles] = useState<ScanProfile[]>([]);

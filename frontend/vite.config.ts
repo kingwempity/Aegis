@@ -12,22 +12,16 @@ export default defineConfig({
     chunkSizeWarningLimit: 2000,
     target: 'esnext',
     minify: 'esbuild',
-    sourcemap: false, // 禁用 sourcemap 以节省内存和磁盘空间
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
             if (id.includes('react')) return 'vendor-react';
-            if (id.includes('lucide-react')) return 'vendor-lucide';
             return 'vendor';
           }
         }
       }
     }
-  },
-  // 针对低配服务器的 worker 限制
-  worker: {
-    format: 'es',
-    plugins: () => [react()]
   }
 })

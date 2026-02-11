@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import NavItem from './NavItem';
+// 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
+import { LayoutDashboard, Target, Shield, FileText, Settings, Bot, Plus, Search, LogOut, HelpCircle, Bell } from './Icons';
 
 interface NavItemData {
-  icon?: string;
+  icon?: React.FC<any>; // Changed to React.FC<any> to accept custom icon components
   label: string;
   active?: boolean;
   onClick?: () => void;
@@ -21,7 +23,7 @@ interface AppShellProps {
 
 const AppShell: React.FC<AppShellProps> = ({
   children,
-  navItems = [],
+  navItems: propNavItems = [], // Rename to avoid conflict with local navItems
   onNewScan
 }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -40,6 +42,14 @@ const AppShell: React.FC<AppShellProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  const navItems = [
+    { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+    { name: 'Targets', href: '/targets', icon: Target },
+    { name: 'Scans', href: '/scans', icon: Shield },
+    { name: 'Reports', href: '/reports', icon: FileText },
+    { name: 'Settings', href: '/settings', icon: Settings },
+  ];
+
   return (
     <div className="flex h-screen bg-[#f8f9fa] overflow-hidden">
       {/* ==================== 侧边栏 ==================== */}
@@ -53,9 +63,7 @@ const AppShell: React.FC<AppShellProps> = ({
         {/* Logo 区域 */}
         <div className="px-6 py-8 flex items-center gap-3 overflow-hidden">
           <div className="w-8 h-8 bg-[#ff6b00] rounded-lg flex items-center justify-center text-white flex-shrink-0 shadow-lg shadow-orange-500/20">
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
+            <Bot size={20} />
           </div>
           <span className={`text-white text-xl font-bold tracking-tight transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>
             Aegis
@@ -65,16 +73,18 @@ const AppShell: React.FC<AppShellProps> = ({
         {/* 导航菜单 */}
         <div className="flex-1 overflow-y-auto py-2 scrollbar-hide">
           {navItems.map((item, index) => (
-            <NavItem
+            <NavLink
               key={index}
-              icon={item.icon}
-              label={item.label}
-              active={item.active}
-              onClick={item.onClick}
-              badge={item.badge}
-              variant={item.variant}
-              isCollapsed={!isSidebarOpen}
-            />
+              to={item.href}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                location.pathname === item.href
+                  ? 'bg-[#ff6b00] text-white shadow-lg shadow-orange-200'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+              }`}
+            >
+              <item.icon size={20} strokeWidth={location.pathname === item.href ? 3 : 2} />
+              <span>{item.label}</span>
+            </NavLink>
           ))}
         </div>
 
@@ -82,11 +92,7 @@ const AppShell: React.FC<AppShellProps> = ({
         <div className="p-6 border-t border-gray-800/50">
           <div className="flex items-center gap-3 text-[#8a92a6] hover:text-white cursor-pointer transition-colors overflow-hidden">
             <div className="flex-shrink-0">
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
+              <LogOut size={20} />
             </div>
             <span className={`text-sm font-medium transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>
               退出登录
@@ -115,10 +121,7 @@ const AppShell: React.FC<AppShellProps> = ({
             {/* 搜索框占位 */}
             <div className="relative hidden md:block ml-2">
               <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="11" cy="11" r="8" />
-                  <path d="m21 21-4.35-4.35" />
-                </svg>
+                <Search size={16} />
               </span>
               <input 
                 type="text" 
@@ -134,10 +137,7 @@ const AppShell: React.FC<AppShellProps> = ({
               onClick={onNewScan}
               className="bg-[#ff6b00] text-white px-5 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-[#e66000] transition-all shadow-lg shadow-orange-500/20"
             >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
+              <Plus size={16} strokeWidth={3} />
               新扫描
             </button>
 
@@ -147,17 +147,10 @@ const AppShell: React.FC<AppShellProps> = ({
             <div className="flex items-center gap-4 text-gray-500">
               <button className="text-sm font-medium hover:text-[#ff6b00] transition-colors hidden sm:block">查看帮助</button>
               <button className="p-2 hover:bg-gray-50 rounded-lg transition-colors">
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                  <line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
+                <HelpCircle size={20} />
               </button>
               <button className="relative p-2 hover:bg-gray-50 rounded-lg transition-colors">
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                </svg>
+                <Bell size={20} />
                 <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
               </button>
             </div>

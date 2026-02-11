@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { api, Asset, DiscoveryScanStatus } from '../api';
-import { Play, StopCircle, RefreshCw, Wifi, Info, Trash2 } from 'lucide-react';
+// 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
+import { Play, StopCircle, RefreshCw, Wifi, Info, Trash2 } from './Icons';
 
 const Discovery: React.FC = () => {
   const [assets, setAssets] = useState<Asset[]>([]);

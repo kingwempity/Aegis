@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { X, Shield, Zap, Info } from 'lucide-react';
+// 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
+import { X, Shield, Zap, Info } from './Icons';
 import { api } from '../api';
 
 interface AddProfileModalProps {
@@ -129,7 +130,7 @@ const AddProfileModal: React.FC<AddProfileModalProps> = ({ isOpen, onClose, onSu
                   key={type}
                   type="button"
                   onClick={() => toggleVuln(type)}
-                  className={`px-4 py-3 rounded-xl text-xs font-bold border-2 transition-all flex items-center justify-center gap-2 ${
+                  className={`px-4 py-3 rounded-xl text-xs font-bold border-2 transition-all ${
                     selectedVulns.includes(type)
                       ? 'border-[#ff6b00] bg-orange-50 text-[#ff6b00]'
                       : 'border-gray-100 bg-white text-gray-400 hover:border-gray-200'

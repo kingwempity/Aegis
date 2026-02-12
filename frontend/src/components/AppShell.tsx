@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import NavItem from './NavItem';
+import { NavLink, useLocation } from 'react-router-dom';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
 import { LayoutDashboard, Target, Shield, FileText, Settings, Bot, Plus, Search, LogOut, HelpCircle, Bell } from './Icons';
 
@@ -28,6 +28,7 @@ const AppShell: React.FC<AppShellProps> = ({
 }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const location = useLocation();
 
   // 监听窗口大小以自动处理移动端适配
   useEffect(() => {
@@ -83,7 +84,7 @@ const AppShell: React.FC<AppShellProps> = ({
               }`}
             >
               <item.icon size={20} strokeWidth={location.pathname === item.href ? 3 : 2} />
-              <span>{item.label}</span>
+              <span>{item.name}</span>
             </NavLink>
           ))}
         </div>

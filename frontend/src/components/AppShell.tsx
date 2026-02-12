@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
-import { LayoutDashboard, Target, Shield, FileText, Settings, Bot, Plus, Search, LogOut, HelpCircle, Bell } from './Icons';
+import { LayoutDashboard, Target, Shield, FileText, Settings, Bot, Plus, Search, LogOut, HelpCircle, Bell, Compass, Users } from './Icons';
 
 interface NavItemData {
-  icon?: React.FC<any>; // Changed to React.FC<any> to accept custom icon components
+  icon?: React.FC<any> | string;
   label: string;
   active?: boolean;
   onClick?: () => void;
   badge?: string | number;
   variant?: 'default' | 'section-header';
+  href?: string;
 }
 
 interface AppShellProps {
@@ -21,20 +21,36 @@ interface AppShellProps {
   onNewScan?: () => void;
 }
 
+const iconMap: Record<string, React.FC<any>> = {
+  overview: LayoutDashboard,
+  discovery: Compass,
+  targets: Target,
+  scans: Shield,
+  vulnerabilities: Shield,
+  reports: FileText,
+  users: Users,
+  settings: Settings,
+};
+
+const fallbackNavItems: NavItemData[] = [
+  { label: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { label: 'Targets', href: '/targets', icon: Target },
+  { label: 'Scans', href: '/scans', icon: Shield },
+  { label: 'Reports', href: '/reports', icon: FileText },
+  { label: 'Settings', href: '/settings', icon: Settings },
+];
+
 const AppShell: React.FC<AppShellProps> = ({
   children,
-  navItems: propNavItems = [], // Rename to avoid conflict with local navItems
-  onNewScan
+  navItems: propNavItems = [],
+  onNewScan,
 }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isMobile, setIsMobile] = useState(false);
-  const location = useLocation();
 
   // 监听窗口大小以自动处理移动端适配
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < 1024;
-      setIsMobile(mobile);
       if (mobile) setIsSidebarOpen(false);
       else setIsSidebarOpen(true);
     };
@@ -43,21 +59,15 @@ const AppShell: React.FC<AppShellProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const navItems = [
-    { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-    { name: 'Targets', href: '/targets', icon: Target },
-    { name: 'Scans', href: '/scans', icon: Shield },
-    { name: 'Reports', href: '/reports', icon: FileText },
-    { name: 'Settings', href: '/settings', icon: Settings },
-  ];
+  const resolvedNavItems = propNavItems.length > 0 ? propNavItems : fallbackNavItems;
 
   return (
     <div className="flex h-screen bg-[#f8f9fa] overflow-hidden">
       {/* ==================== 侧边栏 ==================== */}
-      <aside 
+      <aside
         className={`
-          ${isSidebarOpen ? 'w-64' : 'w-20'} 
-          h-full bg-[#1a1c23] flex flex-col shadow-2xl z-30 
+          ${isSidebarOpen ? 'w-64' : 'w-20'}
+          h-full bg-[#1a1c23] flex flex-col shadow-2xl z-30
           transition-all duration-300 ease-in-out relative
         `}
       >
@@ -73,20 +83,32 @@ const AppShell: React.FC<AppShellProps> = ({
 
         {/* 导航菜单 */}
         <div className="flex-1 overflow-y-auto py-2 scrollbar-hide">
-          {navItems.map((item, index) => (
-            <NavLink
-              key={index}
-              to={item.href}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                location.pathname === item.href
-                  ? 'bg-[#ff6b00] text-white shadow-lg shadow-orange-200'
-                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
-              }`}
-            >
-              <item.icon size={20} strokeWidth={location.pathname === item.href ? 3 : 2} />
-              <span>{item.name}</span>
-            </NavLink>
-          ))}
+          {resolvedNavItems.map((item, index) => {
+            if (item.variant === 'section-header') {
+              return (
+                <div key={`${item.label}-${index}`} className="px-4 pt-4 pb-2 text-xs tracking-wider text-gray-500 font-semibold">
+                  {item.label}
+                </div>
+              );
+            }
+
+            const Icon = typeof item.icon === 'string' ? iconMap[item.icon] : item.icon;
+
+            return (
+              <button
+                key={`${item.label}-${index}`}
+                onClick={item.onClick}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all text-left ${
+                  item.active
+                    ? 'bg-[#ff6b00] text-white shadow-lg shadow-orange-200'
+                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+                }`}
+              >
+                {Icon ? <Icon size={20} strokeWidth={item.active ? 3 : 2} /> : null}
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
         </div>
 
         {/* 侧边栏底部 */}
@@ -108,7 +130,7 @@ const AppShell: React.FC<AppShellProps> = ({
         <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-8 z-20 shadow-sm">
           <div className="flex items-center gap-4">
             {/* 折叠按钮 */}
-            <button 
+            <button
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
               className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 transition-colors"
             >
@@ -124,9 +146,9 @@ const AppShell: React.FC<AppShellProps> = ({
               <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
                 <Search size={16} />
               </span>
-              <input 
-                type="text" 
-                placeholder="搜索..." 
+              <input
+                type="text"
+                placeholder="搜索..."
                 className="pl-10 pr-4 py-1.5 bg-gray-50 border-none rounded-lg text-sm focus:ring-2 focus:ring-[#ff6b00]/20 w-64 outline-none"
               />
             </div>

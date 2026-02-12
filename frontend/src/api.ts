@@ -10,11 +10,15 @@ const getApiBaseUrl = () => {
   
   // 如果是浏览器环境
   if (typeof window !== 'undefined') {
-    const { hostname } = window.location;
-    // 如果是通过 IP 或域名访问，则后端地址也应该是该 IP/域名的 8000 端口
-    if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-      return `http://${hostname}:8000/api/v1`;
+    const { hostname, origin } = window.location;
+
+    // 本地开发默认直连 FastAPI 的 8000 端口
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'http://localhost:8000/api/v1';
     }
+
+    // 线上环境优先走同源路径，避免 CORS/跨端口问题
+    return `${origin}/api/v1`;
   }
   
   return 'http://localhost:8000/api/v1';

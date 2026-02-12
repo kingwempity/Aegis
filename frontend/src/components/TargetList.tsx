@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { api, Target } from '../api';
 import AddTargetModal from './AddTargetModal';
+// 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
+import { Plus } from './Icons';
 
 const TargetList: React.FC = () => {
   const [targets, setTargets] = useState<Target[]>([]);
@@ -30,10 +32,7 @@ const TargetList: React.FC = () => {
           onClick={() => setIsModalOpen(true)}
           className="px-6 py-2.5 bg-[#ff6b00] text-white rounded-xl font-bold text-sm hover:bg-[#e66000] transition-all shadow-lg shadow-orange-200 flex items-center gap-2"
         >
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
+          <Plus size={16} strokeWidth={3} />
           添加目标
         </button>
       </div>

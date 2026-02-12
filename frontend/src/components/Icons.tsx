@@ -1,5 +1,10 @@
 import React from 'react';
 
+/**
+ * Aegis 轻量级图标库
+ * 直接使用内联 SVG，彻底替换 lucide-react 以解决构建卡顿问题。
+ */
+
 interface IconProps extends React.SVGProps<SVGSVGElement> {
   size?: number;
   strokeWidth?: number;
@@ -104,5 +109,29 @@ export const Bot: React.FC<IconProps> = ({ size = 24, ...props }) => (
 export const Wifi: React.FC<IconProps> = ({ size = 24, ...props }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={props.strokeWidth || 2} strokeLinecap="round" strokeLinejoin="round" {...props}>
     <path d="M12 18s.001-2.246 0-3c0-1.657-1.343-3-3-3s-3 1.343-3 3c0 .754.001 3 0 3" /><path d="M12 12s.001-2.246 0-3c0-1.657-1.343-3-3-3s-3 1.343-3 3c0 .754.001 3 0 3" /><path d="M12 6s.001-2.246 0-3c0-1.657-1.343-3-3-3s-3 1.343-3 3c0 .754.001 3 0 3" />
+  </svg>
+);
+
+export const UserPlus: React.FC<IconProps> = ({ size = 24, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={props.strokeWidth || 2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" y1="8" x2="19" y2="14" /><line x1="16" y1="11" x2="22" y2="11" />
+  </svg>
+);
+
+export const MoreVertical: React.FC<IconProps> = ({ size = 24, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={props.strokeWidth || 2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" />
+  </svg>
+);
+
+export const RefreshCw: React.FC<IconProps> = ({ size = 24, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={props.strokeWidth || 2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+  </svg>
+);
+
+export const AlertTriangle: React.FC<IconProps> = ({ size = 24, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={props.strokeWidth || 2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
   </svg>
 );

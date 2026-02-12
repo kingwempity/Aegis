@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { api } from '../api';
+// 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
+import { X } from './Icons';
 
 interface AddTargetModalProps {
   isOpen: boolean;
@@ -40,10 +42,7 @@ const AddTargetModal: React.FC<AddTargetModalProps> = ({ isOpen, onClose, onSucc
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-xl font-bold text-[#2d3343]">添加新目标</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
-            <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+            <X size={24} />
           </button>
         </div>
 

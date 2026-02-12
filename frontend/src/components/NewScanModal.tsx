@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { api } from '../api';
+// 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
+import { X } from './Icons';
 
 interface NewScanModalProps {
   isOpen: boolean;
@@ -33,9 +35,7 @@ const NewScanModal: React.FC<NewScanModalProps> = ({ isOpen, onClose, onSuccess 
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-xl font-bold text-[#2d3343]">新建扫描任务</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
+            <X size={24} />
           </button>
         </div>
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">

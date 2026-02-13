@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { api, Asset, DiscoveryScanStatus } from '../api';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
-import { Play, StopCircle, RefreshCw, Wifi, Info, Trash2 } from './Icons';
+import { Play, StopCircle, Wifi, Info, Trash2 } from './Icons';
 
 const Discovery: React.FC = () => {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -10,6 +10,19 @@ const Discovery: React.FC = () => {
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [networkRange, setNetworkRange] = useState('192.168.1.0/24'); // 默认扫描范围
   const statusIntervalRef = useRef<number | null>(null);
+  const statusErrorCountRef = useRef(0);
+
+  const clearStatusPolling = () => {
+    if (statusIntervalRef.current) {
+      clearInterval(statusIntervalRef.current);
+      statusIntervalRef.current = null;
+    }
+  };
+
+  const startStatusPolling = () => {
+    clearStatusPolling();
+    statusIntervalRef.current = setInterval(fetchScanStatus, 3000) as unknown as number;
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -27,10 +40,10 @@ const Discovery: React.FC = () => {
   const fetchScanStatus = async () => {
     try {
       const status = await api.getDiscoveryScanStatus();
+      statusErrorCountRef.current = 0;
       setScanStatus(status);
       if (!status.is_scanning && statusIntervalRef.current) {
-        clearInterval(statusIntervalRef.current);
-        statusIntervalRef.current = null;
+        clearStatusPolling();
         if (status.progress === 100) {
           setMessage({ text: status.message || '网络发现扫描完成', type: 'success' });
           fetchData(); // 扫描完成后刷新资产列表
@@ -40,11 +53,13 @@ const Discovery: React.FC = () => {
       }
     } catch (error) {
       console.error('Error fetching scan status:', error);
-      if (statusIntervalRef.current) {
-        clearInterval(statusIntervalRef.current);
-        statusIntervalRef.current = null;
+      statusErrorCountRef.current += 1;
+      if (statusErrorCountRef.current >= 3) {
+        clearStatusPolling();
+        setMessage({ text: '扫描状态接口不可用，已暂停轮询，请稍后重试', type: 'error' });
+      } else {
+        setMessage({ text: `获取扫描状态失败（${statusErrorCountRef.current}/3）`, type: 'error' });
       }
-      setMessage({ text: '获取扫描状态失败', type: 'error' });
     }
   };
 
@@ -53,12 +68,10 @@ const Discovery: React.FC = () => {
     fetchScanStatus(); // 初始加载时获取一次状态
 
     // 每隔一段时间轮询扫描状态
-    statusIntervalRef.current = setInterval(fetchScanStatus, 3000) as unknown as number;
+    startStatusPolling();
 
     return () => {
-      if (statusIntervalRef.current) {
-        clearInterval(statusIntervalRef.current);
-      }
+      clearStatusPolling();
     };
   }, []);
 
@@ -67,13 +80,24 @@ const Discovery: React.FC = () => {
     try {
       await api.startDiscoveryScan(networkRange);
       setMessage({ text: '网络发现扫描已启动', type: 'success' });
-      // 立即开始轮询状态
-      if (statusIntervalRef.current) {
-        clearInterval(statusIntervalRef.current);
-      }
-      statusIntervalRef.current = setInterval(fetchScanStatus, 3000) as unknown as number;
+      statusErrorCountRef.current = 0;
+      startStatusPolling();
     } catch (error: any) {
-      setMessage({ text: error.message || '启动扫描失败，请稍后再试', type: 'error' });
+      const detail = error?.message || '';
+      // 后端返回“扫描任务正在进行中”时，尝试强制启动一次
+      if (detail.includes('扫描任务正在进行中')) {
+        try {
+          await api.startDiscoveryScan(networkRange, true);
+          setMessage({ text: '检测到已有扫描任务，已强制重启扫描', type: 'success' });
+          statusErrorCountRef.current = 0;
+          startStatusPolling();
+          return;
+        } catch (forceError: any) {
+          setMessage({ text: forceError.message || '强制启动扫描失败，请稍后再试', type: 'error' });
+          return;
+        }
+      }
+      setMessage({ text: detail || '启动扫描失败，请稍后再试', type: 'error' });
     }
   };
 

@@ -1,11 +1,12 @@
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, status
+from fastapi import APIRouter, HTTPException, Depends, status
 from typing import List, Optional
 from datetime import datetime
 import asyncio
 import logging
+import ipaddress
 
 from app.services.network_scanner import NetworkScanner
-from app.db.database import get_db
+from app.db.database import get_db, SessionLocal
 from sqlalchemy.orm import Session
 from app.models.discovery import DiscoveryResult
 from app.schemas.discovery import DiscoveryCreate, DiscoveryResponse, TargetCreate, TargetResponse
@@ -32,10 +33,8 @@ _mock_targets = [
 
 @router.post("/scan/start", status_code=status.HTTP_202_ACCEPTED)
 async def start_network_scan(
-    background_tasks: BackgroundTasks,
     network_range: str = "192.168.1.0/24",
     force: bool = False, # 新增 force 参数
-    db: Session = Depends(get_db)
 ):
     """
     启动网络扫描任务。
@@ -43,6 +42,12 @@ async def start_network_scan(
     """
     global scanning_status
     
+    # 先做参数校验，提前返回明确错误
+    try:
+        ipaddress.ip_network(network_range, strict=False)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="无效的网段格式，请使用例如 192.168.1.0/24")
+
     if scanning_status["is_scanning"]:
         if force:
             logger.warning(f"强制停止当前扫描任务以启动新扫描: {network_range}")
@@ -64,8 +69,8 @@ async def start_network_scan(
     }
     
     logger.info(f"开始后台网络扫描任务: {network_range}")
-    # 在后台启动扫描任务
-    background_tasks.add_task(perform_network_scan, network_range, db)
+    # 异步启动扫描任务，避免阻塞请求处理线程
+    asyncio.create_task(perform_network_scan(network_range))
     
     return {
         "status": "started",
@@ -73,7 +78,7 @@ async def start_network_scan(
         "task_id": str(datetime.now().timestamp())
     }
 
-async def perform_network_scan(network_range: str, db: Session):
+async def perform_network_scan(network_range: str):
     """
     执行网络扫描的异步函数。
     """
@@ -84,6 +89,7 @@ async def perform_network_scan(network_range: str, db: Session):
         logger.info(f"扫描任务 {network_range} 被取消或强制停止前启动。")
         return
 
+    db = SessionLocal()
     try:
         logger.info(f"正在执行网络扫描: {network_range}")
         # 清除旧的扫描结果
@@ -138,6 +144,7 @@ async def perform_network_scan(network_range: str, db: Session):
         scanning_status["progress"] = 0
         # 不再重新抛出异常，而是让后台任务安静失败，避免影响主线程
     finally:
+        db.close()
         # 只有当扫描状态仍然是当前任务时才重置
         if scanning_status["is_scanning"] and scanning_status["started_at"] is not None:
             # 检查是否是当前任务，避免重置被强制停止的任务

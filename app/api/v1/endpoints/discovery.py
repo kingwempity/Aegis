@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, status
 from typing import List, Optional
 from datetime import datetime
 import asyncio
+import logging
 
 from app.services.network_scanner import NetworkScanner
 from app.db.database import get_db
@@ -11,6 +12,9 @@ from app.schemas.discovery import DiscoveryCreate, DiscoveryResponse, TargetCrea
 
 router = APIRouter()
 scanner = NetworkScanner()
+
+# 配置日志
+logger = logging.getLogger(__name__)
 
 # 扫描状态存储（实际应用中可以使用 Redis）
 scanning_status = {
@@ -26,19 +30,29 @@ _mock_targets = [
     {"id": 1, "url": "192.168.10.156", "description": "内网测试服务器", "status": "active", "created_at": datetime.now()}
 ]
 
-@router.post("/scan/start")
+@router.post("/scan/start", status_code=status.HTTP_202_ACCEPTED)
 async def start_network_scan(
     background_tasks: BackgroundTasks,
     network_range: str = "192.168.1.0/24",
+    force: bool = False, # 新增 force 参数
     db: Session = Depends(get_db)
 ):
     """
     启动网络扫描任务。
+    如果 force 为 True，则强制启动新扫描，停止当前正在进行的扫描。
     """
     global scanning_status
     
     if scanning_status["is_scanning"]:
-        raise HTTPException(status_code=400, detail="扫描任务正在进行中")
+        if force:
+            logger.warning(f"强制停止当前扫描任务以启动新扫描: {network_range}")
+            # 停止当前扫描（这里只是标记，实际的后台任务需要更复杂的取消机制）
+            scanning_status["is_scanning"] = False
+            scanning_status["message"] = "当前扫描被强制停止"
+            # 给予一点时间让旧任务结束（如果可能）
+            await asyncio.sleep(1)
+        else:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="扫描任务正在进行中，请等待或使用 force=True 强制启动")
     
     # 更新扫描状态
     scanning_status = {
@@ -49,6 +63,7 @@ async def start_network_scan(
         "completed_at": None
     }
     
+    logger.info(f"开始后台网络扫描任务: {network_range}")
     # 在后台启动扫描任务
     background_tasks.add_task(perform_network_scan, network_range, db)
     
@@ -64,7 +79,13 @@ async def perform_network_scan(network_range: str, db: Session):
     """
     global scanning_status
     
+    # 检查是否被强制停止
+    if not scanning_status["is_scanning"]:
+        logger.info(f"扫描任务 {network_range} 被取消或强制停止前启动。")
+        return
+
     try:
+        logger.info(f"正在执行网络扫描: {network_range}")
         # 清除旧的扫描结果
         db.query(DiscoveryResult).filter(
             DiscoveryResult.network_range == network_range
@@ -82,6 +103,11 @@ async def perform_network_scan(network_range: str, db: Session):
         
         # 保存结果到数据库
         for idx, result in enumerate(results):
+            # 再次检查是否被强制停止
+            if not scanning_status["is_scanning"]:
+                logger.info(f"扫描任务 {network_range} 在保存结果时被取消或强制停止。")
+                break
+
             discovery = DiscoveryResult(
                 ip_address=result["ip"],
                 hostname=result.get("hostname", ""),
@@ -96,7 +122,7 @@ async def perform_network_scan(network_range: str, db: Session):
             db.add(discovery)
             
             # 更新进度
-            progress = 60 + (30 * (idx + 1) / len(results))
+            progress = 60 + (30 * (idx + 1) / len(results)) if results else 90
             scanning_status["progress"] = min(90, progress)
         
         db.commit()
@@ -104,13 +130,20 @@ async def perform_network_scan(network_range: str, db: Session):
         scanning_status["progress"] = 100
         scanning_status["message"] = f"扫描完成，发现 {len(results)} 台设备"
         scanning_status["completed_at"] = datetime.now()
+        logger.info(f"网络扫描任务 {network_range} 完成。")
         
     except Exception as e:
+        logger.error(f"网络扫描任务 {network_range} 失败: {e}", exc_info=True)
         scanning_status["message"] = f"扫描失败: {str(e)}"
         scanning_status["progress"] = 0
-        raise
+        # 不再重新抛出异常，而是让后台任务安静失败，避免影响主线程
     finally:
-        scanning_status["is_scanning"] = False
+        # 只有当扫描状态仍然是当前任务时才重置
+        if scanning_status["is_scanning"] and scanning_status["started_at"] is not None:
+            # 检查是否是当前任务，避免重置被强制停止的任务
+            # 实际生产环境需要更复杂的任务ID管理
+            pass # 暂时不在这里重置，由 start_network_scan 或 stop_network_scan 控制
+        scanning_status["is_scanning"] = False # 确保最终状态被重置
 
 @router.get("/scan/status")
 async def get_scan_status():
@@ -127,10 +160,11 @@ async def stop_network_scan():
     global scanning_status
     
     if not scanning_status["is_scanning"]:
-        raise HTTPException(status_code=400, detail="没有正在进行的扫描任务")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="没有正在进行的扫描任务")
     
     scanning_status["is_scanning"] = False
     scanning_status["message"] = "扫描已停止"
+    logger.info("网络扫描任务被手动停止。")
     
     return {"status": "stopped", "message": "扫描任务已停止"}
 
@@ -143,40 +177,47 @@ async def clear_discovery_results(db: Session = Depends(get_db)):
         count = db.query(DiscoveryResult).count()
         db.query(DiscoveryResult).delete()
         db.commit()
+        logger.info(f"已清除 {count} 条发现结果。")
         return {"deleted": count, "message": f"已清除 {count} 条记录"}
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"清除发现结果失败: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @router.get("/assets", response_model=List[DiscoveryResponse])
 async def get_assets(db: Session = Depends(get_db)):
     """
     获取所有已发现的资产列表。
     """
-    results = db.query(DiscoveryResult).all()
-    return [
-        DiscoveryResponse(
-            id=r.id,
-            ip_address=r.ip_address,
-            hostname=r.hostname,
-            mac_address=r.mac_address,
-            open_ports=[int(p) for p in r.open_ports.split(",")] if r.open_ports else [],
-            os_info=r.os_info,
-            services=[s for s in r.services.split(",")] if r.services else [],
-            network_range=r.network_range,
-            status=r.status,
-            last_seen=r.last_seen,
-            created_at=r.created_at,
-            updated_at=r.updated_at
-        )
-        for r in results
-    ]
+    try:
+        results = db.query(DiscoveryResult).all()
+        return [
+            DiscoveryResponse(
+                id=r.id,
+                ip_address=r.ip_address,
+                hostname=r.hostname,
+                mac_address=r.mac_address,
+                open_ports=[int(p) for p in r.open_ports.split(",")] if r.open_ports else [],
+                os_info=r.os_info,
+                services=[s for s in r.services.split(",")] if r.services else [],
+                network_range=r.network_range,
+                status=r.status,
+                last_seen=r.last_seen,
+                created_at=r.created_at,
+                updated_at=r.updated_at
+            )
+            for r in results
+        ]
+    except Exception as e:
+        logger.error(f"获取资产列表失败: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @router.get("/targets", response_model=List[TargetResponse])
 async def get_targets():
     """
     获取目标列表（兼容旧接口）。
     """
+    logger.info("正在返回模拟目标列表。")
     return _mock_targets
 
 @router.post("/targets", response_model=TargetResponse)
@@ -192,4 +233,5 @@ async def create_target(target_in: TargetCreate):
         "created_at": datetime.now()
     }
     _mock_targets.append(new_target)
+    logger.info(f"添加新目标: {new_target['url']}")
     return new_target

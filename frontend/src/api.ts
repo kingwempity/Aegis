@@ -26,6 +26,23 @@ const getApiBaseUrl = () => {
 
 const API_BASE_URL = getApiBaseUrl();
 
+const parseErrorResponse = async (response: Response, fallback: string): Promise<never> => {
+  const errorText = await response.text();
+  if (!errorText) {
+    throw new Error(fallback);
+  }
+
+  try {
+    const errorData = JSON.parse(errorText);
+    throw new Error(errorData.detail || errorData.message || fallback);
+  } catch {
+    if (errorText.includes('<html') || errorText.includes('<!DOCTYPE')) {
+      throw new Error(`服务暂时不可用（HTTP ${response.status}）`);
+    }
+    throw new Error(errorText || fallback);
+  }
+};
+
 export interface ScanTask {
   id: number;
   target_url: string;
@@ -198,13 +215,7 @@ export const api = {
       method: 'POST',
     });
     if (!response.ok) {
-      const errorText = await response.text();
-      try {
-        const errorData = JSON.parse(errorText);
-        throw new Error(errorData.detail || 'Failed to start network scan');
-      } catch {
-        throw new Error(errorText || 'Failed to start network scan');
-      }
+      return parseErrorResponse(response, '启动扫描失败');
     }
     return response.json();
   },
@@ -213,8 +224,7 @@ export const api = {
   async getDiscoveryScanStatus(): Promise<DiscoveryScanStatus> {
     const response = await fetch(`${API_BASE_URL}/discovery/scan/status`);
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(errorText || 'Failed to fetch scan status');
+      return parseErrorResponse(response, '获取扫描状态失败');
     }
     return response.json();
   },
@@ -225,8 +235,7 @@ export const api = {
       method: 'POST',
     });
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.detail || 'Failed to stop network scan');
+      return parseErrorResponse(response, '停止扫描失败');
     }
     return response.json();
   },
@@ -237,8 +246,7 @@ export const api = {
       method: 'DELETE',
     });
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.detail || 'Failed to clear discovery results');
+      return parseErrorResponse(response, '清除结果失败');
     }
     return response.json();
   },

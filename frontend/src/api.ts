@@ -189,13 +189,22 @@ export const api = {
   },
 
   // 触发网络发现扫描 (Discovery 模块)
-  async startDiscoveryScan(networkRange: string = "192.168.1.0/24"): Promise<{ status: string; message: string; task_id: string }> {
-    const response = await fetch(`${API_BASE_URL}/discovery/scan/start?network_range=${networkRange}`, {
+  async startDiscoveryScan(networkRange: string = "192.168.1.0/24", force: boolean = false): Promise<{ status: string; message: string; task_id: string }> {
+    const query = new URLSearchParams({
+      network_range: networkRange,
+      force: String(force),
+    });
+    const response = await fetch(`${API_BASE_URL}/discovery/scan/start?${query.toString()}`, {
       method: 'POST',
     });
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.detail || 'Failed to start network scan');
+      const errorText = await response.text();
+      try {
+        const errorData = JSON.parse(errorText);
+        throw new Error(errorData.detail || 'Failed to start network scan');
+      } catch {
+        throw new Error(errorText || 'Failed to start network scan');
+      }
     }
     return response.json();
   },
@@ -203,7 +212,10 @@ export const api = {
   // 获取网络扫描状态 (Discovery 模块)
   async getDiscoveryScanStatus(): Promise<DiscoveryScanStatus> {
     const response = await fetch(`${API_BASE_URL}/discovery/scan/status`);
-    if (!response.ok) throw new Error('Failed to fetch scan status');
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || 'Failed to fetch scan status');
+    }
     return response.json();
   },
 

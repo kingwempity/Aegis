@@ -57,7 +57,12 @@ async def start_network_scan(
             # 给予一点时间让旧任务结束（如果可能）
             await asyncio.sleep(1)
         else:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="扫描任务正在进行中，请等待或使用 force=True 强制启动")
+            logger.info(f"扫描任务已在进行中，忽略重复启动请求: {network_range}")
+            return {
+                "status": "already_running",
+                "message": f"扫描任务正在进行中: {network_range}",
+                "task_id": str(scanning_status["started_at"].timestamp()) if scanning_status["started_at"] else "",
+            }
     
     # 更新扫描状态
     scanning_status = {

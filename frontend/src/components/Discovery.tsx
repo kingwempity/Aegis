@@ -121,8 +121,12 @@ const Discovery: React.FC = () => {
     setNetworkRange(normalizedRange);
 
     try {
-      await api.startDiscoveryScan(normalizedRange);
-      setMessage({ text: '网络发现扫描已启动', type: 'success' });
+      const result = await api.startDiscoveryScan(normalizedRange);
+      if (result.status === 'already_running') {
+        setMessage({ text: result.message || '扫描任务正在进行中', type: 'success' });
+      } else {
+        setMessage({ text: '网络发现扫描已启动', type: 'success' });
+      }
       statusErrorCountRef.current = 0;
       startStatusPolling();
     } catch (error: any) {

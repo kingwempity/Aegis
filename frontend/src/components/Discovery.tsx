@@ -3,6 +3,40 @@ import { api, Asset, DiscoveryScanStatus } from '../api';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
 import { Play, StopCircle, Wifi, Info, Trash2 } from './Icons';
 
+
+const isValidIPv4 = (value: string): boolean => {
+  const parts = value.split('.');
+  if (parts.length !== 4) return false;
+  return parts.every((part) => {
+    if (!/^\d+$/.test(part)) return false;
+    const num = Number(part);
+    return num >= 0 && num <= 255;
+  });
+};
+
+const normalizeCidr = (input: string): string | null => {
+  const trimmed = input.trim();
+  const [ip, mask] = trimmed.split('/');
+  const prefix = Number(mask);
+
+  if (!ip || !mask || !Number.isInteger(prefix) || prefix < 0 || prefix > 32 || !isValidIPv4(ip)) {
+    return null;
+  }
+
+  const octets = ip.split('.').map(Number);
+  const ipInt = ((octets[0] << 24) >>> 0) + (octets[1] << 16) + (octets[2] << 8) + octets[3];
+  const maskInt = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+  const networkInt = ipInt & maskInt;
+  const normalizedIp = [
+    (networkInt >>> 24) & 255,
+    (networkInt >>> 16) & 255,
+    (networkInt >>> 8) & 255,
+    networkInt & 255,
+  ].join('.');
+
+  return `${normalizedIp}/${prefix}`;
+};
+
 const Discovery: React.FC = () => {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,8 +111,17 @@ const Discovery: React.FC = () => {
 
   const handleStartScan = async () => {
     setMessage(null);
+
+    const normalizedRange = normalizeCidr(networkRange);
+    if (!normalizedRange) {
+      setMessage({ text: '网段格式无效，请输入如 192.168.1.0/24', type: 'error' });
+      return;
+    }
+
+    setNetworkRange(normalizedRange);
+
     try {
-      await api.startDiscoveryScan(networkRange);
+      await api.startDiscoveryScan(normalizedRange);
       setMessage({ text: '网络发现扫描已启动', type: 'success' });
       statusErrorCountRef.current = 0;
       startStatusPolling();
@@ -87,7 +130,7 @@ const Discovery: React.FC = () => {
       // 后端返回“扫描任务正在进行中”时，尝试强制启动一次
       if (detail.includes('扫描任务正在进行中')) {
         try {
-          await api.startDiscoveryScan(networkRange, true);
+          await api.startDiscoveryScan(normalizedRange, true);
           setMessage({ text: '检测到已有扫描任务，已强制重启扫描', type: 'success' });
           statusErrorCountRef.current = 0;
           startStatusPolling();

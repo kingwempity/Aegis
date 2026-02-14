@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { api, Asset, DiscoveryScanStatus } from '../api';
+import { api, ApiError, Asset, DiscoveryScanStatus } from '../api';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
 import { Play, StopCircle, Wifi, Info, Trash2 } from './Icons';
 
@@ -45,6 +45,7 @@ const Discovery: React.FC = () => {
   const [networkRange, setNetworkRange] = useState('192.168.1.0/24'); // 默认扫描范围
   const statusIntervalRef = useRef<number | null>(null);
   const statusErrorCountRef = useRef(0);
+  const gatewayWarningShownRef = useRef(false);
 
   const clearStatusPolling = () => {
     if (statusIntervalRef.current) {
@@ -75,6 +76,7 @@ const Discovery: React.FC = () => {
     try {
       const status = await api.getDiscoveryScanStatus();
       statusErrorCountRef.current = 0;
+      gatewayWarningShownRef.current = false;
       setScanStatus(status);
       if (!status.is_scanning && statusIntervalRef.current) {
         clearStatusPolling();
@@ -86,6 +88,14 @@ const Discovery: React.FC = () => {
         }
       }
     } catch (error) {
+      if (error instanceof ApiError && error.isTemporaryGatewayError) {
+        if (!gatewayWarningShownRef.current) {
+          setMessage({ text: '状态服务短暂超时，系统将自动重试...', type: 'error' });
+          gatewayWarningShownRef.current = true;
+        }
+        return;
+      }
+
       console.error('Error fetching scan status:', error);
       statusErrorCountRef.current += 1;
       if (statusErrorCountRef.current >= 3) {

@@ -43,20 +43,32 @@ const Discovery: React.FC = () => {
   const [scanStatus, setScanStatus] = useState<DiscoveryScanStatus | null>(null);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [networkRange, setNetworkRange] = useState('192.168.1.0/24'); // 默认扫描范围
-  const statusIntervalRef = useRef<number | null>(null);
+  const statusTimeoutRef = useRef<number | null>(null);
+  const isFetchingStatusRef = useRef(false);
   const statusErrorCountRef = useRef(0);
+  const gatewayErrorCountRef = useRef(0);
   const gatewayWarningShownRef = useRef(false);
 
   const clearStatusPolling = () => {
-    if (statusIntervalRef.current) {
-      clearInterval(statusIntervalRef.current);
-      statusIntervalRef.current = null;
+    if (statusTimeoutRef.current) {
+      clearTimeout(statusTimeoutRef.current);
+      statusTimeoutRef.current = null;
     }
   };
 
-  const startStatusPolling = () => {
+  const scheduleNextStatusPoll = (delay = 3000) => {
     clearStatusPolling();
-    statusIntervalRef.current = setInterval(fetchScanStatus, 3000) as unknown as number;
+    statusTimeoutRef.current = window.setTimeout(() => {
+      fetchScanStatus();
+    }, delay);
+  };
+
+  const startStatusPolling = (immediate = false) => {
+    if (immediate) {
+      fetchScanStatus();
+      return;
+    }
+    scheduleNextStatusPoll();
   };
 
   const fetchData = async () => {
@@ -73,12 +85,18 @@ const Discovery: React.FC = () => {
   };
 
   const fetchScanStatus = async () => {
+    if (isFetchingStatusRef.current) {
+      return;
+    }
+
+    isFetchingStatusRef.current = true;
     try {
       const status = await api.getDiscoveryScanStatus();
       statusErrorCountRef.current = 0;
+      gatewayErrorCountRef.current = 0;
       gatewayWarningShownRef.current = false;
       setScanStatus(status);
-      if (!status.is_scanning && statusIntervalRef.current) {
+      if (!status.is_scanning) {
         clearStatusPolling();
         if (status.progress === 100) {
           setMessage({ text: status.message || '网络发现扫描完成', type: 'success' });
@@ -86,13 +104,18 @@ const Discovery: React.FC = () => {
         } else if (status.progress === 0 && status.message && status.message.includes('失败')) {
           setMessage({ text: status.message, type: 'error' });
         }
+      } else {
+        scheduleNextStatusPoll();
       }
     } catch (error) {
       if (error instanceof ApiError && error.isTemporaryGatewayError) {
+        gatewayErrorCountRef.current += 1;
+        const backoffDelay = Math.min(3000 * 2 ** (gatewayErrorCountRef.current - 1), 30000);
         if (!gatewayWarningShownRef.current) {
           setMessage({ text: '状态服务短暂超时，系统将自动重试...', type: 'error' });
           gatewayWarningShownRef.current = true;
         }
+        scheduleNextStatusPoll(backoffDelay);
         return;
       }
 
@@ -103,16 +126,16 @@ const Discovery: React.FC = () => {
         setMessage({ text: '扫描状态接口不可用，已暂停轮询，请稍后重试', type: 'error' });
       } else {
         setMessage({ text: `获取扫描状态失败（${statusErrorCountRef.current}/3）`, type: 'error' });
+        scheduleNextStatusPoll();
       }
+    } finally {
+      isFetchingStatusRef.current = false;
     }
   };
 
   useEffect(() => {
     fetchData();
     fetchScanStatus(); // 初始加载时获取一次状态
-
-    // 每隔一段时间轮询扫描状态
-    startStatusPolling();
 
     return () => {
       clearStatusPolling();
@@ -138,7 +161,8 @@ const Discovery: React.FC = () => {
         setMessage({ text: '网络发现扫描已启动', type: 'success' });
       }
       statusErrorCountRef.current = 0;
-      startStatusPolling();
+      gatewayErrorCountRef.current = 0;
+      startStatusPolling(true);
     } catch (error: any) {
       const detail = error?.message || '';
       // 后端返回“扫描任务正在进行中”时，尝试强制启动一次
@@ -147,7 +171,8 @@ const Discovery: React.FC = () => {
           await api.startDiscoveryScan(normalizedRange, true);
           setMessage({ text: '检测到已有扫描任务，已强制重启扫描', type: 'success' });
           statusErrorCountRef.current = 0;
-          startStatusPolling();
+          gatewayErrorCountRef.current = 0;
+          startStatusPolling(true);
           return;
         } catch (forceError: any) {
           setMessage({ text: forceError.message || '强制启动扫描失败，请稍后再试', type: 'error' });

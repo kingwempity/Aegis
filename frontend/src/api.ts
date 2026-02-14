@@ -26,20 +26,33 @@ const getApiBaseUrl = () => {
 
 const API_BASE_URL = getApiBaseUrl();
 
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+
+  get isTemporaryGatewayError(): boolean {
+    return this.status === 502 || this.status === 503 || this.status === 504;
+  }
+}
+
 const parseErrorResponse = async (response: Response, fallback: string): Promise<never> => {
   const errorText = await response.text();
   if (!errorText) {
-    throw new Error(fallback);
+    throw new ApiError(fallback, response.status);
   }
 
   try {
     const errorData = JSON.parse(errorText);
-    throw new Error(errorData.detail || errorData.message || fallback);
+    throw new ApiError(errorData.detail || errorData.message || fallback, response.status);
   } catch {
     if (errorText.includes('<html') || errorText.includes('<!DOCTYPE')) {
-      throw new Error(`服务暂时不可用（HTTP ${response.status}）`);
+      throw new ApiError(`服务暂时不可用（HTTP ${response.status}）`, response.status);
     }
-    throw new Error(errorText || fallback);
+    throw new ApiError(errorText || fallback, response.status);
   }
 };
 

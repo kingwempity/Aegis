@@ -29,7 +29,7 @@ services:
     networks:
       - aegis-network
 
-  # API 服务
+  # API 服务（资产发现从容器内发起，经宿主机访问 VPC，一般无需改 Docker 网络）
   aegis-api:
     build: .
     container_name: aegis-api
@@ -44,8 +44,8 @@ services:
       - DB_HOST=aegis-db
       - DB_NAME=aegis
       - REDIS_URL=redis://aegis-redis:6379/0
-      # 资产发现默认扫描网段。云服务器部署时请改为 ECS 所在 VPC 网段（如 10.0.0.0/24）
-      - DISCOVERY_DEFAULT_NETWORK_RANGE=192.168.1.0/24
+      # 资产发现默认扫描网段。与 ECS 私网 172.17.34.239 同子网，可发现同 VPC 内其他资产
+      - DISCOVERY_DEFAULT_NETWORK_RANGE=172.17.34.0/24
     depends_on:
       aegis-db:
         condition: service_healthy

@@ -27,8 +27,8 @@ scanning_status = {
     "completed_at": None
 }
 
-# 云服务器/Docker 部署时可通过环境变量指定默认扫描网段（如 VPC CIDR）
-DISCOVERY_DEFAULT_NETWORK_RANGE = os.getenv("DISCOVERY_DEFAULT_NETWORK_RANGE", "192.168.1.0/24")
+# 云服务器/Docker 部署时可通过环境变量指定默认扫描网段；无法用 VPC 时用 172.17.0.0/24 可扫 Docker 内网
+DISCOVERY_DEFAULT_NETWORK_RANGE = os.getenv("DISCOVERY_DEFAULT_NETWORK_RANGE", "172.17.0.0/24")
 
 # 模拟目标存储（实际应用中应使用数据库模型）
 _mock_targets = [
@@ -39,8 +39,8 @@ _mock_targets = [
 @router.get("/suggested-range")
 async def get_suggested_network_range():
     """
-    返回建议的扫描网段。部署在云服务器/Docker 时，可在环境变量中设置
-    DISCOVERY_DEFAULT_NETWORK_RANGE 为 VPC 网段（如 10.0.0.0/24），以便发现同 VPC 内资产。
+    返回建议的扫描网段。部署在 Docker 时默认 172.17.0.0/24（Docker 桥接网段），可发现本机网关及同主机容器；
+    若能使用 VPC，可在环境变量中设置 DISCOVERY_DEFAULT_NETWORK_RANGE 为 VPC 网段。
     """
     return {"network_range": DISCOVERY_DEFAULT_NETWORK_RANGE}
 

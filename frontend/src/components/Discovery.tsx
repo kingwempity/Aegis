@@ -217,7 +217,7 @@ const Discovery: React.FC = () => {
           <h2 className="text-3xl font-black text-[#2d3343] tracking-tight">资产发现</h2>
           <p className="text-gray-400 mt-1 font-medium">自动发现网络中的设备和开放服务</p>
           <p className="text-amber-600/90 mt-1.5 text-xs font-medium">
-            部署在云服务器或 Docker 时，请填写服务器所在 VPC 网段（如 10.0.0.0/24），否则无法发现同网段资产。
+            部署在 Docker 且无法使用 VPC 时，使用 172.17.0.0/24 可发现本机网关及同主机上的容器。
           </p>
         </div>
         <div className="flex items-center gap-3">

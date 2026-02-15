@@ -1,5 +1,4 @@
-version: '3.8'
-
+# Compose v2 不再需要 version 字段，可省略
 services:
   # 数据库
   aegis-db:

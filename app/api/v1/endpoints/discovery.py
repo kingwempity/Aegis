@@ -4,6 +4,7 @@ from datetime import datetime
 import asyncio
 import logging
 import ipaddress
+import os
 
 from app.services.network_scanner import NetworkScanner
 from app.db.database import get_db, SessionLocal
@@ -26,10 +27,23 @@ scanning_status = {
     "completed_at": None
 }
 
+# 云服务器/Docker 部署时可通过环境变量指定默认扫描网段（如 VPC CIDR）
+DISCOVERY_DEFAULT_NETWORK_RANGE = os.getenv("DISCOVERY_DEFAULT_NETWORK_RANGE", "192.168.1.0/24")
+
 # 模拟目标存储（实际应用中应使用数据库模型）
 _mock_targets = [
     {"id": 1, "url": "192.168.10.156", "description": "内网测试服务器", "status": "active", "created_at": datetime.now()}
 ]
+
+
+@router.get("/suggested-range")
+async def get_suggested_network_range():
+    """
+    返回建议的扫描网段。部署在云服务器/Docker 时，可在环境变量中设置
+    DISCOVERY_DEFAULT_NETWORK_RANGE 为 VPC 网段（如 10.0.0.0/24），以便发现同 VPC 内资产。
+    """
+    return {"network_range": DISCOVERY_DEFAULT_NETWORK_RANGE}
+
 
 @router.post("/scan/start", status_code=status.HTTP_202_ACCEPTED)
 async def start_network_scan(
@@ -209,9 +223,9 @@ async def get_assets(db: Session = Depends(get_db)):
                 ip_address=r.ip_address,
                 hostname=r.hostname,
                 mac_address=r.mac_address,
-                open_ports=[int(p) for p in r.open_ports.split(",")] if r.open_ports else [],
+                open_ports=[int(p) for p in r.open_ports.split(",") if p.strip()] if r.open_ports else [],
                 os_info=r.os_info,
-                services=[s for s in r.services.split(",")] if r.services else [],
+                services=[s.strip() for s in r.services.split(",") if s.strip()] if r.services else [],
                 network_range=r.network_range,
                 status=r.status,
                 last_seen=r.last_seen,

@@ -1,11 +1,14 @@
 import asyncio
 import socket
 import ipaddress
+import logging
 from typing import List, Dict
 import nmap
 import platform
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+
+logger = logging.getLogger(__name__)
 
 class NetworkScanner:
     """
@@ -53,17 +56,19 @@ class NetworkScanner:
                         'services': self._get_services(scan_result, host)
                     }
                     results.append(host_info)
-        
+            logger.info("nmap 扫描完成，发现 %d 台主机", len(results))
         except Exception as e:
-            print(f"扫描错误: {e}")
-            # 如果 nmap 失败，使用基础扫描
+            logger.warning("nmap 扫描失败，改用 ping + 端口探测: %s", e)
+            # 如果 nmap 未安装/无权限/超时，使用基础扫描（ping + 常见端口）
             results = await self._basic_scan(network_range)
+            logger.info("基础扫描完成，发现 %d 台主机", len(results))
         
         return results
     
     def _nmap_scan(self, network_range: str):
         """
         执行 nmap 扫描的同步方法。
+        先尝试 SYN 扫描（-sS，需 root）；失败时尝试 TCP 连接扫描（-sT，无需 root）。
 
         Args:
             network_range (str): 要扫描的网络范围。
@@ -71,7 +76,17 @@ class NetworkScanner:
         Returns:
             nmap.PortScanner: 包含 nmap 扫描结果的 PortScanner 对象。
         """
-        self.nm.scan(hosts=network_range, arguments='-sS -sV -O -F')
+        # -sS SYN 扫描需要 root/管理员权限；-sT 连接扫描不需要
+        last_error = None
+        for args in ('-sS -sV -O -F', '-sT -F'):
+            try:
+                self.nm.scan(hosts=network_range, arguments=args)
+                return self.nm
+            except Exception as e:
+                last_error = e
+                continue
+        if last_error:
+            raise last_error
         return self.nm
     
     def _get_hostname(self, ip: str) -> str:
@@ -204,6 +219,7 @@ class NetworkScanner:
     async def _ping_host(self, ip: str) -> tuple:
         """
         Ping 主机以检查其是否在线。
+        兼容 Windows（-n 次数 -w 超时毫秒）与 Linux/macOS（-c 次数 -W 超时秒）。
 
         Args:
             ip (str): 要 ping 的 IP 地址。
@@ -212,8 +228,13 @@ class NetworkScanner:
             tuple: 包含 IP 地址和主机是否在线的布尔值的元组。
         """
         try:
-            param = '-n' if platform.system().lower() == 'windows' else '-c'
-            command = ['ping', param, '1', '-W', '1', ip]
+            is_windows = platform.system().lower() == 'windows'
+            if is_windows:
+                # Windows: -n 次数, -w 超时(毫秒)
+                command = ['ping', '-n', '1', '-w', '1000', ip]
+            else:
+                # Linux/macOS: -c 次数, -W 超时(秒)
+                command = ['ping', '-c', '1', '-W', '2', ip]
             
             process = await asyncio.create_subprocess_exec(
                 *command,
@@ -221,9 +242,9 @@ class NetworkScanner:
                 stderr=asyncio.subprocess.DEVNULL
             )
             
-            await asyncio.wait_for(process.wait(), timeout=2)
+            await asyncio.wait_for(process.wait(), timeout=3)
             return (ip, process.returncode == 0)
-        except:
+        except Exception:
             return (ip, False)
     
     async def _scan_common_ports(self, ip: str) -> List[int]:

@@ -211,6 +211,13 @@ export const api = {
     return response.json();
   },
 
+  // 获取建议的扫描网段（云/Docker 部署时可从环境变量配置 VPC 网段）
+  async getDiscoverySuggestedRange(): Promise<{ network_range: string }> {
+    const response = await fetch(`${API_BASE_URL}/discovery/suggested-range`);
+    if (!response.ok) return { network_range: '192.168.1.0/24' };
+    return response.json();
+  },
+
   // 获取资产发现列表 (Discovery 模块)
   async getAssets(): Promise<Asset[]> {
     const response = await fetch(`${API_BASE_URL}/discovery/assets`);

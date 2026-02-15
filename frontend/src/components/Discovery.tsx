@@ -135,7 +135,10 @@ const Discovery: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-    fetchScanStatus(); // 初始加载时获取一次状态
+    fetchScanStatus();
+    api.getDiscoverySuggestedRange().then(({ network_range }) => {
+      if (network_range && normalizeCidr(network_range)) setNetworkRange(network_range);
+    }).catch(() => {});
 
     return () => {
       clearStatusPolling();
@@ -213,6 +216,9 @@ const Discovery: React.FC = () => {
         <div>
           <h2 className="text-3xl font-black text-[#2d3343] tracking-tight">资产发现</h2>
           <p className="text-gray-400 mt-1 font-medium">自动发现网络中的设备和开放服务</p>
+          <p className="text-amber-600/90 mt-1.5 text-xs font-medium">
+            部署在云服务器或 Docker 时，请填写服务器所在 VPC 网段（如 10.0.0.0/24），否则无法发现同网段资产。
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <input

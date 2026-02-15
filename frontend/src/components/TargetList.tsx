@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api, Target } from '../api';
 import AddTargetModal from './AddTargetModal';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
-import { Plus } from './Icons';
+import { Plus, Trash2 } from './Icons';
 
 const TargetList: React.FC = () => {
   const [targets, setTargets] = useState<Target[]>([]);
@@ -17,6 +17,16 @@ const TargetList: React.FC = () => {
       console.error('Error fetching targets:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteTarget = async (target: Target) => {
+    if (!window.confirm(`确定要删除目标「${target.url}」吗？`)) return;
+    try {
+      await api.deleteTarget(target.id);
+      fetchData();
+    } catch (e: any) {
+      alert(e?.message || '删除目标失败');
     }
   };
 
@@ -73,6 +83,13 @@ const TargetList: React.FC = () => {
                     <span className="font-bold text-blue-500">{target.low_vulns || 0}</span>
                     <span className="text-xs text-gray-400">低危</span>
                   </div>
+                  <button 
+                    onClick={() => handleDeleteTarget(target)}
+                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                    title="删除目标"
+                  >
+                    <Trash2 size={18} strokeWidth={2} />
+                  </button>
                 </div>
               </div>
             ))

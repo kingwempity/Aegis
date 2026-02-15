@@ -34,3 +34,14 @@ def read_task(task_id: int, db: Session = Depends(get_db)):
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
+
+
+@router.delete("/{task_id}")
+def delete_task(task_id: int, db: Session = Depends(get_db)):
+    """删除扫描任务及其关联的漏洞记录（同时会从报告列表中移除）"""
+    task = db.query(ScanTask).filter(ScanTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    db.delete(task)
+    db.commit()
+    return {"message": "任务已删除"}

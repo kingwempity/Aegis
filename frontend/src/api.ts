@@ -182,6 +182,24 @@ export const api = {
     if (!response.ok) throw new Error('Failed to stop task');
   },
 
+  // 删除扫描任务（同时会从报告列表中移除）
+  async deleteTask(taskId: number): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, { method: 'DELETE' });
+    if (!response.ok) return parseErrorResponse(response, '删除任务失败');
+  },
+
+  // 删除报告（删除对应任务及漏洞记录）
+  async deleteReport(taskId: number): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/reports/${taskId}`, { method: 'DELETE' });
+    if (!response.ok) return parseErrorResponse(response, '删除报告失败');
+  },
+
+  // 删除目标
+  async deleteTarget(targetId: number): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/discovery/targets/${targetId}`, { method: 'DELETE' });
+    if (!response.ok) return parseErrorResponse(response, '删除目标失败');
+  },
+
   // 获取漏洞列表
   async getVulnerabilities(severity?: string): Promise<Vulnerability[]> {
     const url =

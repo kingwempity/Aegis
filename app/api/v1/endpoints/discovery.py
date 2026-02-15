@@ -261,3 +261,15 @@ async def create_target(target_in: TargetCreate):
     _mock_targets.append(new_target)
     logger.info(f"添加新目标: {new_target['url']}")
     return new_target
+
+
+@router.delete("/targets/{target_id}")
+async def delete_target(target_id: int):
+    """删除指定目标。"""
+    global _mock_targets
+    for i, t in enumerate(_mock_targets):
+        if t["id"] == target_id:
+            _mock_targets = _mock_targets[:i] + _mock_targets[i + 1:]
+            logger.info(f"已删除目标 id={target_id}")
+            return {"message": "目标已删除"}
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="目标不存在")

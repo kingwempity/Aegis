@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api, Report } from '../api';
+import { Trash2 } from './Icons';
 
 const Reports: React.FC = () => {
   const [reports, setReports] = useState<Report[]>([]);
@@ -19,6 +20,16 @@ const Reports: React.FC = () => {
   useEffect(() => {
     fetchReports();
   }, []);
+
+  const handleDeleteReport = async (taskId: number, targetUrl: string) => {
+    if (!window.confirm(`确定要删除报告「${targetUrl}」吗？关联的漏洞记录将一并删除。`)) return;
+    try {
+      await api.deleteReport(taskId);
+      fetchReports();
+    } catch (e: any) {
+      alert(e?.message || '删除失败');
+    }
+  };
 
   const handleViewReport = (taskId: number) => {
     // 获取 API 基础地址
@@ -79,12 +90,21 @@ const Reports: React.FC = () => {
                 </svg>
                 发现 {report.vuln_count} 个漏洞
               </div>
-              <button 
-                onClick={() => handleViewReport(report.task_id)}
-                className="mt-2 w-full py-2 bg-gray-50 text-[#2d3343] rounded-lg text-sm font-bold group-hover:bg-[#ff6b00] group-hover:text-white transition-all"
-              >
-                查看详细报告
-              </button>
+              <div className="mt-2 flex gap-2">
+                <button 
+                  onClick={() => handleViewReport(report.task_id)}
+                  className="flex-1 py-2 bg-gray-50 text-[#2d3343] rounded-lg text-sm font-bold group-hover:bg-[#ff6b00] group-hover:text-white transition-all"
+                >
+                  查看详细报告
+                </button>
+                <button 
+                  onClick={() => handleDeleteReport(report.task_id, report.target_url)}
+                  className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                  title="删除报告"
+                >
+                  <Trash2 size={18} strokeWidth={2} />
+                </button>
+              </div>
             </div>
           ))
         )}

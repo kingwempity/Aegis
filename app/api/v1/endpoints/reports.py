@@ -75,3 +75,14 @@ def download_report(task_id: int, db: Session = Depends(get_db)):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"报告生成失败: {str(e)}")
+
+
+@router.delete("/{task_id}")
+def delete_report(task_id: int, db: Session = Depends(get_db)):
+    """删除报告（删除对应已完成任务及其漏洞记录）"""
+    task = db.query(ScanTask).filter(ScanTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Report/Task not found")
+    db.delete(task)
+    db.commit()
+    return {"message": "报告已删除"}

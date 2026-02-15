@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api, ScanTask } from '../api';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
-import { Plus, Eye, StopSquare, Search } from './Icons';
+import { Plus, Eye, StopSquare, Search, Trash2 } from './Icons';
 
 interface TaskListProps {
   onCreateTask?: () => void;
@@ -34,9 +34,19 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
   const handleStopTask = async (taskId: number) => {
     try {
       await api.stopTask(taskId);
-      fetchTasks(); // 立即刷新状态
+      fetchTasks();
     } catch (error) {
       alert('停止任务失败');
+    }
+  };
+
+  const handleDeleteTask = async (task: ScanTask) => {
+    if (!window.confirm(`确定要删除任务 #${task.id}（${task.target_url}）吗？关联的漏洞记录将一并删除。`)) return;
+    try {
+      await api.deleteTask(task.id);
+      fetchTasks();
+    } catch (e: any) {
+      alert(e?.message || '删除任务失败');
     }
   };
 
@@ -142,6 +152,13 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
                           <Eye size={20} />
                         </button>
                       )}
+                      <button 
+                        onClick={() => handleDeleteTask(task)}
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        title="删除任务"
+                      >
+                        <Trash2 size={20} strokeWidth={2} />
+                      </button>
                     </div>
                   </td>
                 </tr>

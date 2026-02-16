@@ -17,8 +17,8 @@ export const getApiBaseUrl = () => {
       return 'http://localhost:8000/api/v1';
     }
 
-    // 非本地环境默认连 FastAPI 8000 端口，避免站点未配置 /api 反向代理导致请求超时
-    return `http://${hostname}:8000/api/v1`;
+    // 生产环境优先走同源 /api 代理，避免 HTTPS 页面触发 Mixed Content
+    return '/api/v1';
   }
   
   return 'http://localhost:8000/api/v1';

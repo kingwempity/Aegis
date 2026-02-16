@@ -5,26 +5,26 @@
 
 // 动态获取 API 基础地址
 // 如果在浏览器中运行，自动将 localhost 替换为当前访问的服务器 IP
-const getApiBaseUrl = () => {
+export const getApiBaseUrl = () => {
   if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
   
   // 如果是浏览器环境
   if (typeof window !== 'undefined') {
-    const { hostname, origin } = window.location;
+    const { hostname } = window.location;
 
     // 本地开发默认直连 FastAPI 的 8000 端口
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       return 'http://localhost:8000/api/v1';
     }
 
-    // 线上环境优先走同源路径，避免 CORS/跨端口问题
-    return `${origin}/api/v1`;
+    // 非本地环境默认连 FastAPI 8000 端口，避免站点未配置 /api 反向代理导致请求超时
+    return `http://${hostname}:8000/api/v1`;
   }
   
   return 'http://localhost:8000/api/v1';
 };
 
-const API_BASE_URL = getApiBaseUrl();
+export const API_BASE_URL = getApiBaseUrl();
 
 export class ApiError extends Error {
   status: number;

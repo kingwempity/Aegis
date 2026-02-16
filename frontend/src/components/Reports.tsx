@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api, Report } from '../api';
+import { api, API_BASE_URL, Report } from '../api';
 import { Trash2 } from './Icons';
 
 const Reports: React.FC = () => {
@@ -32,21 +32,8 @@ const Reports: React.FC = () => {
   };
 
   const handleViewReport = (taskId: number) => {
-    // 获取 API 基础地址
-    const getApiBaseUrl = () => {
-      if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
-      if (typeof window !== 'undefined') {
-        const { hostname } = window.location;
-        if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-          return `http://${hostname}:8000/api/v1`;
-        }
-      }
-      return 'http://localhost:8000/api/v1';
-    };
-    
-    const baseUrl = getApiBaseUrl();
     // 在新窗口打开报告
-    window.open(`${baseUrl}/reports/${taskId}/html`, '_blank');
+    window.open(`${API_BASE_URL}/reports/${taskId}/html`, '_blank');
   };
 
   return (

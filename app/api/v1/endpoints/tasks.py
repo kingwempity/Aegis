@@ -18,7 +18,7 @@ def create_scan_task(task_in: TaskCreate, db: Session = Depends(get_db)):
     db.add(db_task)
     db.commit()
     db.refresh(db_task)
-    run_scan_task.delay(db_task.id, str(task_in.target_url))
+    run_scan_task.delay(db_task.id, str(task_in.target_url), task_in.scan_strategy)
     return db_task
 
 # 新增：获取任务列表接口

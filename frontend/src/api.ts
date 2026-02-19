@@ -6,7 +6,9 @@
 // 动态获取 API 基础地址
 // 如果在浏览器中运行，自动将 localhost 替换为当前访问的服务器 IP
 export const getApiBaseUrl = () => {
-  const apiUrlFromEnv = import.meta.env.VITE_API_URL?.trim();
+  const apiUrlFromEnv = import.meta.env.VITE_API_URL
+    ?.trim()
+    .replace(/^['"]|['"]$/g, '');
 
   if (apiUrlFromEnv) {
     if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
@@ -24,7 +26,13 @@ export const getApiBaseUrl = () => {
       }
     }
 
-    return apiUrlFromEnv;
+    try {
+      return new URL(apiUrlFromEnv, typeof window !== 'undefined' ? window.location.origin : undefined)
+        .toString()
+        .replace(/\/$/, '');
+    } catch {
+      return apiUrlFromEnv;
+    }
   }
   
   // 如果是浏览器环境

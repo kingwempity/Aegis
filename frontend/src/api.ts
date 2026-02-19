@@ -5,34 +5,46 @@
 
 // 动态获取 API 基础地址
 // 如果在浏览器中运行，自动将 localhost 替换为当前访问的服务器 IP
+const normalizeApiUrl = (rawUrl: string, isHttpsPage: boolean, origin?: string) => {
+  const trimmedUrl = rawUrl.trim().replace(/^['"]|['"]$/g, '');
+
+  if (!trimmedUrl) {
+    return '';
+  }
+
+  // 支持协议省略写法：//host/api/v1
+  if (trimmedUrl.startsWith('//')) {
+    const protocol = isHttpsPage ? 'https:' : 'http:';
+    return `${protocol}${trimmedUrl}`.replace(/\/$/, '');
+  }
+
+  // 支持仅填写 host/path（如 47.114.88.90/api/v1）
+  if (!/^[a-z][a-z\d+.-]*:/i.test(trimmedUrl) && !trimmedUrl.startsWith('/')) {
+    const protocol = isHttpsPage ? 'https://' : 'http://';
+    return `${protocol}${trimmedUrl}`.replace(/\/$/, '');
+  }
+
+  try {
+    const normalizedUrl = new URL(trimmedUrl, origin);
+
+    if (isHttpsPage && normalizedUrl.protocol === 'http:') {
+      normalizedUrl.protocol = 'https:';
+    }
+
+    return normalizedUrl.toString().replace(/\/$/, '');
+  } catch {
+    return isHttpsPage ? trimmedUrl.replace(/^http:\/\//i, 'https://') : trimmedUrl;
+  }
+};
+
 export const getApiBaseUrl = () => {
-  const apiUrlFromEnv = import.meta.env.VITE_API_URL
-    ?.trim()
-    .replace(/^['"]|['"]$/g, '');
+  const apiUrlFromEnv = import.meta.env.VITE_API_URL;
 
   if (apiUrlFromEnv) {
-    if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
-      try {
-        const normalizedUrl = new URL(apiUrlFromEnv, window.location.origin);
+    const isHttpsPage = typeof window !== 'undefined' && window.location.protocol === 'https:';
+    const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
 
-        if (normalizedUrl.protocol === 'http:') {
-          normalizedUrl.protocol = 'https:';
-        }
-
-        return normalizedUrl.toString().replace(/\/$/, '');
-      } catch {
-        // 如果是相对路径（如 /api/v1），直接返回给 fetch 使用
-        return apiUrlFromEnv.replace(/^http:\/\//i, 'https://');
-      }
-    }
-
-    try {
-      return new URL(apiUrlFromEnv, typeof window !== 'undefined' ? window.location.origin : undefined)
-        .toString()
-        .replace(/\/$/, '');
-    } catch {
-      return apiUrlFromEnv;
-    }
+    return normalizeApiUrl(apiUrlFromEnv, isHttpsPage, origin);
   }
   
   // 如果是浏览器环境

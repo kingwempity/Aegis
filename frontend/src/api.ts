@@ -6,10 +6,13 @@
 // 动态获取 API 基础地址
 // 如果在浏览器中运行，自动将 localhost 替换为当前访问的服务器 IP
 export const getApiBaseUrl = () => {
-  const apiUrlFromEnv = import.meta.env.VITE_API_URL?.trim().replace(/^['"]|['"]$/g, '');
+  const apiUrlFromEnvRaw = import.meta.env.VITE_API_URL;
+  const apiUrlFromEnv = apiUrlFromEnvRaw?.trim().replace(/^['"]|['"]$/g, '');
 
   if (apiUrlFromEnv) {
-    if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+    const isAbsolute = /^https?:\/\//i.test(apiUrlFromEnv) || apiUrlFromEnv.startsWith('//');
+
+    if (isAbsolute && typeof window !== 'undefined' && window.location.protocol === 'https:') {
       try {
         const normalizedUrl = new URL(apiUrlFromEnv, window.location.origin);
 
@@ -19,12 +22,11 @@ export const getApiBaseUrl = () => {
 
         return normalizedUrl.toString().replace(/\/$/, '');
       } catch {
-        // 如果是相对路径（如 /api/v1），直接返回给 fetch 使用
-        return apiUrlFromEnv.replace(/\/$/, '');
+        return apiUrlFromEnv;
       }
     }
 
-    return apiUrlFromEnv.replace(/\/$/, '');
+    return isAbsolute ? apiUrlFromEnv.replace(/\/$/, '') : apiUrlFromEnv;
   }
   
   // 如果是浏览器环境

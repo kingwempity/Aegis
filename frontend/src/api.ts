@@ -5,44 +5,26 @@
 
 // 动态获取 API 基础地址
 // 如果在浏览器中运行，自动将 localhost 替换为当前访问的服务器 IP
-const normalizeApiUrl = (apiUrl: string) => {
-  const sanitizedApiUrl = apiUrl.trim().replace(/^['"]|['"]$/g, '');
-
-  if (typeof window === 'undefined') {
-    return sanitizedApiUrl.replace(/\/$/, '');
-  }
-
-  const isAbsoluteUrl = /^[a-zA-Z][a-zA-Z\d+.-]*:\/\//.test(sanitizedApiUrl) || sanitizedApiUrl.startsWith('//');
-  if (!isAbsoluteUrl) {
-    return sanitizedApiUrl.replace(/\/$/, '');
-  }
-
-  try {
-    const normalizedUrl = new URL(sanitizedApiUrl, window.location.origin);
-    if (window.location.protocol === 'https:' && normalizedUrl.protocol === 'http:') {
-      normalizedUrl.protocol = 'https:';
-    }
-
-    return normalizedUrl.toString().replace(/\/$/, '');
-  } catch {
-    return sanitizedApiUrl.replace(/\/$/, '');
-  }
-};
-
-
-const forceHttpsInSecureContext = (apiUrl: string) => {
-  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && apiUrl.startsWith('http://')) {
-    return apiUrl.replace(/^http:\/\//, 'https://');
-  }
-
-  return apiUrl;
-};
-
 export const getApiBaseUrl = () => {
-  const apiUrlFromEnv = import.meta.env.VITE_API_URL;
+  const apiUrlFromEnv = import.meta.env.VITE_API_URL?.trim().replace(/^['"]|['"]$/g, '');
 
   if (apiUrlFromEnv) {
-    return normalizeApiUrl(apiUrlFromEnv);
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+      try {
+        const normalizedUrl = new URL(apiUrlFromEnv, window.location.origin);
+
+        if (normalizedUrl.protocol === 'http:') {
+          normalizedUrl.protocol = 'https:';
+        }
+
+        return normalizedUrl.toString().replace(/\/$/, '');
+      } catch {
+        // 如果是相对路径（如 /api/v1），直接返回给 fetch 使用
+        return apiUrlFromEnv.replace(/\/$/, '');
+      }
+    }
+
+    return apiUrlFromEnv.replace(/\/$/, '');
   }
   
   // 如果是浏览器环境
@@ -61,7 +43,7 @@ export const getApiBaseUrl = () => {
   return 'http://localhost:8000/api/v1';
 };
 
-export const API_BASE_URL = forceHttpsInSecureContext(getApiBaseUrl());
+export const API_BASE_URL = getApiBaseUrl();
 
 export class ApiError extends Error {
   status: number;

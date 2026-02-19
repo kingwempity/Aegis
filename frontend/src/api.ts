@@ -5,8 +5,36 @@
 
 // 动态获取 API 基础地址
 // 如果在浏览器中运行，自动将 localhost 替换为当前访问的服务器 IP
+const normalizeApiUrl = (apiUrl: string) => {
+  const sanitizedApiUrl = apiUrl.trim().replace(/^['"]|['"]$/g, '');
+
+  if (typeof window === 'undefined') {
+    return sanitizedApiUrl.replace(/\/$/, '');
+  }
+
+  const isAbsoluteUrl = /^[a-zA-Z][a-zA-Z\d+.-]*:\/\//.test(sanitizedApiUrl) || sanitizedApiUrl.startsWith('//');
+  if (!isAbsoluteUrl) {
+    return sanitizedApiUrl.replace(/\/$/, '');
+  }
+
+  try {
+    const normalizedUrl = new URL(sanitizedApiUrl, window.location.origin);
+    if (window.location.protocol === 'https:' && normalizedUrl.protocol === 'http:') {
+      normalizedUrl.protocol = 'https:';
+    }
+
+    return normalizedUrl.toString().replace(/\/$/, '');
+  } catch {
+    return sanitizedApiUrl.replace(/\/$/, '');
+  }
+};
+
 export const getApiBaseUrl = () => {
-  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  const apiUrlFromEnv = import.meta.env.VITE_API_URL;
+
+  if (apiUrlFromEnv) {
+    return normalizeApiUrl(apiUrlFromEnv);
+  }
   
   // 如果是浏览器环境
   if (typeof window !== 'undefined') {

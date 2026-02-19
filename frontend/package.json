@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "rolldown-vite",
-    "build": "rolldown-vite build",
+    "dev": "vite",
+    "build": "vite build",
     "lint": "eslint .",
-    "preview": "rolldown-vite preview"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",

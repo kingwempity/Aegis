@@ -96,6 +96,14 @@ requests:
 - matchers 支持多种类型（关键词/正则/状态码/响应头存在等）
 - 请求中的 `{{BaseURL}}` 将由扫描器运行时替换为目标地址
 
+
+新增（模拟攻击引擎增强）字段：
+- `preconditions`：请求前置条件（如允许方法）。
+- `payload_sets`：按扫描策略（default/full/fast）定义 payload 组。
+- `{{payload}}`：在 path 模板中插入运行时 payload。
+- `matchers.type=status|regex`：支持状态码和正则匹配。
+
+
 ---
 
 ## 常用 API（示例）

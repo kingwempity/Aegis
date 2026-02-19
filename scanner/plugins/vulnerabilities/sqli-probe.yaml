@@ -1,0 +1,24 @@
+id: sqli-probe
+info:
+  name: SQL Injection Probe
+  severity: Medium
+requests:
+  - method: GET
+    preconditions:
+      methods: [GET]
+    path:
+      - "{{BaseURL}}/search?q={{payload}}"
+    payload_sets:
+      default:
+        - "' OR '1'='1"
+      full:
+        - "' OR '1'='1"
+        - "1' AND '1'='1"
+    matchers:
+      - type: word
+        words:
+          - "sql"
+          - "syntax"
+        part: body
+      - type: status
+        status: [500]

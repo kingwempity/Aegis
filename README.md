@@ -35,6 +35,9 @@ Aegis（宙斯盾）是一款面向小型团队与个人的轻量级 DAST（动�
 
 ## 快速开始
 
+> 服务器部署可参考：`docs/DEPLOYMENT.md`（含 Docker Compose 一键部署、运维与升级步骤）。
+
+
 先决条件
 - Python 3.10+（或适配的 3.x 版本）
 - Node.js + npm/yarn（仅在本地开发前端时需要）
@@ -95,6 +98,14 @@ requests:
 - 支持多个 requests（同一检测逻辑可尝试多条路径或多种方法）
 - matchers 支持多种类型（关键词/正则/状态码/响应头存在等）
 - 请求中的 `{{BaseURL}}` 将由扫描器运行时替换为目标地址
+
+
+新增（模拟攻击引擎增强）字段：
+- `preconditions`：请求前置条件（如允许方法）。
+- `payload_sets`：按扫描策略（default/full/fast）定义 payload 组。
+- `{{payload}}`：在 path 模板中插入运行时 payload。
+- `matchers.type=status|regex`：支持状态码和正则匹配。
+
 
 ---
 

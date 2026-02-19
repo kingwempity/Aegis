@@ -9,7 +9,7 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://aegis-redis:6379/0")
 celery_app = Celery("aegis_worker", broker=REDIS_URL, backend=REDIS_URL)
 
 @celery_app.task(bind=True)
-def run_scan_task(self, task_id: int, target_url: str):
+def run_scan_task(self, task_id: int, target_url: str, scan_strategy: str = "default"):
     db = SessionLocal()
     print(f"🚀 [Worker] 启动扫描引擎: ID={task_id}, Target={target_url}")
     
@@ -22,7 +22,7 @@ def run_scan_task(self, task_id: int, target_url: str):
 
         # === 调用核心引擎 ===
         # 由于 Celery 是同步的，我们需要用 asyncio.run 来运行异步扫描器
-        engine = ScannerEngine(target_url)
+        engine = ScannerEngine(target_url, strategy=scan_strategy)
         found_vulns = asyncio.run(engine.run())
         
         # 保存漏洞结果
@@ -32,6 +32,7 @@ def run_scan_task(self, task_id: int, target_url: str):
                 vuln_name=v["vuln_name"],
                 severity=v["severity"],
                 url=v["url"],
+                payload=v.get("payload"),
                 evidence=v["evidence"]
             )
             db.add(vuln_record)

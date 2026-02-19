@@ -26,7 +26,9 @@ class ScannerEngine:
     async def run(self) -> List[dict]:
         """执行扫描并返回发现的漏洞列表"""
         vulns: List[dict] = []
-        async with httpx.AsyncClient(verify=False, timeout=10.0, follow_redirects=True) as client:
+        # Keep redirects disabled so scans stay on the requested endpoint/scope
+        # and matcher evaluation uses the original response.
+        async with httpx.AsyncClient(verify=False, timeout=10.0, follow_redirects=False) as client:
             for plugin in self.plugins:
                 for req in plugin.get("requests", []):
                     if not self._check_preconditions(req):

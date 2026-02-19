@@ -35,6 +35,9 @@ Aegis（宙斯盾）是一款面向小型团队与个人的轻量级 DAST（动�
 
 ## 快速开始
 
+> 服务器部署可参考：`docs/DEPLOYMENT.md`（含 Docker Compose 一键部署、运维与升级步骤）。
+
+
 先决条件
 - Python 3.10+（或适配的 3.x 版本）
 - Node.js + npm/yarn（仅在本地开发前端时需要）

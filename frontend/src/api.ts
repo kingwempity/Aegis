@@ -6,7 +6,7 @@
 // 动态获取 API 基础地址
 // 如果在浏览器中运行，自动将 localhost 替换为当前访问的服务器 IP
 export const getApiBaseUrl = () => {
-  const apiUrlFromEnv = import.meta.env.VITE_API_URL;
+  const apiUrlFromEnv = import.meta.env.VITE_API_URL?.trim();
 
   if (apiUrlFromEnv) {
     if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
@@ -20,7 +20,7 @@ export const getApiBaseUrl = () => {
         return normalizedUrl.toString().replace(/\/$/, '');
       } catch {
         // 如果是相对路径（如 /api/v1），直接返回给 fetch 使用
-        return apiUrlFromEnv;
+        return apiUrlFromEnv.replace(/^http:\/\//i, 'https://');
       }
     }
 
@@ -36,8 +36,8 @@ export const getApiBaseUrl = () => {
       return 'http://localhost:8000/api/v1';
     }
 
-    // 生产环境优先走同源 /api 代理，避免 HTTPS 页面触发 Mixed Content
-    return '/api/v1';
+    // 生产环境优先走同源地址，避免 HTTPS 页面触发 Mixed Content
+    return `${window.location.origin}/api/v1`;
   }
   
   return 'http://localhost:8000/api/v1';

@@ -40,16 +40,21 @@ const normalizeApiUrl = (rawUrl: string, isHttpsPage: boolean, origin?: string) 
 export const getApiBaseUrl = () => {
   const apiUrlFromEnv = import.meta.env.VITE_API_URL;
 
-  if (apiUrlFromEnv) {
-    const isHttpsPage = typeof window !== 'undefined' && window.location.protocol === 'https:';
-    const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
-
-    return normalizeApiUrl(apiUrlFromEnv, isHttpsPage, origin);
-  }
-  
   // 如果是浏览器环境
   if (typeof window !== 'undefined') {
-    const { hostname } = window.location;
+    const isHttpsPage = window.location.protocol === 'https:';
+    const { hostname, origin } = window.location;
+
+    if (apiUrlFromEnv) {
+      const normalizedFromEnv = normalizeApiUrl(apiUrlFromEnv, isHttpsPage, origin);
+
+      // HTTPS 页面强制优先同源 API，避免任何构建期 http:// 配置导致 Mixed Content
+      if (isHttpsPage && /^http:\/\//i.test(normalizedFromEnv)) {
+        return `${origin}/api/v1`;
+      }
+
+      return normalizedFromEnv;
+    }
 
     // 本地开发默认直连 FastAPI 的 8000 端口
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
@@ -57,9 +62,13 @@ export const getApiBaseUrl = () => {
     }
 
     // 生产环境优先走同源地址，避免 HTTPS 页面触发 Mixed Content
-    return `${window.location.origin}/api/v1`;
+    return `${origin}/api/v1`;
   }
-  
+
+  if (apiUrlFromEnv) {
+    return normalizeApiUrl(apiUrlFromEnv, false);
+  }
+
   return 'http://localhost:8000/api/v1';
 };
 

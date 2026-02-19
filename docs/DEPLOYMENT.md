@@ -90,3 +90,21 @@ docker compose up -d --build
 docker compose ps
 docker compose logs --tail=100 aegis-api
 ```
+
+## 8. 前端 Mixed Content（HTTPS 页面请求 HTTP API）排查
+
+如果浏览器控制台出现类似错误：
+
+```text
+Mixed Content: The page at 'https://<host>/' was loaded over HTTPS,
+but requested an insecure resource 'http://<host>/api/v1/...'
+```
+
+通常说明**线上前端构建产物仍在使用 HTTP API 地址**。请按以下顺序排查：
+
+1. 检查前端构建时是否设置了 `VITE_API_URL=http://...`。
+2. HTTPS 站点建议：
+   - 直接不设置 `VITE_API_URL`，让前端走同源 `https://<当前域名>/api/v1`；或
+   - 设置为 `https://<域名>/api/v1`（不要使用 `http://`）。
+3. 修改后重新构建并发布前端静态资源，避免继续使用旧的 JS bundle。
+4. 确认反向代理已把 `https://<域名>/api/v1/*` 正确转发到后端 `127.0.0.1:8000`。

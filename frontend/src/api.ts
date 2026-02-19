@@ -43,8 +43,21 @@ export const getApiBaseUrl = () => {
   if (apiUrlFromEnv) {
     const isHttpsPage = typeof window !== 'undefined' && window.location.protocol === 'https:';
     const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
+    const normalizedEnvUrl = normalizeApiUrl(apiUrlFromEnv, isHttpsPage, origin);
 
-    return normalizeApiUrl(apiUrlFromEnv, isHttpsPage, origin);
+    // HTTPS 页面必须避免请求 HTTP 资源，否则浏览器会直接拦截（Mixed Content）
+    if (typeof window !== 'undefined' && isHttpsPage) {
+      try {
+        if (new URL(normalizedEnvUrl).protocol === 'http:') {
+          return `${window.location.origin}/api/v1`;
+        }
+      } catch {
+        // 无法解析时回退到同源 API，避免因异常配置导致页面无法请求
+        return `${window.location.origin}/api/v1`;
+      }
+    }
+
+    return normalizedEnvUrl;
   }
   
   // 如果是浏览器环境

@@ -6,6 +6,7 @@ scanner.engine.core
 
 import os
 import httpx
+from urllib.parse import urljoin, urlparse
 from typing import List, Dict, Any
 
 from scanner.engine.attack import AttackScriptGenerator, AttackPathExplorer
@@ -22,11 +23,12 @@ class ScannerEngine:
         self.plugins = TemplateParser.load_plugins(resolved_plugin_dir)
         self.script_generator = AttackScriptGenerator(strategy=strategy)
         self.path_explorer = AttackPathExplorer()
+        self._target_origin = urlparse(self.target)
 
     async def run(self) -> List[dict]:
         """执行扫描并返回发现的漏洞列表"""
         vulns: List[dict] = []
-        async with httpx.AsyncClient(verify=False, timeout=10.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(verify=False, timeout=10.0, follow_redirects=False) as client:
             for plugin in self.plugins:
                 for req in plugin.get("requests", []):
                     if not self._check_preconditions(req):
@@ -41,7 +43,7 @@ class ScannerEngine:
                             method = req.get("method", "GET")
 
                             try:
-                                resp = await client.request(method, url)
+                                resp = await self._request_in_scope(client, method, url)
                                 self.path_explorer.mark_visited(path.url)
 
                                 matchers = req.get("matchers", [])
@@ -71,6 +73,38 @@ class ScannerEngine:
                             except Exception as e:
                                 print(f"⚠️ 请求失败 {url}: {e}")
         return vulns
+
+    async def _request_in_scope(self, client: httpx.AsyncClient, method: str, url: str, max_redirects: int = 5) -> httpx.Response:
+        """发送请求并仅跟随同源重定向，避免向目标域外发包。"""
+        current_url = url
+
+        for _ in range(max_redirects + 1):
+            resp = await client.request(method, current_url)
+            location = resp.headers.get("location")
+
+            if not location or not (300 <= resp.status_code < 400):
+                return resp
+
+            next_url = urljoin(current_url, location)
+            if not self._is_in_scope(next_url):
+                return resp
+
+            current_url = next_url
+
+        return resp
+
+    def _is_in_scope(self, url: str) -> bool:
+        parsed = urlparse(url)
+        return (
+            parsed.scheme.lower() == self._target_origin.scheme.lower()
+            and parsed.hostname == self._target_origin.hostname
+            and (parsed.port or self._default_port(parsed.scheme))
+            == (self._target_origin.port or self._default_port(self._target_origin.scheme))
+        )
+
+    @staticmethod
+    def _default_port(scheme: str) -> int:
+        return 443 if scheme.lower() == "https" else 80
 
     def _check_preconditions(self, req: Dict[str, Any]) -> bool:
         """模板前置条件校验（基础实现，可扩展）"""

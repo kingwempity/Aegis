@@ -29,6 +29,15 @@ const normalizeApiUrl = (apiUrl: string) => {
   }
 };
 
+
+const forceHttpsInSecureContext = (apiUrl: string) => {
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && apiUrl.startsWith('http://')) {
+    return apiUrl.replace(/^http:\/\//, 'https://');
+  }
+
+  return apiUrl;
+};
+
 export const getApiBaseUrl = () => {
   const apiUrlFromEnv = import.meta.env.VITE_API_URL;
 
@@ -52,7 +61,7 @@ export const getApiBaseUrl = () => {
   return 'http://localhost:8000/api/v1';
 };
 
-export const API_BASE_URL = getApiBaseUrl();
+export const API_BASE_URL = forceHttpsInSecureContext(getApiBaseUrl());
 
 export class ApiError extends Error {
   status: number;

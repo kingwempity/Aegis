@@ -15,11 +15,7 @@ const getApiBaseUrl = (): string => {
     return 'http://localhost:8000/api/v1';
   }
 
-  if (protocol === 'https:') {
-    return `https://${hostname}/api/v1`;
-  }
-
-  return `http://${hostname}/api/v1`;
+  return '/api/v1';
 };
 
 const joinApiPath = (path: string): string => {

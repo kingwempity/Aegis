@@ -1,9 +1,13 @@
 import logging
 import time
+import os
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 # 使用别名导入以避免命名冲突
 from app.api.v1.endpoints import (
@@ -41,6 +45,16 @@ app = FastAPI(
     title="Aegis API",
     version="1.0.0"
 )
+
+# 处理 HTTPS 转发头 (解决 Mixed Content)
+class HTTPSRedirectMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # 如果 X-Forwarded-Proto 是 https，则强制 request.url 也是 https
+        if request.headers.get("x-forwarded-proto") == "https":
+            request.scope["scheme"] = "https"
+        return await call_next(request)
+
+app.add_middleware(HTTPSRedirectMiddleware)
 
 # 强化 CORS 配置
 app.add_middleware(
@@ -88,6 +102,25 @@ app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
 app.include_router(profiles.router, prefix="/api/v1/profiles", tags=["Profiles"])
 app.include_router(ws.router, tags=["WebSocket"])
 
-@app.get("/")
-async def root():
-    return {"status": "online"}
+# 静态文件服务
+static_path = "/app/static"
+if os.path.exists(static_path):
+    app.mount("/assets", StaticFiles(directory=f"{static_path}/assets"), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str = ""):
+        # 如果请求的是 API，则不拦截（虽然路由已经注册，但为了保险）
+        if full_path.startswith("api/"):
+            raise StarletteHTTPException(status_code=404)
+        
+        # 检查文件是否存在
+        file_path = os.path.join(static_path, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        
+        # SPA 路由：所有非文件请求返回 index.html
+        return FileResponse(os.path.join(static_path, "index.html"))
+else:
+    @app.get("/")
+    async def root():
+        return {"status": "online", "message": "Static files not found, API only mode."}

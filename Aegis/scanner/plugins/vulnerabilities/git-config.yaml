@@ -1,0 +1,14 @@
+id: git-config-leak
+info:
+  name: Git Config Disclosure
+  severity: Medium
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.git/config"
+    matchers:
+      - type: word
+        words:
+          - "[core]"
+          - "repositoryformatversion"
+        part: body

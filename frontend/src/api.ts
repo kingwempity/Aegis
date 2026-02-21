@@ -3,100 +3,27 @@
  * 负责 with FastAPI 后端进行通信
  */
 
-// 动态获取 API 基础地址
-// 如果在浏览器中运行，自动将 localhost 替换为当前访问的服务器 IP
-const normalizeApiUrl = (rawUrl: string, isHttpsPage: boolean, origin?: string) => {
-  const trimmedUrl = rawUrl.trim().replace(/^['"]|['"]$/g, '');
-
-  if (!trimmedUrl) {
-    return '';
-  }
-
-  // 支持协议省略写法：//host/api/v1
-  if (trimmedUrl.startsWith('//')) {
-    const protocol = isHttpsPage ? 'https:' : 'http:';
-    return `${protocol}${trimmedUrl}`.replace(/\/$/, '');
-  }
-
-  // 支持仅填写 host/path（如 47.114.88.90/api/v1）
-  if (!/^[a-z][a-z\d+.-]*:/i.test(trimmedUrl) && !trimmedUrl.startsWith('/')) {
-    const protocol = isHttpsPage ? 'https://' : 'http://';
-    return `${protocol}${trimmedUrl}`.replace(/\/$/, '');
-  }
-
-  try {
-    const normalizedUrl = new URL(trimmedUrl, origin);
-
-    if (isHttpsPage && normalizedUrl.protocol === 'http:') {
-      normalizedUrl.protocol = 'https:';
-    }
-
-    return normalizedUrl.toString().replace(/\/$/, '');
-  } catch {
-    return isHttpsPage ? trimmedUrl.replace(/^http:\/\//i, 'https://') : trimmedUrl;
-  }
-};
-
-export const getApiBaseUrl = () => {
-  const apiUrlFromEnv = import.meta.env.VITE_API_URL;
-
-  // 如果是浏览器环境
-  if (typeof window !== 'undefined') {
-    const isHttpsPage = window.location.protocol === 'https:';
-    const { hostname, origin } = window.location;
-
-    if (apiUrlFromEnv) {
-      const normalizedFromEnv = normalizeApiUrl(apiUrlFromEnv, isHttpsPage, origin);
-
-      // HTTPS 页面强制优先同源 API，避免任何构建期 http:// 配置导致 Mixed Content
-      if (isHttpsPage && /^http:\/\//i.test(normalizedFromEnv)) {
-        return `${origin}/api/v1`;
-      }
-
-      return normalizedFromEnv;
-    }
-
-    // 本地开发默认直连 FastAPI 的 8000 端口
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'http://localhost:8000/api/v1';
-    }
-
-    // 生产环境优先走同源地址，避免 HTTPS 页面触发 Mixed Content
-    return `${origin}/api/v1`;
-  }
-
-  if (apiUrlFromEnv) {
-    return normalizeApiUrl(apiUrlFromEnv, false);
-  }
-
-  return 'http://localhost:8000/api/v1';
-};
-
-export const API_BASE_URL = getApiBaseUrl();
-
-const getRuntimeSafeApiBaseUrl = () => {
+const getApiBaseUrl = (): string => {
   if (typeof window === 'undefined') {
-    return API_BASE_URL;
-  }
-
-  const { origin, protocol, hostname } = window.location;
-  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
-
-  // HTTPS 页面强制使用相对路径，避免 Mixed Content
-  if (protocol === 'https:' && !isLocalhost) {
     return '/api/v1';
   }
 
-  // 检查 API_BASE_URL 是否为 http，如果是则替换为 https
-  if (/^http:\/\//i.test(API_BASE_URL)) {
-    return API_BASE_URL.replace(/^http:\/\//i, 'https://');
+  const { protocol, hostname } = window.location;
+  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+
+  if (isLocalhost) {
+    return 'http://localhost:8000/api/v1';
   }
 
-  return API_BASE_URL;
+  if (protocol === 'https:') {
+    return '/api/v1';
+  }
+
+  return '/api/v1';
 };
 
-const joinApiPath = (path: string) => {
-  const base = getRuntimeSafeApiBaseUrl().replace(/\/$/, '');
+const joinApiPath = (path: string): string => {
+  const base = getApiBaseUrl().replace(/\/$/, '');
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   return `${base}${normalizedPath}`;
 };
@@ -156,7 +83,6 @@ export interface Target {
   description?: string;
   status: string;
   created_at: string;
-  // 兼容旧版 UI 字段
   is_active?: boolean;
   last_scanned?: string;
   critical_vulns?: number;
@@ -226,21 +152,18 @@ export interface DiscoveryScanStatus {
 }
 
 export const api = {
-  // 获取仪表盘统计数据
   async getStats(): Promise<DashboardStats> {
     const response = await fetch(joinApiPath('/stats/dashboard'));
     if (!response.ok) throw new Error('Failed to fetch stats');
     return response.json();
   },
 
-  // 获取任务列表
   async getTasks(): Promise<ScanTask[]> {
     const response = await fetch(joinApiPath('/tasks'));
     if (!response.ok) throw new Error('Failed to fetch tasks');
     return response.json();
   },
 
-  // 创建新扫描任务
   async createTask(url: string): Promise<ScanTask> {
     const response = await fetch(joinApiPath('/tasks'), {
       method: 'POST',
@@ -251,7 +174,6 @@ export const api = {
     return response.json();
   },
 
-  // 停止扫描任务
   async stopTask(taskId: number): Promise<void> {
     const response = await fetch(joinApiPath(`/tasks/${taskId}/stop`), {
       method: 'POST',
@@ -259,25 +181,21 @@ export const api = {
     if (!response.ok) throw new Error('Failed to stop task');
   },
 
-  // 删除扫描任务（同时会从报告列表中移除）
   async deleteTask(taskId: number): Promise<void> {
     const response = await fetch(joinApiPath(`/tasks/${taskId}`), { method: 'DELETE' });
     if (!response.ok) return parseErrorResponse(response, '删除任务失败');
   },
 
-  // 删除报告（删除对应任务及漏洞记录）
   async deleteReport(taskId: number): Promise<void> {
     const response = await fetch(joinApiPath(`/reports/${taskId}`), { method: 'DELETE' });
     if (!response.ok) return parseErrorResponse(response, '删除报告失败');
   },
 
-  // 删除目标
   async deleteTarget(targetId: number): Promise<void> {
     const response = await fetch(joinApiPath(`/discovery/targets/${targetId}`), { method: 'DELETE' });
     if (!response.ok) return parseErrorResponse(response, '删除目标失败');
   },
 
-  // 获取漏洞列表
   async getVulnerabilities(severity?: string): Promise<Vulnerability[]> {
     const url =
       severity
@@ -288,14 +206,12 @@ export const api = {
     return response.json();
   },
 
-  // 获取目标列表 (Discovery 模块)
   async getTargets(): Promise<Target[]> {
     const response = await fetch(joinApiPath('/discovery/targets'));
     if (!response.ok) throw new Error('Failed to fetch targets');
     return response.json();
   },
 
-  // 添加新目标 (Discovery 模块)
   async addTarget(url: string, description?: string): Promise<Target> {
     const response = await fetch(joinApiPath('/discovery/targets'), {
       method: 'POST',
@@ -306,21 +222,18 @@ export const api = {
     return response.json();
   },
 
-  // 获取建议的扫描网段（云/Docker 部署时可从环境变量配置 VPC 网段）
   async getDiscoverySuggestedRange(): Promise<{ network_range: string }> {
     const response = await fetch(joinApiPath('/discovery/suggested-range'));
     if (!response.ok) return { network_range: '192.168.1.0/24' };
     return response.json();
   },
 
-  // 获取资产发现列表 (Discovery 模块)
   async getAssets(): Promise<Asset[]> {
     const response = await fetch(joinApiPath('/discovery/assets'));
     if (!response.ok) throw new Error('Failed to fetch assets');
     return response.json();
   },
 
-  // 触发网络发现扫描 (Discovery 模块)
   async startDiscoveryScan(networkRange: string = "192.168.1.0/24", force: boolean = false): Promise<{ status: string; message: string; task_id: string }> {
     const query = new URLSearchParams({
       network_range: networkRange,
@@ -335,7 +248,6 @@ export const api = {
     return response.json();
   },
 
-  // 获取网络扫描状态 (Discovery 模块)
   async getDiscoveryScanStatus(): Promise<DiscoveryScanStatus> {
     const response = await fetch(joinApiPath('/discovery/scan/status'));
     if (!response.ok) {
@@ -344,7 +256,6 @@ export const api = {
     return response.json();
   },
 
-  // 停止网络扫描 (Discovery 模块)
   async stopDiscoveryScan(): Promise<{ status: string; message: string }> {
     const response = await fetch(joinApiPath('/discovery/scan/stop'), {
       method: 'POST',
@@ -355,7 +266,6 @@ export const api = {
     return response.json();
   },
 
-  // 清除网络发现结果 (Discovery 模块)
   async clearDiscoveryResults(): Promise<{ deleted: number; message: string }> {
     const response = await fetch(joinApiPath('/discovery/results'), {
       method: 'DELETE',
@@ -366,21 +276,18 @@ export const api = {
     return response.json();
   },
 
-  // 获取报告列表
   async getReports(): Promise<Report[]> {
     const response = await fetch(joinApiPath('/reports'));
     if (!response.ok) throw new Error('Failed to fetch reports');
     return response.json();
   },
 
-  // 获取用户列表
   async getUsers(): Promise<User[]> {
     const response = await fetch(joinApiPath('/users'));
     if (!response.ok) throw new Error('Failed to fetch users');
     return response.json();
   },
 
-  // 添加新用户
   async addUser(username: string, email: string, role: string, status: string = 'Active'): Promise<User> {
     const response = await fetch(joinApiPath('/users'), {
       method: 'POST',
@@ -394,14 +301,12 @@ export const api = {
     return response.json();
   },
 
-  // 获取扫描配置列表
   async getProfiles(): Promise<ScanProfile[]> {
     const response = await fetch(joinApiPath('/profiles'));
     if (!response.ok) throw new Error('Failed to fetch profiles');
     return response.json();
   },
 
-  // 添加新扫描配置
   async addProfile(name: string, description: string, speed: string, vulnerability_types: string[]): Promise<ScanProfile> {
     const response = await fetch(joinApiPath('/profiles'), {
       method: 'POST',

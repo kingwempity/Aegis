@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api, API_BASE_URL, Report } from '../api';
+import { api, getApiResourceUrl, Report } from '../api';
 import { Trash2 } from './Icons';
 
 const Reports: React.FC = () => {
@@ -33,7 +33,7 @@ const Reports: React.FC = () => {
 
   const handleViewReport = (taskId: number) => {
     // 在新窗口打开报告
-    window.open(`${API_BASE_URL}/reports/${taskId}/html`, '_blank');
+    window.open(getApiResourceUrl(`/reports/${taskId}/html`), '_blank');
   };
 
   return (

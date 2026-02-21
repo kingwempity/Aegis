@@ -8,13 +8,16 @@ const getApiBaseUrl = (): string => {
     return '/api/v1';
   }
 
-  const { protocol, hostname } = window.location;
+  const { protocol, hostname, port } = window.location;
   const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
 
+  // 本地开发环境
   if (isLocalhost) {
     return 'http://localhost:8000/api/v1';
   }
 
+  // 生产环境：强制使用相对路径，让浏览器根据当前页面协议自动选择
+  // 这样在 HTTPS 页面下，请求会自动变成 HTTPS
   return '/api/v1';
 };
 

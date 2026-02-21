@@ -16,10 +16,10 @@ const getApiBaseUrl = (): string => {
   }
 
   if (protocol === 'https:') {
-    return '/api/v1';
+    return `https://${hostname}/api/v1`;
   }
 
-  return '/api/v1';
+  return `http://${hostname}/api/v1`;
 };
 
 const joinApiPath = (path: string): string => {

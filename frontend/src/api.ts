@@ -74,6 +74,30 @@ export const getApiBaseUrl = () => {
 
 export const API_BASE_URL = getApiBaseUrl();
 
+const getRuntimeSafeApiBaseUrl = () => {
+  if (typeof window === 'undefined') {
+    return API_BASE_URL;
+  }
+
+  const { origin, protocol, hostname } = window.location;
+  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+
+  // HTTPS 页面禁止使用任何 http:// API，统一回退到同源 API
+  if (protocol === 'https:' && /^http:\/\//i.test(API_BASE_URL) && !isLocalhost) {
+    return `${origin}/api/v1`;
+  }
+
+  return API_BASE_URL;
+};
+
+const joinApiPath = (path: string) => {
+  const base = getRuntimeSafeApiBaseUrl().replace(/\/$/, '');
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${normalizedPath}`;
+};
+
+export const getApiResourceUrl = (path: string) => joinApiPath(path);
+
 export class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -199,21 +223,21 @@ export interface DiscoveryScanStatus {
 export const api = {
   // 获取仪表盘统计数据
   async getStats(): Promise<DashboardStats> {
-    const response = await fetch(`${API_BASE_URL}/stats/dashboard`);
+    const response = await fetch(joinApiPath('/stats/dashboard'));
     if (!response.ok) throw new Error('Failed to fetch stats');
     return response.json();
   },
 
   // 获取任务列表
   async getTasks(): Promise<ScanTask[]> {
-    const response = await fetch(`${API_BASE_URL}/tasks`);
+    const response = await fetch(joinApiPath('/tasks'));
     if (!response.ok) throw new Error('Failed to fetch tasks');
     return response.json();
   },
 
   // 创建新扫描任务
   async createTask(url: string): Promise<ScanTask> {
-    const response = await fetch(`${API_BASE_URL}/tasks`, {
+    const response = await fetch(joinApiPath('/tasks'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ target_url: url }),
@@ -224,7 +248,7 @@ export const api = {
 
   // 停止扫描任务
   async stopTask(taskId: number): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/stop`, {
+    const response = await fetch(joinApiPath(`/tasks/${taskId}/stop`), {
       method: 'POST',
     });
     if (!response.ok) throw new Error('Failed to stop task');
@@ -232,19 +256,19 @@ export const api = {
 
   // 删除扫描任务（同时会从报告列表中移除）
   async deleteTask(taskId: number): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, { method: 'DELETE' });
+    const response = await fetch(joinApiPath(`/tasks/${taskId}`), { method: 'DELETE' });
     if (!response.ok) return parseErrorResponse(response, '删除任务失败');
   },
 
   // 删除报告（删除对应任务及漏洞记录）
   async deleteReport(taskId: number): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/reports/${taskId}`, { method: 'DELETE' });
+    const response = await fetch(joinApiPath(`/reports/${taskId}`), { method: 'DELETE' });
     if (!response.ok) return parseErrorResponse(response, '删除报告失败');
   },
 
   // 删除目标
   async deleteTarget(targetId: number): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/discovery/targets/${targetId}`, { method: 'DELETE' });
+    const response = await fetch(joinApiPath(`/discovery/targets/${targetId}`), { method: 'DELETE' });
     if (!response.ok) return parseErrorResponse(response, '删除目标失败');
   },
 
@@ -252,8 +276,8 @@ export const api = {
   async getVulnerabilities(severity?: string): Promise<Vulnerability[]> {
     const url =
       severity
-        ? `${API_BASE_URL}/vulnerabilities?severity=${severity}`
-        : `${API_BASE_URL}/vulnerabilities`;
+        ? joinApiPath(`/vulnerabilities?severity=${encodeURIComponent(severity)}`)
+        : joinApiPath('/vulnerabilities');
     const response = await fetch(url);
     if (!response.ok) throw new Error('Failed to fetch vulnerabilities');
     return response.json();
@@ -261,14 +285,14 @@ export const api = {
 
   // 获取目标列表 (Discovery 模块)
   async getTargets(): Promise<Target[]> {
-    const response = await fetch(`${API_BASE_URL}/discovery/targets`);
+    const response = await fetch(joinApiPath('/discovery/targets'));
     if (!response.ok) throw new Error('Failed to fetch targets');
     return response.json();
   },
 
   // 添加新目标 (Discovery 模块)
   async addTarget(url: string, description?: string): Promise<Target> {
-    const response = await fetch(`${API_BASE_URL}/discovery/targets`, {
+    const response = await fetch(joinApiPath('/discovery/targets'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url, description }),
@@ -279,14 +303,14 @@ export const api = {
 
   // 获取建议的扫描网段（云/Docker 部署时可从环境变量配置 VPC 网段）
   async getDiscoverySuggestedRange(): Promise<{ network_range: string }> {
-    const response = await fetch(`${API_BASE_URL}/discovery/suggested-range`);
+    const response = await fetch(joinApiPath('/discovery/suggested-range'));
     if (!response.ok) return { network_range: '192.168.1.0/24' };
     return response.json();
   },
 
   // 获取资产发现列表 (Discovery 模块)
   async getAssets(): Promise<Asset[]> {
-    const response = await fetch(`${API_BASE_URL}/discovery/assets`);
+    const response = await fetch(joinApiPath('/discovery/assets'));
     if (!response.ok) throw new Error('Failed to fetch assets');
     return response.json();
   },
@@ -297,7 +321,7 @@ export const api = {
       network_range: networkRange,
       force: String(force),
     });
-    const response = await fetch(`${API_BASE_URL}/discovery/scan/start?${query.toString()}`, {
+    const response = await fetch(joinApiPath(`/discovery/scan/start?${query.toString()}`), {
       method: 'POST',
     });
     if (!response.ok) {
@@ -308,7 +332,7 @@ export const api = {
 
   // 获取网络扫描状态 (Discovery 模块)
   async getDiscoveryScanStatus(): Promise<DiscoveryScanStatus> {
-    const response = await fetch(`${API_BASE_URL}/discovery/scan/status`);
+    const response = await fetch(joinApiPath('/discovery/scan/status'));
     if (!response.ok) {
       return parseErrorResponse(response, '获取扫描状态失败');
     }
@@ -317,7 +341,7 @@ export const api = {
 
   // 停止网络扫描 (Discovery 模块)
   async stopDiscoveryScan(): Promise<{ status: string; message: string }> {
-    const response = await fetch(`${API_BASE_URL}/discovery/scan/stop`, {
+    const response = await fetch(joinApiPath('/discovery/scan/stop'), {
       method: 'POST',
     });
     if (!response.ok) {
@@ -328,7 +352,7 @@ export const api = {
 
   // 清除网络发现结果 (Discovery 模块)
   async clearDiscoveryResults(): Promise<{ deleted: number; message: string }> {
-    const response = await fetch(`${API_BASE_URL}/discovery/results`, {
+    const response = await fetch(joinApiPath('/discovery/results'), {
       method: 'DELETE',
     });
     if (!response.ok) {
@@ -339,21 +363,21 @@ export const api = {
 
   // 获取报告列表
   async getReports(): Promise<Report[]> {
-    const response = await fetch(`${API_BASE_URL}/reports`);
+    const response = await fetch(joinApiPath('/reports'));
     if (!response.ok) throw new Error('Failed to fetch reports');
     return response.json();
   },
 
   // 获取用户列表
   async getUsers(): Promise<User[]> {
-    const response = await fetch(`${API_BASE_URL}/users`);
+    const response = await fetch(joinApiPath('/users'));
     if (!response.ok) throw new Error('Failed to fetch users');
     return response.json();
   },
 
   // 添加新用户
   async addUser(username: string, email: string, role: string, status: string = 'Active'): Promise<User> {
-    const response = await fetch(`${API_BASE_URL}/users`, {
+    const response = await fetch(joinApiPath('/users'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, email, role, status }),
@@ -367,14 +391,14 @@ export const api = {
 
   // 获取扫描配置列表
   async getProfiles(): Promise<ScanProfile[]> {
-    const response = await fetch(`${API_BASE_URL}/profiles`);
+    const response = await fetch(joinApiPath('/profiles'));
     if (!response.ok) throw new Error('Failed to fetch profiles');
     return response.json();
   },
 
   // 添加新扫描配置
   async addProfile(name: string, description: string, speed: string, vulnerability_types: string[]): Promise<ScanProfile> {
-    const response = await fetch(`${API_BASE_URL}/profiles`, {
+    const response = await fetch(joinApiPath('/profiles'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, description, speed, vulnerability_types }),

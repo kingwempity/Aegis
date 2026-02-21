@@ -82,9 +82,14 @@ const getRuntimeSafeApiBaseUrl = () => {
   const { origin, protocol, hostname } = window.location;
   const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
 
-  // HTTPS 页面禁止使用任何 http:// API，统一回退到同源 API
-  if (protocol === 'https:' && /^http:\/\//i.test(API_BASE_URL) && !isLocalhost) {
-    return `${origin}/api/v1`;
+  // HTTPS 页面强制使用相对路径，避免 Mixed Content
+  if (protocol === 'https:' && !isLocalhost) {
+    return '/api/v1';
+  }
+
+  // 检查 API_BASE_URL 是否为 http，如果是则替换为 https
+  if (/^http:\/\//i.test(API_BASE_URL)) {
+    return API_BASE_URL.replace(/^http:\/\//i, 'https://');
   }
 
   return API_BASE_URL;

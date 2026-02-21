@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>测试导出功能</title>
+</head>
+<body>
+    <h1>测试报告导出功能</h1>
+    <button onclick="testExport()">测试PDF导出</button>
+    <button onclick="testJSON()">测试JSON导出</button>
+    <button onclick="testHTML()">测试HTML导出</button>
+    <button onclick="testMarkdown()">测试Markdown导出</button>
+
+    <script>
+        // 模拟报告数据
+        const mockReport = {
+            task_id: "task_20251221_c64066",
+            target_url: "http://localhost:8080/login.php",
+            scan_time: "2025-12-21T17:25:41.037458+00:00",
+            scan_duration: 0,
+            summary: {
+                total_vulnerabilities: 1,
+                critical: 1,
+                high: 0,
+                medium: 0,
+                low: 0,
+                info: 0,
+                pages_scanned: 1,
+                modules_executed: 1
+            },
+            vulnerabilities: [{
+                vulnerability_id: "vuln_ccf00a1d",
+                name: "SQL Injection (POST)",
+                type: "sql_injection",
+                url: "http://localhost:8080/login.php",
+                method: "POST",
+                parameter: "username",
+                payload: "admin' UNION SELECT 'db_name', 'db_user', 'db_version' -- ",
+                evidence: "SQL injection detected in POST response",
+                cvss_score: 9.8,
+                cvss_vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+                risk_level: "critical",
+                description: "SQL injection vulnerability detected in login.php POST request",
+                remediation: "Use parameterized queries or ORM to prevent SQL injection attacks.",
+                references: ["https://owasp.org/www-community/attacks/SQL_Injection"],
+                attack_steps: [{
+                    step: 1,
+                    action: "Sent payload: admin' UNION SELECT 'db_name', 'db_user', 'db_version' -- ",
+                    response_code: 200,
+                    response_time_ms: 150
+                }],
+                detected_at: "2025-12-21T17:25:40.992554Z"
+            }],
+            technology_stack: {
+                server: "Unknown",
+                database: "Unknown",
+                language: "PHP",
+                framework: "Unknown"
+            }
+        };
+
+        function downloadBlob(blob, filename) {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }
+
+        async function testExport() {
+            try {
+                const { jsPDF } = await import('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+                const html2canvas = (await import('https://html2canvas.hertzen.com/dist/html2canvas.min.js')).default;
+
+                // 创建临时HTML元素
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = `
+                    <h1>测试报告</h1>
+                    <p>任务ID: ${mockReport.task_id}</p>
+                    <p>漏洞数量: ${mockReport.summary.total_vulnerabilities}</p>
+                `;
+                tempDiv.style.position = 'absolute';
+                tempDiv.style.left = '-9999px';
+                tempDiv.style.width = '800px';
+                document.body.appendChild(tempDiv);
+
+                const canvas = await html2canvas(tempDiv);
+                document.body.removeChild(tempDiv);
+
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                const imgData = canvas.toDataURL('image/png');
+                const imgWidth = 210;
+                const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+                pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+                const pdfBlob = pdf.output('blob');
+
+                downloadBlob(pdfBlob, 'test_report.pdf');
+                alert('PDF导出测试完成');
+            } catch (error) {
+                console.error('PDF导出失败:', error);
+                alert('PDF导出失败: ' + error.message);
+            }
+        }
+
+        function testJSON() {
+            const jsonData = JSON.stringify(mockReport, null, 2);
+            const blob = new Blob([jsonData], { type: 'application/json;charset=utf-8' });
+            downloadBlob(blob, 'test_report.json');
+            alert('JSON导出测试完成');
+        }
+
+        function testHTML() {
+            const htmlContent = `
+                <!DOCTYPE html>
+                <html>
+                <head><title>测试报告</title></head>
+                <body>
+                    <h1>测试报告</h1>
+                    <p>任务ID: ${mockReport.task_id}</p>
+                    <p>漏洞数量: ${mockReport.summary.total_vulnerabilities}</p>
+                </body>
+                </html>
+            `;
+            const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+            downloadBlob(blob, 'test_report.html');
+            alert('HTML导出测试完成');
+        }
+
+        function testMarkdown() {
+            const markdown = `# 测试报告
+
+任务ID: ${mockReport.task_id}
+漏洞数量: ${mockReport.summary.total_vulnerabilities}
+`;
+            const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+            downloadBlob(blob, 'test_report.md');
+            alert('Markdown导出测试完成');
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+﻿# 鏍稿績渚濊禆 - 鏈€灏忓寲瀹夎浠ラ伩鍏嶅啿绐?
+Django>=4.2,<7.0
+djangorestframework>=3.14.0
+django-cors-headers>=3.13.0
+djangorestframework-simplejwt>=5.2.0
+PyJWT>=2.6.0
+mysqlclient>=2.1.0
+channels>=4.0.0
+channels-redis>=4.1.0
+redis>=4.5.3
+requests>=2.31.0
+Pillow>=9.0.0
+python-dotenv>=1.0.0
+django-redis>=5.2.0
+# HTML 瑙ｆ瀽锛圔eautifulSoup锛岀敤浜庢壂鎻忓紩鎿庯級
+beautifulsoup4>=4.12.0

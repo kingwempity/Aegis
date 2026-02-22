@@ -86,10 +86,10 @@ const Users: React.FC = () => {
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-100">
+            <tr className="bg-gray-50 border-b border-gray-100 rounded-t-2xl">
               <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">用户名</th>
               <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">邮箱</th>
               <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">角色</th>

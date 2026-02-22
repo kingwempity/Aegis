@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { api, ScanProfile } from '../api';
+import { api } from '../api';
+import type { ScanProfile } from '../api';
 import AddProfileModal from './AddProfileModal';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
 import { Plus, Settings2, Trash2, ShieldCheck } from './Icons';
@@ -8,6 +9,7 @@ const ScanProfiles: React.FC = () => {
   const [profiles, setProfiles] = useState<ScanProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingProfile, setEditingProfile] = useState<ScanProfile | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -25,6 +27,26 @@ const ScanProfiles: React.FC = () => {
     fetchData();
   }, []);
 
+  const handleEditProfile = (profile: ScanProfile) => {
+    setEditingProfile(profile);
+    setIsModalOpen(true);
+  };
+
+  const handleDeleteProfile = async (profile: ScanProfile) => {
+    if (!window.confirm(`确定要删除配置「${profile.name}」吗？`)) return;
+    try {
+      await api.deleteProfile(profile.id);
+      fetchData();
+    } catch (error: any) {
+      alert(error?.message || '删除配置失败');
+    }
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingProfile(null);
+  };
+
   return (
     <div className="flex flex-col gap-8 max-w-7xl mx-auto p-4 md:p-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -33,7 +55,7 @@ const ScanProfiles: React.FC = () => {
           <p className="text-gray-400 mt-1 font-medium">管理和自定义您的漏洞扫描策略</p>
         </div>
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => { setEditingProfile(null); setIsModalOpen(true); }}
           className="flex items-center gap-2 px-6 py-3.5 bg-[#ff6b00] text-white rounded-2xl font-bold text-sm hover:bg-[#e66000] transition-all shadow-lg shadow-orange-200 active:scale-95"
         >
           <Plus size={18} strokeWidth={3} />
@@ -53,7 +75,7 @@ const ScanProfiles: React.FC = () => {
             </div>
             <p className="text-gray-400 font-bold">暂无扫描配置</p>
             <button 
-              onClick={() => setIsModalOpen(true)}
+              onClick={() => { setEditingProfile(null); setIsModalOpen(true); }}
               className="mt-4 text-[#ff6b00] font-bold hover:underline"
             >
               立即创建一个
@@ -98,10 +120,16 @@ const ScanProfiles: React.FC = () => {
               </div>
 
               <div className="flex gap-3 mt-2">
-                <button className="flex-1 py-3 bg-gray-50 text-gray-600 rounded-xl text-xs font-bold hover:bg-gray-100 transition-all flex items-center justify-center gap-2">
+                <button 
+                  onClick={() => handleEditProfile(profile)}
+                  className="flex-1 py-3 bg-gray-50 text-gray-600 rounded-xl text-xs font-bold hover:bg-gray-100 transition-all flex items-center justify-center gap-2"
+                >
                   编辑配置
                 </button>
-                <button className="px-4 py-3 bg-gray-50 text-gray-400 rounded-xl text-xs font-bold hover:text-red-500 hover:bg-red-50 transition-all">
+                <button 
+                  onClick={() => handleDeleteProfile(profile)}
+                  className="px-4 py-3 bg-gray-50 text-gray-400 rounded-xl text-xs font-bold hover:text-red-500 hover:bg-red-50 transition-all"
+                >
                   <Trash2 size={16} />
                 </button>
               </div>
@@ -112,8 +140,9 @@ const ScanProfiles: React.FC = () => {
 
       <AddProfileModal 
         isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
+        onClose={handleCloseModal} 
         onSuccess={fetchData}
+        editingProfile={editingProfile}
       />
     </div>
   );

@@ -303,4 +303,19 @@ export const api = {
     if (!response.ok) throw new Error('Failed to add profile');
     return response.json();
   },
+
+  async updateProfile(id: number, name: string, description: string, speed: string, vulnerability_types: string[]): Promise<ScanProfile> {
+    const response = await fetch(joinApiPath(`/profiles/${id}`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description, speed, vulnerability_types }),
+    });
+    if (!response.ok) throw new Error('Failed to update profile');
+    return response.json();
+  },
+
+  async deleteProfile(id: number): Promise<void> {
+    const response = await fetch(joinApiPath(`/profiles/${id}`), { method: 'DELETE' });
+    if (!response.ok) throw new Error('Failed to delete profile');
+  },
 };

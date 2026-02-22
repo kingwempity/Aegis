@@ -4,20 +4,8 @@
  */
 
 const getApiBaseUrl = (): string => {
-  if (typeof window === 'undefined') {
-    return '/api/v1';
-  }
-
-  const { protocol, hostname, port } = window.location;
-  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
-
-  // 本地开发环境
-  if (isLocalhost) {
-    return 'http://localhost:8000/api/v1';
-  }
-
-  // 生产环境：强制使用相对路径，让浏览器根据当前页面协议自动选择
-  // 这样在 HTTPS 页面下，请求会自动变成 HTTPS
+  // 始终使用相对路径，让浏览器根据当前页面的协议（HTTP 或 HTTPS）和域名自动匹配
+  // 这可以完美解决 Mixed Content 问题，并支持各种反向代理场景
   return '/api/v1';
 };
 

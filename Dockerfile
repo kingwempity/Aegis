@@ -1,8 +1,14 @@
 # 第一阶段：前端构建
 FROM node:22-slim AS frontend-builder
 WORKDIR /frontend
+
+# 配置 npm/pnpm 使用国内镜像源加速
+RUN npm config set registry https://registry.npmmirror.com && \
+    npm install -g pnpm && \
+    pnpm config set registry https://registry.npmmirror.com
+
 COPY frontend/package*.json ./
-RUN npm install -g pnpm && pnpm install
+RUN pnpm install
 COPY frontend/ ./
 RUN pnpm run build
 
@@ -32,7 +38,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
-# 安装 Playwright 浏览器
+# 安装 Playwright 浏览器（使用国内镜像加速）
+ENV PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright
 RUN playwright install chromium
 
 # 复制后端代码

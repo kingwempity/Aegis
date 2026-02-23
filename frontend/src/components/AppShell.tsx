@@ -48,14 +48,33 @@ const AppShell: React.FC<AppShellProps> = ({
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showAllNotifications, setShowAllNotifications] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
 
   // 模拟通知数据
-  const [notifications] = useState([
+  const [notifications, setNotifications] = useState([
     { id: 1, type: 'success', title: '扫描完成', message: '目标 example.com 的扫描已完成', time: '5分钟前', read: false },
     { id: 2, type: 'warning', title: '发现漏洞', message: '在 target.com 发现 2 个高危漏洞', time: '15分钟前', read: false },
     { id: 3, type: 'info', title: '系统更新', message: '系统已更新至最新版本 v2.1.0', time: '1小时前', read: true },
   ]);
+
+  // 标记单条通知为已读
+  const markAsRead = (id: number) => {
+    setNotifications(prev => 
+      prev.map(n => n.id === id ? { ...n, read: true } : n)
+    );
+  };
+
+  // 标记所有通知为已读
+  const markAllAsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  };
+
+  // 查看全部通知
+  const handleViewAllNotifications = () => {
+    setShowNotifications(false);
+    setShowAllNotifications(true);
+  };
 
   // 监听窗口大小以自动处理移动端适配
   useEffect(() => {
@@ -86,6 +105,7 @@ const AppShell: React.FC<AppShellProps> = ({
       if (event.key === 'Escape') {
         setShowHelpModal(false);
         setShowNotifications(false);
+        setShowAllNotifications(false);
       }
     };
     document.addEventListener('keydown', handleEsc);
@@ -249,6 +269,7 @@ const AppShell: React.FC<AppShellProps> = ({
                       {notifications.map((notification) => (
                         <div 
                           key={notification.id}
+                          onClick={() => markAsRead(notification.id)}
                           className={`px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer ${
                             !notification.read ? 'bg-orange-50/50' : ''
                           }`}
@@ -267,9 +288,20 @@ const AppShell: React.FC<AppShellProps> = ({
                         </div>
                       ))}
                     </div>
-                    <div className="px-4 py-3 border-t border-gray-100">
-                      <button className="w-full text-center text-sm text-[#ff6b00] font-medium hover:text-[#e66000] transition-colors">
-                        查看全部通知
+                    <div className="px-4 py-3 border-t border-gray-100 flex gap-2">
+                      {unreadCount > 0 && (
+                        <button 
+                          onClick={markAllAsRead}
+                          className="flex-1 text-center text-sm text-gray-500 font-medium hover:text-gray-700 transition-colors"
+                        >
+                          全部已读
+                        </button>
+                      )}
+                      <button 
+                        onClick={handleViewAllNotifications}
+                        className="flex-1 text-center text-sm text-[#ff6b00] font-medium hover:text-[#e66000] transition-colors"
+                      >
+                        查看全部
                       </button>
                     </div>
                   </div>
@@ -284,6 +316,92 @@ const AppShell: React.FC<AppShellProps> = ({
           {children}
         </main>
       </div>
+
+      {/* ==================== 全部通知模态框 ==================== */}
+      {showAllNotifications && (
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setShowAllNotifications(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 模态框头部 */}
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-[#ff6b00]/10 rounded-lg flex items-center justify-center">
+                  <Bell size={24} className="text-[#ff6b00]" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800">全部通知</h2>
+                  <p className="text-sm text-gray-500">共 {notifications.length} 条通知</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {unreadCount > 0 && (
+                  <button 
+                    onClick={markAllAsRead}
+                    className="px-3 py-1.5 text-sm text-[#ff6b00] font-medium hover:bg-[#ff6b00]/10 rounded-lg transition-colors"
+                  >
+                    全部标记已读
+                  </button>
+                )}
+                <button 
+                  onClick={() => setShowAllNotifications(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X size={20} className="text-gray-500" />
+                </button>
+              </div>
+            </div>
+            
+            {/* 模态框内容 */}
+            <div className="max-h-[60vh] overflow-y-auto">
+              {notifications.length === 0 ? (
+                <div className="py-12 text-center text-gray-500">
+                  <Bell size={48} className="mx-auto mb-4 text-gray-300" />
+                  <p>暂无通知</p>
+                </div>
+              ) : (
+                notifications.map((notification) => (
+                  <div 
+                    key={notification.id}
+                    onClick={() => markAsRead(notification.id)}
+                    className={`px-6 py-4 border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer ${
+                      !notification.read ? 'bg-orange-50/50' : ''
+                    }`}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="mt-1">{getNotificationIcon(notification.type)}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-base font-semibold text-gray-800">{notification.title}</p>
+                          {!notification.read && (
+                            <span className="px-2 py-0.5 text-xs bg-[#ff6b00]/10 text-[#ff6b00] rounded-full font-medium">未读</span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600 mt-1">{notification.message}</p>
+                        <p className="text-xs text-gray-400 mt-2">{notification.time}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            
+            {/* 模态框底部 */}
+            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50">
+              <button 
+                onClick={() => setShowAllNotifications(false)}
+                className="w-full px-4 py-2 bg-[#ff6b00] text-white rounded-lg text-sm font-medium hover:bg-[#e66000] transition-colors"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ==================== 帮助模态框 ==================== */}
       {showHelpModal && (

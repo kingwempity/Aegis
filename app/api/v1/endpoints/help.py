@@ -11,6 +11,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
+from datetime import datetime
 
 from app.database import get_db
 from app.models.help import HelpContent
@@ -53,8 +54,8 @@ class HelpContentUpdate(BaseModel):
 class HelpContentResponse(HelpContentBase):
     """帮助内容响应模型。"""
     id: int
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True

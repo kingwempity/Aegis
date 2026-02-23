@@ -334,10 +334,13 @@ async def logout(user: dict = Depends(require_auth)):
     return {"success": True, "message": "登出成功"}
 
 
+@router.get("/verify-token")
 @router.post("/verify-token")
 async def verify_token(user: dict = Depends(get_current_user)):
     """
     验证 Token 是否有效
+    
+    支持 GET 和 POST 方法，以适应不同客户端调用方式。
     
     Args:
         user: 当前用户（通过依赖注入获取）

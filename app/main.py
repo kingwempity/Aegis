@@ -19,6 +19,7 @@ from app.api.v1.endpoints import (
 from app.db.database import engine, Base, SessionLocal
 from app.models import discovery as discovery_model
 from app.models.help import HelpContent
+from app.models.task import ScanTask, Vulnerability
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("uvicorn")

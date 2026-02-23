@@ -1,4 +1,12 @@
+/**
+ * Aegis 主应用组件
+ * 
+ * 管理应用的整体布局和认证状态。
+ */
+
 import React, { useState } from 'react';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import Login from './components/Login';
 import AppShell from './components/AppShell';
 import Dashboard from './components/Dashboard';
 import TaskList from './components/TaskList';
@@ -10,10 +18,32 @@ import Users from './components/Users';
 import ScanProfiles from './components/ScanProfiles';
 import NewScanModal from './components/NewScanModal';
 
-const App: React.FC = () => {
+/**
+ * 主应用内容组件（在 AuthProvider 内部）
+ */
+const AppContent: React.FC = () => {
+  const { isAuthenticated, isLoading } = useAuth();
   const [currentPage, setCurrentPage] = useState<'overview' | 'discovery' | 'targets' | 'scans' | 'vulnerabilities' | 'reports' | 'users' | 'settings'>('overview');
   const [isNewScanModalOpen, setIsNewScanModalOpen] = useState(false);
 
+  // 加载中状态
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#1a1d2e] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-[#ff6b00]/30 border-t-[#ff6b00] rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400">加载中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 未登录状态，显示登录页面
+  if (!isAuthenticated) {
+    return <Login onLoginSuccess={() => {}} />;
+  }
+
+  // 已登录状态，显示主应用
   const navItems = [
     {
       icon: 'overview',
@@ -123,6 +153,19 @@ const App: React.FC = () => {
         onSuccess={handleNewScanSuccess}
       />
     </>
+  );
+};
+
+/**
+ * App 根组件
+ * 
+ * 包裹 AuthProvider 提供认证上下文
+ */
+const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 };
 

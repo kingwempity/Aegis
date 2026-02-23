@@ -13,7 +13,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.api.v1.endpoints import (
     tasks, reports, stats, vulnerabilities, ws, 
     discovery as discovery_router, 
-    users, profiles, auth
+    users, profiles, auth, help
 )
 from app.db.database import engine, Base
 from app.models import discovery as discovery_model

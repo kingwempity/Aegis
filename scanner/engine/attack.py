@@ -4,11 +4,21 @@ scanner.engine.attack
 模拟攻击引擎核心模块：
 1) 攻击脚本生成 (AttackScriptGenerator) - 智能payload生成与编码
 2) 攻击路径探索 (AttackPathExplorer) - 多维度路径优先级算法
-3) Payload编码器 (PayloadEncoder) - 多种编码方式支持
-4) 上下文感知引擎 (ContextAwareEngine) - 基于响应动态调整策略
+3) 攻击路径搜索算法 (AttackPathSearchAlgorithm) - 基于A*的启发式最优路径搜索
+4) Payload编码器 (PayloadEncoder) - 多种编码方式支持
+5) 上下文感知引擎 (ContextAwareEngine) - 基于响应动态调整策略
 
 保持无害化扫描：仅生成验证型 payload，不执行破坏性命令。
 
+算法核心思想：
+    攻击路径探索算法采用启发式搜索策略（类似A*），通过综合评价函数
+    f(n) = g(n) + h(n) 引导搜索方向，优先探索更有可能形成最优攻击路径的节点。
+    
+    算法流程：
+    1. 状态初始化 - 构建优先队列，初始化代价参数
+    2. 循环搜索与节点扩展 - 取出最优节点，判断是否到达目标
+    3. 启发式扩展与代价计算 - 计算g(n)、h(n)、f(n)，更新节点状态
+    4. 路径回溯与最优路径输出 - 从目标节点反向回溯至起始节点
 
 """
 
@@ -16,13 +26,17 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import heapq
+import math
 import random
 import re
 import string
+import time
 import urllib.parse
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Any, Optional, Callable, Set, Tuple
+from typing import Dict, List, Any, Optional, Callable, Set, Tuple, Generic, TypeVar
 from collections import defaultdict
 import logging
 import json
@@ -1123,7 +1137,1023 @@ class AttackPathExplorer:
         }
 
 
+# =============================================================================
+# 攻击路径搜索算法（基于A*的启发式最优路径搜索）
+# =============================================================================
+
+@dataclass
+class AttackPathNode:
+    """
+    攻击路径节点实体。
+    
+    表示攻击路径搜索空间中的一个节点，包含从起始节点到当前节点的
+    累计代价、启发式代价估计以及综合评价函数值。
+    
+    Attributes:
+        node_id: 节点唯一标识符（通常是URL或路径）
+        url: 完整URL
+        method: HTTP方法
+        g_cost: 累计代价 g(n)，从起始节点到当前节点的实际攻击代价
+        h_cost: 启发式代价 h(n)，从当前节点到目标节点的预期攻击成本
+        f_cost: 综合评价函数 f(n) = g(n) + h(n)
+        parent: 父节点引用，用于路径回溯
+        depth: 节点深度（从起始节点开始的跳数）
+        attack_vector: 关联的攻击向量信息
+        vulnerabilities: 在该节点发现的漏洞列表
+        visited: 是否已被访问/扩展
+        timestamp: 节点创建时间戳
+        
+    Notes:
+        - g(n) 代表已知的实际代价，随路径扩展累加
+        - h(n) 是对剩余代价的估计，需要满足可采纳性（admissible）
+        - f(n) 用于优先队列排序，值越小优先级越高
+    """
+    node_id: str
+    url: str
+    method: str = "GET"
+    g_cost: float = 0.0
+    h_cost: float = 0.0
+    f_cost: float = 0.0
+    parent: Optional["AttackPathNode"] = None
+    depth: int = 0
+    attack_vector: Optional[Dict[str, Any]] = None
+    vulnerabilities: List[Dict[str, Any]] = field(default_factory=list)
+    visited: bool = False
+    timestamp: float = field(default_factory=time.time)
+    
+    def __lt__(self, other: "AttackPathNode") -> bool:
+        """
+        小于比较运算符，用于优先队列排序。
+        
+        优先级规则：
+        1. f(n) 值较小的优先
+        2. f(n) 相等时，h(n) 较小的优先（更接近目标）
+        """
+        if self.f_cost != other.f_cost:
+            return self.f_cost < other.f_cost
+        return self.h_cost < other.h_cost
+    
+    def __eq__(self, other: object) -> bool:
+        """相等比较，基于节点ID"""
+        if not isinstance(other, AttackPathNode):
+            return False
+        return self.node_id == other.node_id
+    
+    def __hash__(self) -> int:
+        """哈希值，基于节点ID"""
+        return hash(self.node_id)
+    
+    def update_f_cost(self) -> None:
+        """更新综合评价函数值 f(n) = g(n) + h(n)"""
+        self.f_cost = self.g_cost + self.h_cost
+    
+    def get_path(self) -> List["AttackPathNode"]:
+        """
+        从当前节点回溯到起始节点，获取完整路径。
+        
+        Returns:
+            从起始节点到当前节点的路径列表
+        """
+        path = []
+        current: Optional[AttackPathNode] = self
+        while current is not None:
+            path.append(current)
+            current = current.parent
+        return list(reversed(path))
+    
+    def get_path_cost(self) -> float:
+        """
+        获取从起始节点到当前节点的总代价。
+        
+        Returns:
+            累计代价 g(n)
+        """
+        return self.g_cost
+
+
+class HeuristicEvaluator(ABC):
+    """
+    启发式评估器抽象基类。
+    
+    定义启发式函数 h(n) 的计算接口。启发式函数用于估计从当前节点
+    到目标节点的预期代价，是A*算法的核心组件。
+    
+    设计原则：
+    1. 可采纳性（Admissible）：h(n) 不超过实际最优代价
+    2. 一致性（Consistent）：h(n) ≤ c(n,n') + h(n')，其中c是边代价
+    3. 信息性：h(n) 应尽可能接近实际代价，以提高搜索效率
+    
+    Notes:
+        - 可采纳的启发式保证A*找到最优解
+        - 更接近实际代价的启发式能减少扩展节点数
+        - 启发式函数的设计需要平衡准确性和计算开销
+    """
+    
+    @abstractmethod
+    def evaluate(self, node: AttackPathNode, target: AttackPathNode, 
+                 context: Optional[AttackContext] = None) -> float:
+        """
+        计算从当前节点到目标节点的启发式代价估计。
+        
+        Args:
+            node: 当前节点
+            target: 目标节点
+            context: 攻击上下文信息
+            
+        Returns:
+            启发式代价估计值 h(n)
+        """
+        pass
+    
+    @abstractmethod
+    def get_name(self) -> str:
+        """获取评估器名称"""
+        pass
+
+
+class MultiDimensionalHeuristic(HeuristicEvaluator):
+    """
+    多维度启发式评估器。
+    
+    综合多个维度计算启发式代价，包括：
+    1. 网络距离 - URL路径深度差、域名差异
+    2. 攻击难度 - 基于漏洞类型、防护机制评估
+    3. 历史成功率 - 基于历史扫描数据
+    4. 风险评估 - 基于路径关键词风险权重
+    5. 技术栈匹配 - 目标技术栈与攻击向量的匹配度
+    
+    Notes:
+        - 各维度权重可配置
+        - 支持动态调整权重策略
+        - 归一化处理确保各维度贡献平衡
+    """
+    
+    # 默认维度权重
+    DEFAULT_WEIGHTS = {
+        "network_distance": 0.20,
+        "attack_difficulty": 0.25,
+        "historical_success": 0.20,
+        "risk_assessment": 0.20,
+        "tech_match": 0.15,
+    }
+    
+    # 漏洞利用难度系数（越高越难）
+    VULN_DIFFICULTY = {
+        PayloadType.GENERIC: 0.5,
+        PayloadType.SQLI: 0.3,
+        PayloadType.XSS: 0.2,
+        PayloadType.PATH_TRAVERSAL: 0.25,
+        PayloadType.LFI: 0.25,
+        PayloadType.RFI: 0.35,
+        PayloadType.SSRF: 0.4,
+        PayloadType.XXE: 0.35,
+        PayloadType.CMD_INJECTION: 0.45,
+    }
+    
+    def __init__(self, weights: Optional[Dict[str, float]] = None,
+                 learning_enabled: bool = True):
+        """
+        初始化多维度启发式评估器。
+        
+        Args:
+            weights: 各维度权重配置，None则使用默认权重
+            learning_enabled: 是否启用历史数据学习
+        """
+        self._weights = weights or self.DEFAULT_WEIGHTS.copy()
+        self._learning_enabled = learning_enabled
+        self._success_history: Dict[str, List[bool]] = defaultdict(list)
+        self._path_costs: Dict[str, List[float]] = defaultdict(list)
+    
+    def evaluate(self, node: AttackPathNode, target: AttackPathNode,
+                 context: Optional[AttackContext] = None) -> float:
+        """
+        计算多维度启发式代价。
+        
+        Args:
+            node: 当前节点
+            target: 目标节点
+            context: 攻击上下文
+            
+        Returns:
+            启发式代价估计值 h(n) ∈ [0, 1]
+            
+        Notes:
+            - 返回值越小表示越接近目标（代价越低）
+            - 各维度独立计算后加权平均
+            - 归一化处理确保结果在合理范围
+        """
+        scores: Dict[str, float] = {}
+        
+        # 1. 网络距离评估
+        scores["network_distance"] = self._evaluate_network_distance(node, target)
+        
+        # 2. 攻击难度评估
+        scores["attack_difficulty"] = self._evaluate_attack_difficulty(node, context)
+        
+        # 3. 历史成功率评估
+        scores["historical_success"] = self._evaluate_historical_success(node)
+        
+        # 4. 风险评估
+        scores["risk_assessment"] = self._evaluate_risk(node)
+        
+        # 5. 技术栈匹配评估
+        scores["tech_match"] = self._evaluate_tech_match(node, context)
+        
+        # 加权平均
+        h_cost = sum(
+            scores.get(dim, 0.5) * self._weights.get(dim, 0.0)
+            for dim in self.DEFAULT_WEIGHTS.keys()
+        )
+        
+        # 归一化到 [0, 1]
+        return max(0.0, min(1.0, h_cost))
+    
+    def _evaluate_network_distance(self, node: AttackPathNode, 
+                                    target: AttackPathNode) -> float:
+        """
+        评估网络距离。
+        
+        计算维度：
+        - 路径深度差
+        - URL相似度
+        
+        Args:
+            node: 当前节点
+            target: 目标节点
+            
+        Returns:
+            网络距离评分 ∈ [0, 1]，越小越接近
+        """
+        # 路径深度差
+        depth_diff = abs(node.depth - target.depth)
+        depth_score = min(depth_diff * 0.1, 1.0)
+        
+        # URL路径相似度
+        node_path = self._extract_path(node.url)
+        target_path = self._extract_path(target.url)
+        
+        # 计算路径编辑距离
+        path_similarity = self._calculate_path_similarity(node_path, target_path)
+        
+        # 综合评分
+        return 0.5 * depth_score + 0.5 * (1.0 - path_similarity)
+    
+    def _evaluate_attack_difficulty(self, node: AttackPathNode,
+                                     context: Optional[AttackContext]) -> float:
+        """
+        评估攻击难度。
+        
+        考虑因素：
+        - 攻击向量类型
+        - 是否存在防护机制
+        - 需要的认证级别
+        
+        Args:
+            node: 当前节点
+            context: 攻击上下文
+            
+        Returns:
+            攻击难度评分 ∈ [0, 1]，越高越难
+        """
+        base_difficulty = 0.5
+        
+        # 根据攻击向量调整
+        if node.attack_vector:
+            vuln_type = node.attack_vector.get("vuln_type")
+            if isinstance(vuln_type, PayloadType):
+                base_difficulty = self.VULN_DIFFICULTY.get(vuln_type, 0.5)
+            elif isinstance(vuln_type, str):
+                try:
+                    base_difficulty = self.VULN_DIFFICULTY.get(
+                        PayloadType(vuln_type.lower()), 0.5
+                    )
+                except ValueError:
+                    pass
+        
+        # 根据上下文调整
+        if context:
+            # 检测到WAF或防护
+            if context.response_status == 403:
+                base_difficulty += 0.2
+            
+            # 需要认证
+            if "login" in node.url.lower() or "auth" in node.url.lower():
+                base_difficulty += 0.1
+        
+        return min(1.0, base_difficulty)
+    
+    def _evaluate_historical_success(self, node: AttackPathNode) -> float:
+        """
+        评估历史成功率。
+        
+        Args:
+            node: 当前节点
+            
+        Returns:
+            历史成功率评分 ∈ [0, 1]，越高表示历史上越容易成功
+        """
+        if not self._learning_enabled:
+            return 0.5
+        
+        history = self._success_history.get(node.node_id, [])
+        if not history:
+            return 0.5
+        
+        # 计算成功率
+        success_rate = sum(history) / len(history)
+        
+        # 返回失败率作为代价（成功率越高，代价越低）
+        return 1.0 - success_rate
+    
+    def _evaluate_risk(self, node: AttackPathNode) -> float:
+        """
+        评估路径风险。
+        
+        高风险路径通常更容易发现漏洞，因此代价更低。
+        
+        Args:
+            node: 当前节点
+            
+        Returns:
+            风险评分 ∈ [0, 1]，越高表示风险越低（代价越高）
+        """
+        url_lower = node.url.lower()
+        
+        # 检查高风险关键词
+        max_risk = 0.0
+        for keyword, risk_weight in AttackPathExplorer.HIGH_RISK_KEYWORDS.items():
+            if keyword in url_lower:
+                max_risk = max(max_risk, risk_weight)
+        
+        # 风险越高，代价越低（返回 1 - 风险权重）
+        return 1.0 - max_risk
+    
+    def _evaluate_tech_match(self, node: AttackPathNode,
+                             context: Optional[AttackContext]) -> float:
+        """
+        评估技术栈匹配度。
+        
+        攻击向量与目标技术栈匹配时，成功概率更高。
+        
+        Args:
+            node: 当前节点
+            context: 攻击上下文
+            
+        Returns:
+            匹配度评分 ∈ [0, 1]，越高表示不匹配（代价越高）
+        """
+        if not context or not node.attack_vector:
+            return 0.5
+        
+        detected_tech = set(context.detected_tech)
+        attack_tech = node.attack_vector.get("target_tech", set())
+        
+        if not attack_tech:
+            return 0.5
+        
+        # 计算交集比例
+        if isinstance(attack_tech, list):
+            attack_tech = set(attack_tech)
+        
+        match_ratio = len(detected_tech & attack_tech) / len(attack_tech)
+        
+        # 匹配度越高，代价越低
+        return 1.0 - match_ratio
+    
+    @staticmethod
+    def _extract_path(url: str) -> str:
+        """从URL提取路径部分"""
+        try:
+            parsed = urllib.parse.urlparse(url)
+            return parsed.path
+        except Exception:
+            return url
+    
+    @staticmethod
+    def _calculate_path_similarity(path1: str, path2: str) -> float:
+        """
+        计算路径相似度（基于最长公共子序列）。
+        
+        Args:
+            path1: 第一个路径
+            path2: 第二个路径
+            
+        Returns:
+            相似度 ∈ [0, 1]
+        """
+        if not path1 or not path2:
+            return 0.0
+        
+        # 分割路径段
+        seg1 = [s for s in path1.split("/") if s]
+        seg2 = [s for s in path2.split("/") if s]
+        
+        if not seg1 or not seg2:
+            return 0.0
+        
+        # 计算最长公共子序列长度
+        m, n = len(seg1), len(seg2)
+        dp = [[0] * (n + 1) for _ in range(m + 1)]
+        
+        for i in range(1, m + 1):
+            for j in range(1, n + 1):
+                if seg1[i - 1] == seg2[j - 1]:
+                    dp[i][j] = dp[i - 1][j - 1] + 1
+                else:
+                    dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
+        
+        lcs_length = dp[m][n]
+        return lcs_length / max(m, n)
+    
+    def record_result(self, node_id: str, success: bool, cost: float = 0.0) -> None:
+        """
+        记录扫描结果用于学习。
+        
+        Args:
+            node_id: 节点ID
+            success: 是否发现漏洞
+            cost: 实际攻击代价
+        """
+        if self._learning_enabled:
+            self._success_history[node_id].append(success)
+            if cost > 0:
+                self._path_costs[node_id].append(cost)
+            
+            # 限制历史记录长度
+            if len(self._success_history[node_id]) > 100:
+                self._success_history[node_id] = self._success_history[node_id][-100:]
+    
+    def get_name(self) -> str:
+        """获取评估器名称"""
+        return "MultiDimensionalHeuristic"
+
+
+class CostCalculator:
+    """
+    攻击代价计算器。
+    
+    计算从一个节点到其邻接节点的边代价（攻击代价）。
+    代价计算考虑多个因素：
+    1. 基础代价 - HTTP请求成本
+    2. 时间代价 - 攻击所需时间
+    3. 检测风险 - 被检测的可能性
+    4. 成功概率 - 攻击成功的概率
+    """
+    
+    # HTTP方法基础代价
+    METHOD_COST = {
+        "GET": 0.1,
+        "POST": 0.2,
+        "PUT": 0.3,
+        "DELETE": 0.4,
+        "PATCH": 0.25,
+    }
+    
+    # 响应状态码代价调整
+    STATUS_COST_ADJUSTMENT = {
+        200: 0.0,      # 成功，无额外代价
+        301: 0.1,      # 重定向，轻微代价
+        302: 0.1,
+        400: 0.3,      # 客户端错误，中等代价
+        401: 0.4,      # 需要认证
+        403: 0.5,      # 禁止访问，高代价
+        404: 0.2,      # 未找到
+        500: 0.3,      # 服务器错误
+    }
+    
+    @classmethod
+    def calculate_edge_cost(cls, from_node: AttackPathNode, to_node: AttackPathNode,
+                           response_status: int = 200,
+                           response_time: float = 0.0,
+                           context: Optional[AttackContext] = None) -> float:
+        """
+        计算边代价（从一个节点到另一个节点的攻击代价）。
+        
+        Args:
+            from_node: 起始节点
+            to_node: 目标节点
+            response_status: HTTP响应状态码
+            response_time: 响应时间（秒）
+            context: 攻击上下文
+            
+        Returns:
+            边代价值 ∈ [0, +∞)
+            
+        Notes:
+            - 代价越低表示攻击越容易
+            - 基础代价 + 方法代价 + 状态码调整 + 时间代价
+        """
+        # 基础代价
+        base_cost = 0.1
+        
+        # HTTP方法代价
+        method_cost = cls.METHOD_COST.get(to_node.method.upper(), 0.2)
+        
+        # 状态码调整
+        status_adjustment = cls.STATUS_COST_ADJUSTMENT.get(response_status, 0.2)
+        
+        # 时间代价（归一化）
+        time_cost = min(response_time / 10.0, 1.0) * 0.2
+        
+        # 深度代价（越深代价越高）
+        depth_cost = to_node.depth * 0.05
+        
+        # 认证代价
+        auth_cost = 0.0
+        if context and context.csrf_token:
+            auth_cost = 0.1
+        
+        total_cost = base_cost + method_cost + status_adjustment + time_cost + depth_cost + auth_cost
+        
+        return max(0.0, total_cost)
+    
+    @classmethod
+    def calculate_cumulative_cost(cls, path: List[AttackPathNode]) -> float:
+        """
+        计算路径的累计代价。
+        
+        Args:
+            path: 节点路径列表
+            
+        Returns:
+            累计代价
+        """
+        if not path:
+            return 0.0
+        
+        total = path[0].g_cost
+        for node in path[1:]:
+            total += node.g_cost
+        
+        return total
+
+
+@dataclass
+class AttackPathResult:
+    """
+    攻击路径搜索结果实体。
+    
+    Attributes:
+        success: 搜索是否成功
+        path: 最优攻击路径（节点列表）
+        total_cost: 路径总代价
+        nodes_expanded: 扩展的节点数
+        nodes_visited: 访问的节点数
+        search_time: 搜索耗时（秒）
+        vulnerabilities_found: 发现的漏洞总数
+        path_nodes: 路径节点ID列表（用于序列化）
+        statistics: 详细统计信息
+    """
+    success: bool
+    path: List[AttackPathNode] = field(default_factory=list)
+    total_cost: float = 0.0
+    nodes_expanded: int = 0
+    nodes_visited: int = 0
+    search_time: float = 0.0
+    vulnerabilities_found: int = 0
+    path_nodes: List[str] = field(default_factory=list)
+    statistics: Dict[str, Any] = field(default_factory=dict)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        转换为字典格式。
+        
+        Returns:
+            可序列化的字典表示
+        """
+        return {
+            "success": self.success,
+            "path_nodes": [node.node_id for node in self.path],
+            "path_urls": [node.url for node in self.path],
+            "total_cost": self.total_cost,
+            "nodes_expanded": self.nodes_expanded,
+            "nodes_visited": self.nodes_visited,
+            "search_time": self.search_time,
+            "vulnerabilities_found": self.vulnerabilities_found,
+            "statistics": self.statistics,
+        }
+    
+    def get_attack_chain(self) -> List[Dict[str, Any]]:
+        """
+        获取攻击链详情。
+        
+        Returns:
+            攻击链步骤列表
+        """
+        chain = []
+        for i, node in enumerate(self.path):
+            step = {
+                "step": i + 1,
+                "node_id": node.node_id,
+                "url": node.url,
+                "method": node.method,
+                "g_cost": node.g_cost,
+                "h_cost": node.h_cost,
+                "f_cost": node.f_cost,
+                "vulnerabilities": node.vulnerabilities,
+            }
+            chain.append(step)
+        return chain
+
+
+class AttackPathSearchAlgorithm:
+    """
+    攻击路径搜索算法。
+    
+    基于A*思想的启发式最优路径搜索算法，用于在网络攻击路径分析、
+    漏洞传播建模及攻击链构建等场景中寻找最优攻击路径。
+    
+    算法流程：
+    ┌─────────────────────────────────────────────────────────────────┐
+    │ 一、状态初始化阶段                                               │
+    │   • 接收起始节点与目标节点                                        │
+    │   • 构建优先队列（开放列表）                                       │
+    │   • 初始化代价参数 g(n)、h(n)、f(n)                               │
+    │   • 建立父节点映射表                                              │
+    ├─────────────────────────────────────────────────────────────────┤
+    │ 二、循环搜索与节点扩展阶段                                        │
+    │   WHILE 队列非空:                                                │
+    │     • 取出 f(n) 最优节点                                         │
+    │     • IF 到达目标节点: 进入路径回溯                               │
+    │     • ELSE: 扩展邻接节点                                         │
+    ├─────────────────────────────────────────────────────────────────┤
+    │ 三、启发式扩展与代价计算阶段                                      │
+    │   FOR 每个邻接节点:                                              │
+    │     • 计算 g(n) = 累计攻击代价                                    │
+    │     • 计算 h(n) = 启发式估计                                      │
+    │     • 计算 f(n) = g(n) + h(n)                                    │
+    │     • 更新节点状态与父节点                                        │
+    │     • 加入优先队列                                               │
+    ├─────────────────────────────────────────────────────────────────┤
+    │ 四、路径回溯与最优路径输出阶段                                    │
+    │   • 从目标节点反向回溯至起始节点                                   │
+    │   • 构建完整攻击路径                                              │
+    │   • 输出最优攻击路径及代价                                        │
+    └─────────────────────────────────────────────────────────────────┘
+    
+    使用示例：
+        algorithm = AttackPathSearchAlgorithm(heuristic=MultiDimensionalHeuristic())
+        result = algorithm.search(start_node, target_node, adjacency_func)
+        if result.success:
+            print(f"最优路径: {[n.url for n in result.path]}")
+            print(f"总代价: {result.total_cost}")
+    
+    Notes:
+        - 启发式函数需要满足可采纳性以保证最优解
+        - 支持多种启发式策略，可通过构造函数注入
+        - 支持学习模式，记录历史结果优化后续搜索
+    """
+    
+    def __init__(self, 
+                 heuristic: Optional[HeuristicEvaluator] = None,
+                 max_iterations: int = 10000,
+                 learning_enabled: bool = True,
+                 cost_threshold: float = 10.0):
+        """
+        初始化攻击路径搜索算法。
+        
+        Args:
+            heuristic: 启发式评估器，None则使用默认的多维度评估器
+            max_iterations: 最大迭代次数，防止无限循环
+            learning_enabled: 是否启用学习模式
+            cost_threshold: 代价阈值，超过此值的路径将被剪枝
+        """
+        self._heuristic = heuristic or MultiDimensionalHeuristic()
+        self._max_iterations = max_iterations
+        self._learning_enabled = learning_enabled
+        self._cost_threshold = cost_threshold
+        
+        # 搜索状态
+        self._open_list: List[AttackPathNode] = []  # 优先队列
+        self._closed_set: Set[str] = set()  # 已访问集合
+        self._node_map: Dict[str, AttackPathNode] = {}  # 节点映射
+        self._g_scores: Dict[str, float] = {}  # 最优g值记录
+        
+        # 统计信息
+        self._nodes_expanded = 0
+        self._nodes_visited = 0
+        self._start_time = 0.0
+    
+    def search(self, 
+               start_node: AttackPathNode,
+               target_node: AttackPathNode,
+               adjacency_func: Callable[[AttackPathNode], List[AttackPathNode]],
+               context: Optional[AttackContext] = None) -> AttackPathResult:
+        """
+        执行攻击路径搜索。
+        
+        这是算法的主入口方法，执行完整的A*搜索流程。
+        
+        Args:
+            start_node: 起始节点
+            target_node: 目标节点
+            adjacency_func: 邻接节点获取函数，输入一个节点，返回其邻接节点列表
+            context: 攻击上下文
+            
+        Returns:
+            AttackPathResult 搜索结果
+            
+        Notes:
+            算法时间复杂度: O(b^d)，其中b是分支因子，d是解深度
+            空间复杂度: O(b^d)
+        """
+        # 记录开始时间
+        self._start_time = time.time()
+        
+        # 重置搜索状态
+        self._reset_state()
+        
+        # ==================== 一、状态初始化阶段 ====================
+        self._initialize(start_node, target_node, context)
+        
+        # ==================== 二、循环搜索与节点扩展阶段 ====================
+        iterations = 0
+        while self._open_list and iterations < self._max_iterations:
+            iterations += 1
+            
+            # 取出f(n)最优节点
+            current = heapq.heappop(self._open_list)
+            self._nodes_expanded += 1
+            
+            # 跳过已访问节点
+            if current.node_id in self._closed_set:
+                continue
+            
+            # 标记为已访问
+            self._closed_set.add(current.node_id)
+            self._nodes_visited += 1
+            
+            logger.debug(f"🔍 扩展节点: {current.node_id}, f={current.f_cost:.3f}, g={current.g_cost:.3f}, h={current.h_cost:.3f}")
+            
+            # 判断是否到达目标节点
+            if self._is_target(current, target_node):
+                # ==================== 四、路径回溯与最优路径输出阶段 ====================
+                return self._build_success_result(current)
+            
+            # ==================== 三、启发式扩展与代价计算阶段 ====================
+            self._expand_node(current, target_node, adjacency_func, context)
+        
+        # 搜索失败
+        return self._build_failure_result()
+    
+    def _reset_state(self) -> None:
+        """重置搜索状态"""
+        self._open_list = []
+        self._closed_set = set()
+        self._node_map = {}
+        self._g_scores = {}
+        self._nodes_expanded = 0
+        self._nodes_visited = 0
+    
+    def _initialize(self, start_node: AttackPathNode, target_node: AttackPathNode,
+                   context: Optional[AttackContext]) -> None:
+        """
+        状态初始化阶段。
+        
+        执行以下初始化操作：
+        1. 构建开放列表（优先队列）
+        2. 将起始节点加入队列
+        3. 初始化各节点的代价参数
+        4. 建立节点映射表
+        
+        Args:
+            start_node: 起始节点
+            target_node: 目标节点
+            context: 攻击上下文
+        """
+        # 计算起始节点的启发式代价
+        start_node.h_cost = self._heuristic.evaluate(start_node, target_node, context)
+        start_node.g_cost = 0.0
+        start_node.update_f_cost()
+        
+        # 初始化记录
+        self._g_scores[start_node.node_id] = 0.0
+        self._node_map[start_node.node_id] = start_node
+        
+        # 将起始节点加入优先队列
+        heapq.heappush(self._open_list, start_node)
+        
+        logger.debug(f"🚀 初始化搜索: 起点={start_node.node_id}, 终点={target_node.node_id}")
+    
+    def _expand_node(self, current: AttackPathNode, target: AttackPathNode,
+                    adjacency_func: Callable[[AttackPathNode], List[AttackPathNode]],
+                    context: Optional[AttackContext]) -> None:
+        """
+        启发式扩展与代价计算阶段。
+        
+        对于当前节点的每一个邻接节点，执行：
+        1. 计算路径代价 g(n)
+        2. 计算启发式代价 h(n)
+        3. 计算综合评价函数 f(n) = g(n) + h(n)
+        4. 更新节点状态
+        5. 加入优先队列
+        
+        Args:
+            current: 当前扩展节点
+            target: 目标节点
+            adjacency_func: 邻接节点获取函数
+            context: 攻击上下文
+        """
+        # 获取邻接节点
+        neighbors = adjacency_func(current)
+        
+        for neighbor in neighbors:
+            # 跳过已访问节点
+            if neighbor.node_id in self._closed_set:
+                continue
+            
+            # 计算从起始节点到邻接节点的累计代价 g(n)
+            edge_cost = CostCalculator.calculate_edge_cost(
+                current, neighbor, context=context
+            )
+            tentative_g = current.g_cost + edge_cost
+            
+            # 剪枝：超过代价阈值
+            if tentative_g > self._cost_threshold:
+                continue
+            
+            # 检查是否发现更优路径
+            if neighbor.node_id in self._g_scores:
+                if tentative_g >= self._g_scores[neighbor.node_id]:
+                    continue  # 已有更优路径，跳过
+            
+            # 更新节点状态
+            neighbor.g_cost = tentative_g
+            neighbor.h_cost = self._heuristic.evaluate(neighbor, target, context)
+            neighbor.update_f_cost()
+            neighbor.parent = current
+            neighbor.depth = current.depth + 1
+            
+            # 记录最优g值
+            self._g_scores[neighbor.node_id] = tentative_g
+            self._node_map[neighbor.node_id] = neighbor
+            
+            # 加入优先队列
+            heapq.heappush(self._open_list, neighbor)
+            
+            logger.debug(f"  ➕ 添加节点: {neighbor.node_id}, f={neighbor.f_cost:.3f}, g={neighbor.g_cost:.3f}, h={neighbor.h_cost:.3f}")
+    
+    def _is_target(self, node: AttackPathNode, target: AttackPathNode) -> bool:
+        """
+        判断是否到达目标节点。
+        
+        Args:
+            node: 当前节点
+            target: 目标节点
+            
+        Returns:
+            是否为目标节点
+        """
+        # 精确匹配
+        if node.node_id == target.node_id:
+            return True
+        
+        # URL匹配
+        if node.url == target.url:
+            return True
+        
+        # 检查是否在目标节点集合中（可以是多个目标）
+        if hasattr(target, 'target_ids') and node.node_id in target.target_ids:
+            return True
+        
+        return False
+    
+    def _build_success_result(self, target_node: AttackPathNode) -> AttackPathResult:
+        """
+        构建成功搜索结果。
+        
+        从目标节点反向回溯至起始节点，构建完整攻击路径。
+        
+        Args:
+            target_node: 目标节点
+            
+        Returns:
+            AttackPathResult 成功结果
+        """
+        # 回溯路径
+        path = target_node.get_path()
+        
+        # 统计漏洞数
+        vuln_count = sum(len(node.vulnerabilities) for node in path)
+        
+        # 记录结果用于学习
+        if self._learning_enabled and isinstance(self._heuristic, MultiDimensionalHeuristic):
+            for node in path:
+                self._heuristic.record_result(node.node_id, len(node.vulnerabilities) > 0, node.g_cost)
+        
+        search_time = time.time() - self._start_time
+        
+        logger.info(f"✅ 搜索成功: 路径长度={len(path)}, 总代价={target_node.g_cost:.3f}, "
+                   f"扩展节点={self._nodes_expanded}, 耗时={search_time:.3f}s")
+        
+        return AttackPathResult(
+            success=True,
+            path=path,
+            total_cost=target_node.g_cost,
+            nodes_expanded=self._nodes_expanded,
+            nodes_visited=self._nodes_visited,
+            search_time=search_time,
+            vulnerabilities_found=vuln_count,
+            path_nodes=[node.node_id for node in path],
+            statistics={
+                "algorithm": "A*",
+                "heuristic": self._heuristic.get_name(),
+                "iterations": self._nodes_expanded,
+                "avg_cost_per_node": target_node.g_cost / len(path) if path else 0,
+            }
+        )
+    
+    def _build_failure_result(self) -> AttackPathResult:
+        """
+        构建失败搜索结果。
+        
+        Returns:
+            AttackPathResult 失败结果
+        """
+        search_time = time.time() - self._start_time
+        
+        logger.warning(f"❌ 搜索失败: 扩展节点={self._nodes_expanded}, 耗时={search_time:.3f}s")
+        
+        return AttackPathResult(
+            success=False,
+            path=[],
+            total_cost=0.0,
+            nodes_expanded=self._nodes_expanded,
+            nodes_visited=self._nodes_visited,
+            search_time=search_time,
+            statistics={
+                "algorithm": "A*",
+                "heuristic": self._heuristic.get_name(),
+                "failure_reason": "no_path_found" if not self._open_list else "max_iterations_reached",
+            }
+        )
+    
+    def get_statistics(self) -> Dict[str, Any]:
+        """
+        获取算法统计信息。
+        
+        Returns:
+            统计信息字典
+        """
+        return {
+            "nodes_expanded": self._nodes_expanded,
+            "nodes_visited": self._nodes_visited,
+            "open_list_size": len(self._open_list),
+            "closed_set_size": len(self._closed_set),
+            "heuristic": self._heuristic.get_name(),
+            "learning_enabled": self._learning_enabled,
+        }
+
+
+class AttackGraphBuilder:
+    """
+    攻击图构建器。
+    
+    根据扫描结果和发现的路径构建攻击图，用于可视化攻击路径
+    和进行更复杂的攻击路径分析。
+    """
+    
+    def __init__(self):
+        """初始化攻击图构建器"""
+        self._nodes: Dict[str, AttackPathNode] = {}
+        self._edges: Dict[str, List[Tuple[str, float]]] = defaultdict(list)
+    
+    def add_node(self, node: AttackPathNode) -> None:
+        """添加节点"""
+        self._nodes[node.node_id] = node
+    
+    def add_edge(self, from_id: str, to_id: str, cost: float = 1.0) -> None:
+        """添加边"""
+        self._edges[from_id].append((to_id, cost))
+    
+    def get_neighbors(self, node_id: str) -> List[Tuple[AttackPathNode, float]]:
+        """获取节点的邻接节点"""
+        neighbors = []
+        for neighbor_id, cost in self._edges.get(node_id, []):
+            if neighbor_id in self._nodes:
+                neighbors.append((self._nodes[neighbor_id], cost))
+        return neighbors
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式"""
+        return {
+            "nodes": {
+                node_id: {
+                    "url": node.url,
+                    "method": node.method,
+                    "g_cost": node.g_cost,
+                    "vulnerabilities": len(node.vulnerabilities),
+                }
+                for node_id, node in self._nodes.items()
+            },
+            "edges": dict(self._edges),
+        }
+
+
+# =============================================================================
 # 便捷函数
+# =============================================================================
+
 def create_default_generator() -> AttackScriptGenerator:
     """创建默认配置的攻击脚本生成器"""
     return AttackScriptGenerator(strategy="default", max_variants=10)
@@ -1137,3 +2167,40 @@ def create_aggressive_generator() -> AttackScriptGenerator:
 def create_default_explorer() -> AttackPathExplorer:
     """创建默认配置的路径探索器"""
     return AttackPathExplorer(learning_enabled=True)
+
+
+def create_default_search_algorithm() -> AttackPathSearchAlgorithm:
+    """
+    创建默认配置的攻击路径搜索算法。
+    
+    Returns:
+        配置好的AttackPathSearchAlgorithm实例
+    """
+    return AttackPathSearchAlgorithm(
+        heuristic=MultiDimensionalHeuristic(),
+        max_iterations=10000,
+        learning_enabled=True,
+    )
+
+
+def create_attack_node(url: str, method: str = "GET", 
+                       node_id: Optional[str] = None,
+                       attack_vector: Optional[Dict[str, Any]] = None) -> AttackPathNode:
+    """
+    创建攻击路径节点的便捷函数。
+    
+    Args:
+        url: 节点URL
+        method: HTTP方法
+        node_id: 节点ID，None则使用URL
+        attack_vector: 攻击向量信息
+        
+    Returns:
+        AttackPathNode实例
+    """
+    return AttackPathNode(
+        node_id=node_id or url,
+        url=url,
+        method=method,
+        attack_vector=attack_vector,
+    )

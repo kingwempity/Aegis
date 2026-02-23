@@ -38,8 +38,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
-# 安装 Playwright 浏览器（使用国内镜像加速）
-ENV PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright
+# 安装 Playwright 浏览器（使用淘宝镜像加速）
+# 系统依赖已在前面安装，这里只下载浏览器
+ENV PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright
 RUN playwright install chromium
 
 # 复制后端代码

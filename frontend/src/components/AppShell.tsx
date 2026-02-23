@@ -70,9 +70,19 @@ const AppShell: React.FC<AppShellProps> = ({
     try {
       setHelpLoading(true);
       const data = await api.getHelpContents(true); // 只获取启用的内容
+      console.log('[AppShell] Fetched help contents:', data);
       setHelpContents(data);
     } catch (error) {
-      console.error('Failed to fetch help contents:', error);
+      console.error('[AppShell] Failed to fetch help contents:', error);
+      // 如果获取失败，尝试初始化默认内容
+      try {
+        await api.initDefaultHelpContents();
+        // 重新获取
+        const data = await api.getHelpContents(true);
+        setHelpContents(data);
+      } catch (initError) {
+        console.error('[AppShell] Failed to init default help contents:', initError);
+      }
     } finally {
       setHelpLoading(false);
     }
@@ -80,7 +90,7 @@ const AppShell: React.FC<AppShellProps> = ({
 
   // 当帮助模态框打开时获取数据
   useEffect(() => {
-    if (showHelpModal && helpContents.length === 0) {
+    if (showHelpModal) {
       fetchHelpContents();
     }
   }, [showHelpModal]);

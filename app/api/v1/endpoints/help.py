@@ -83,30 +83,6 @@ async def get_help_contents(
     return query.order_by(HelpContent.order).all()
 
 
-@router.get("/{content_id}", response_model=HelpContentResponse)
-async def get_help_content(
-    content_id: int,
-    db: Session = Depends(get_db)
-) -> HelpContent:
-    """
-    根据 ID 获取帮助内容。
-    
-    Args:
-        content_id: 内容 ID
-        db: 数据库会话
-        
-    Returns:
-        帮助内容详情
-        
-    Raises:
-        HTTPException: 内容不存在时返回 404
-    """
-    content = db.query(HelpContent).filter(HelpContent.id == content_id).first()
-    if not content:
-        raise HTTPException(status_code=404, detail="帮助内容不存在")
-    return content
-
-
 @router.get("/key/{content_key}", response_model=HelpContentResponse)
 async def get_help_content_by_key(
     content_key: str,
@@ -126,6 +102,30 @@ async def get_help_content_by_key(
         HTTPException: 内容不存在时返回 404
     """
     content = db.query(HelpContent).filter(HelpContent.key == content_key).first()
+    if not content:
+        raise HTTPException(status_code=404, detail="帮助内容不存在")
+    return content
+
+
+@router.get("/{content_id}", response_model=HelpContentResponse)
+async def get_help_content(
+    content_id: int,
+    db: Session = Depends(get_db)
+) -> HelpContent:
+    """
+    根据 ID 获取帮助内容。
+    
+    Args:
+        content_id: 内容 ID
+        db: 数据库会话
+        
+    Returns:
+        帮助内容详情
+        
+    Raises:
+        HTTPException: 内容不存在时返回 404
+    """
+    content = db.query(HelpContent).filter(HelpContent.id == content_id).first()
     if not content:
         raise HTTPException(status_code=404, detail="帮助内容不存在")
     return content

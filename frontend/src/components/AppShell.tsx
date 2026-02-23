@@ -41,6 +41,9 @@ const fallbackNavItems: NavItemData[] = [
   { label: 'Settings', href: '/settings', icon: Settings },
 ];
 
+/** 通知已读状态存储 Key */
+const NOTIFICATION_READ_KEY = 'aegis_notification_read_ids';
+
 const AppShell: React.FC<AppShellProps> = ({
   children,
   navItems: propNavItems = [],
@@ -53,23 +56,59 @@ const AppShell: React.FC<AppShellProps> = ({
   const [showAllNotifications, setShowAllNotifications] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
 
-  // 模拟通知数据
-  const [notifications, setNotifications] = useState([
-    { id: 1, type: 'success', title: '扫描完成', message: '目标 example.com 的扫描已完成', time: '5分钟前', read: false },
-    { id: 2, type: 'warning', title: '发现漏洞', message: '在 target.com 发现 2 个高危漏洞', time: '15分钟前', read: false },
-    { id: 3, type: 'info', title: '系统更新', message: '系统已更新至最新版本 v2.1.0', time: '1小时前', read: true },
-  ]);
+  // 基础通知数据（不包含已读状态）
+  const baseNotifications = [
+    { id: 1, type: 'success', title: '扫描完成', message: '目标 example.com 的扫描已完成', time: '5分钟前' },
+    { id: 2, type: 'warning', title: '发现漏洞', message: '在 target.com 发现 2 个高危漏洞', time: '15分钟前' },
+    { id: 3, type: 'info', title: '系统更新', message: '系统已更新至最新版本 v2.1.0', time: '1小时前' },
+  ];
+
+  // 从 localStorage 获取已读 ID 集合
+  const getStoredReadIds = (): Set<number> => {
+    try {
+      const stored = localStorage.getItem(NOTIFICATION_READ_KEY);
+      if (stored) {
+        return new Set<number>(JSON.parse(stored));
+      }
+    } catch (e) {
+      console.warn('[AppShell] 读取通知已读状态失败:', e);
+    }
+    return new Set<number>();
+  };
+
+  // 保存已读 ID 集合到 localStorage
+  const saveReadIds = (ids: Set<number>) => {
+    try {
+      localStorage.setItem(NOTIFICATION_READ_KEY, JSON.stringify([...ids]));
+    } catch (e) {
+      console.warn('[AppShell] 保存通知已读状态失败:', e);
+    }
+  };
+
+  // 已读状态管理
+  const [readIds, setReadIds] = useState<Set<number>>(getStoredReadIds);
+
+  // 合并通知数据与已读状态
+  const notifications = baseNotifications.map(n => ({
+    ...n,
+    read: readIds.has(n.id)
+  }));
 
   // 标记单条通知为已读
   const markAsRead = (id: number) => {
-    setNotifications(prev => 
-      prev.map(n => n.id === id ? { ...n, read: true } : n)
-    );
+    setReadIds(prev => {
+      const newSet = new Set(prev);
+      newSet.add(id);
+      saveReadIds(newSet);
+      return newSet;
+    });
   };
 
   // 标记所有通知为已读
   const markAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    const allIds = new Set(baseNotifications.map(n => n.id));
+    saveReadIds(allIds);
+    setReadIds(allIds);
   };
 
   // 查看全部通知

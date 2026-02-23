@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
-import { LayoutDashboard, Target, Shield, FileText, Settings, Bot, Plus, Search, LogOut, HelpCircle, Bell, Compass, Users } from './Icons';
+import { LayoutDashboard, Target, Shield, FileText, Settings, Bot, Plus, Search, LogOut, HelpCircle, Bell, Compass, Users, X, ExternalLink, BookOpen, MessageCircle, CheckCircle, AlertCircle } from './Icons';
 
 interface NavItemData {
   icon?: React.FC<any> | string;
@@ -46,6 +46,16 @@ const AppShell: React.FC<AppShellProps> = ({
   onNewScan,
 }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notificationRef = useRef<HTMLDivElement>(null);
+
+  // 模拟通知数据
+  const [notifications] = useState([
+    { id: 1, type: 'success', title: '扫描完成', message: '目标 example.com 的扫描已完成', time: '5分钟前', read: false },
+    { id: 2, type: 'warning', title: '发现漏洞', message: '在 target.com 发现 2 个高危漏洞', time: '15分钟前', read: false },
+    { id: 3, type: 'info', title: '系统更新', message: '系统已更新至最新版本 v2.1.0', time: '1小时前', read: true },
+  ]);
 
   // 监听窗口大小以自动处理移动端适配
   useEffect(() => {
@@ -59,7 +69,40 @@ const AppShell: React.FC<AppShellProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // 点击外部关闭通知面板
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // ESC键关闭模态框
+  useEffect(() => {
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowHelpModal(false);
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
+  }, []);
+
   const resolvedNavItems = propNavItems.length > 0 ? propNavItems : fallbackNavItems;
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'success': return <CheckCircle size={16} className="text-green-500" />;
+      case 'warning': return <AlertCircle size={16} className="text-yellow-500" />;
+      default: return <AlertCircle size={16} className="text-blue-500" />;
+    }
+  };
 
   return (
     <div className="flex h-screen bg-[#f8f9fa] overflow-hidden">
@@ -168,14 +211,70 @@ const AppShell: React.FC<AppShellProps> = ({
 
             {/* 图标按钮组 */}
             <div className="flex items-center gap-4 text-gray-500">
-              <button className="text-sm font-medium hover:text-[#ff6b00] transition-colors hidden sm:block">查看帮助</button>
-              <button className="p-2 hover:bg-gray-50 rounded-lg transition-colors">
+              <button 
+                onClick={() => setShowHelpModal(true)}
+                className="text-sm font-medium hover:text-[#ff6b00] transition-colors hidden sm:block"
+              >
+                查看帮助
+              </button>
+              <button 
+                onClick={() => setShowHelpModal(true)}
+                className="p-2 hover:bg-gray-50 rounded-lg transition-colors"
+              >
                 <HelpCircle size={20} />
               </button>
-              <button className="relative p-2 hover:bg-gray-50 rounded-lg transition-colors">
-                <Bell size={20} />
-                <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-              </button>
+              <div className="relative" ref={notificationRef}>
+                <button 
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="relative p-2 hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                  <Bell size={20} />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white text-white text-xs flex items-center justify-center">
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
+                
+                {/* 通知下拉面板 */}
+                {showNotifications && (
+                  <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50">
+                    <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                      <h3 className="font-semibold text-gray-800">通知</h3>
+                      {unreadCount > 0 && (
+                        <span className="text-xs text-[#ff6b00] font-medium">{unreadCount} 条未读</span>
+                      )}
+                    </div>
+                    <div className="max-h-80 overflow-y-auto">
+                      {notifications.map((notification) => (
+                        <div 
+                          key={notification.id}
+                          className={`px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer ${
+                            !notification.read ? 'bg-orange-50/50' : ''
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="mt-0.5">{getNotificationIcon(notification.type)}</div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-800">{notification.title}</p>
+                              <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{notification.message}</p>
+                              <p className="text-xs text-gray-400 mt-1">{notification.time}</p>
+                            </div>
+                            {!notification.read && (
+                              <div className="w-2 h-2 bg-[#ff6b00] rounded-full mt-1.5"></div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="px-4 py-3 border-t border-gray-100">
+                      <button className="w-full text-center text-sm text-[#ff6b00] font-medium hover:text-[#e66000] transition-colors">
+                        查看全部通知
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </header>
@@ -185,6 +284,127 @@ const AppShell: React.FC<AppShellProps> = ({
           {children}
         </main>
       </div>
+
+      {/* ==================== 帮助模态框 ==================== */}
+      {showHelpModal && (
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setShowHelpModal(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 模态框头部 */}
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-[#ff6b00] to-[#ff8c00]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                  <HelpCircle size={24} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">Aegis 帮助中心</h2>
+                  <p className="text-sm text-white/80">快速了解系统功能</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowHelpModal(false)}
+                className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+              >
+                <X size={20} className="text-white" />
+              </button>
+            </div>
+            
+            {/* 模态框内容 */}
+            <div className="p-6 max-h-[60vh] overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 快速入门 */}
+                <div className="p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-8 h-8 bg-[#ff6b00]/10 rounded-lg flex items-center justify-center">
+                      <BookOpen size={18} className="text-[#ff6b00]" />
+                    </div>
+                    <h3 className="font-semibold text-gray-800">快速入门</h3>
+                  </div>
+                  <p className="text-sm text-gray-500">了解如何创建第一个扫描任务，配置扫描目标。</p>
+                </div>
+                
+                {/* 扫描指南 */}
+                <div className="p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                      <Shield size={18} className="text-blue-500" />
+                    </div>
+                    <h3 className="font-semibold text-gray-800">扫描指南</h3>
+                  </div>
+                  <p className="text-sm text-gray-500">学习不同扫描类型的配置方法和最佳实践。</p>
+                </div>
+                
+                {/* 报告解读 */}
+                <div className="p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-8 h-8 bg-green-500/10 rounded-lg flex items-center justify-center">
+                      <FileText size={18} className="text-green-500" />
+                    </div>
+                    <h3 className="font-semibold text-gray-800">报告解读</h3>
+                  </div>
+                  <p className="text-sm text-gray-500">理解漏洞扫描报告，分析安全风险等级。</p>
+                </div>
+                
+                {/* 联系支持 */}
+                <div className="p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-8 h-8 bg-purple-500/10 rounded-lg flex items-center justify-center">
+                      <MessageCircle size={18} className="text-purple-500" />
+                    </div>
+                    <h3 className="font-semibold text-gray-800">联系支持</h3>
+                  </div>
+                  <p className="text-sm text-gray-500">遇到问题？联系技术支持获取帮助。</p>
+                </div>
+              </div>
+              
+              {/* 常用快捷键 */}
+              <div className="mt-6 pt-6 border-t border-gray-100">
+                <h3 className="font-semibold text-gray-800 mb-3">快捷键</h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500">新建扫描</span>
+                    <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">Ctrl + N</kbd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500">搜索</span>
+                    <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">Ctrl + K</kbd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500">帮助</span>
+                    <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">?</kbd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500">关闭弹窗</span>
+                    <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">Esc</kbd>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* 模态框底部 */}
+            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
+              <a 
+                href="#" 
+                className="text-sm text-[#ff6b00] font-medium hover:text-[#e66000] flex items-center gap-1 transition-colors"
+              >
+                查看完整文档
+                <ExternalLink size={14} />
+              </a>
+              <button 
+                onClick={() => setShowHelpModal(false)}
+                className="px-4 py-2 bg-[#ff6b00] text-white rounded-lg text-sm font-medium hover:bg-[#e66000] transition-colors"
+              >
+                知道了
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

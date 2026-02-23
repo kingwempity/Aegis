@@ -63,11 +63,11 @@ class HelpContentResponse(HelpContentBase):
 
 # ==================== API Endpoints ====================
 
-@router.get("", response_model=List[HelpContentResponse])
+@router.get("")
 async def get_help_contents(
     active_only: bool = Query(False, description="仅返回启用的内容"),
     db: Session = Depends(get_db)
-) -> List[HelpContent]:
+):
     """
     获取帮助内容列表。
     
@@ -78,10 +78,31 @@ async def get_help_contents(
     Returns:
         帮助内容列表，按 order 排序
     """
-    query = db.query(HelpContent)
-    if active_only:
-        query = query.filter(HelpContent.is_active == True)
-    return query.order_by(HelpContent.order).all()
+    try:
+        query = db.query(HelpContent)
+        if active_only:
+            query = query.filter(HelpContent.is_active == True)
+        results = query.order_by(HelpContent.order).all()
+        
+        # 手动转换为字典列表，避免 Pydantic 序列化问题
+        return [{
+            "id": item.id,
+            "key": item.key,
+            "title": item.title,
+            "description": item.description,
+            "content": item.content,
+            "icon": item.icon,
+            "icon_color": item.icon_color,
+            "link": item.link,
+            "order": item.order,
+            "is_active": item.is_active,
+            "created_at": item.created_at.isoformat() if item.created_at else None,
+            "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+        } for item in results]
+    except Exception as e:
+        import logging
+        logging.error(f"Error in get_help_contents: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"数据库错误: {str(e)}")
 
 
 @router.get("/key/{content_key}", response_model=HelpContentResponse)

@@ -19,6 +19,7 @@ interface AppShellProps {
   breadcrumb?: string;
   userName?: string;
   onNewScan?: () => void;
+  onLogout?: () => void;
 }
 
 const iconMap: Record<string, React.FC<any>> = {
@@ -44,6 +45,7 @@ const AppShell: React.FC<AppShellProps> = ({
   children,
   navItems: propNavItems = [],
   onNewScan,
+  onLogout,
 }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -176,14 +178,17 @@ const AppShell: React.FC<AppShellProps> = ({
 
         {/* 侧边栏底部 */}
         <div className="p-6 border-t border-gray-800/50">
-          <div className="flex items-center gap-3 text-[#8a92a6] hover:text-white cursor-pointer transition-colors overflow-hidden">
+          <button 
+            onClick={onLogout}
+            className="w-full flex items-center gap-3 text-[#8a92a6] hover:text-white cursor-pointer transition-colors overflow-hidden"
+          >
             <div className="flex-shrink-0">
               <LogOut size={20} />
             </div>
             <span className={`text-sm font-medium transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>
               退出登录
             </span>
-          </div>
+          </button>
         </div>
       </aside>
 

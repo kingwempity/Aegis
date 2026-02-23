@@ -22,7 +22,7 @@ import NewScanModal from './components/NewScanModal';
  * 主应用内容组件（在 AuthProvider 内部）
  */
 const AppContent: React.FC = () => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, logout } = useAuth();
   const [currentPage, setCurrentPage] = useState<'overview' | 'discovery' | 'targets' | 'scans' | 'vulnerabilities' | 'reports' | 'users' | 'settings'>('overview');
   const [isNewScanModalOpen, setIsNewScanModalOpen] = useState(false);
 
@@ -143,6 +143,7 @@ const AppContent: React.FC = () => {
       <AppShell
         navItems={navItems}
         onNewScan={() => setIsNewScanModalOpen(true)}
+        onLogout={logout}
       >
         {renderContent()}
       </AppShell>

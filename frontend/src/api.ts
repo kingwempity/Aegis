@@ -116,6 +116,44 @@ export interface ScanProfile {
   vulnerability_types?: string[];
 }
 
+export interface HelpContent {
+  id: number;
+  key: string;
+  title: string;
+  description: string | null;
+  content: string | null;
+  icon: string;
+  icon_color: string;
+  link: string | null;
+  order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HelpContentCreate {
+  key: string;
+  title: string;
+  description?: string;
+  content?: string;
+  icon?: string;
+  icon_color?: string;
+  link?: string;
+  order?: number;
+  is_active?: boolean;
+}
+
+export interface HelpContentUpdate {
+  title?: string;
+  description?: string;
+  content?: string;
+  icon?: string;
+  icon_color?: string;
+  link?: string;
+  order?: number;
+  is_active?: boolean;
+}
+
 export interface DashboardStats {
   running_scans: number;
   pending_scans: number;
@@ -317,5 +355,59 @@ export const api = {
   async deleteProfile(id: number): Promise<void> {
     const response = await fetch(joinApiPath(`/profiles/${id}`), { method: 'DELETE' });
     if (!response.ok) throw new Error('Failed to delete profile');
+  },
+
+  // ==================== 帮助内容管理 API ====================
+
+  async getHelpContents(activeOnly: boolean = false): Promise<HelpContent[]> {
+    const response = await fetch(joinApiPath(`/help?active_only=${activeOnly}`));
+    if (!response.ok) throw new Error('Failed to fetch help contents');
+    return response.json();
+  },
+
+  async getHelpContent(id: number): Promise<HelpContent> {
+    const response = await fetch(joinApiPath(`/help/${id}`));
+    if (!response.ok) throw new Error('Failed to fetch help content');
+    return response.json();
+  },
+
+  async getHelpContentByKey(key: string): Promise<HelpContent> {
+    const response = await fetch(joinApiPath(`/help/key/${key}`));
+    if (!response.ok) throw new Error('Failed to fetch help content');
+    return response.json();
+  },
+
+  async createHelpContent(data: HelpContentCreate): Promise<HelpContent> {
+    const response = await fetch(joinApiPath('/help'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to create help content');
+    }
+    return response.json();
+  },
+
+  async updateHelpContent(id: number, data: HelpContentUpdate): Promise<HelpContent> {
+    const response = await fetch(joinApiPath(`/help/${id}`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) throw new Error('Failed to update help content');
+    return response.json();
+  },
+
+  async deleteHelpContent(id: number): Promise<void> {
+    const response = await fetch(joinApiPath(`/help/${id}`), { method: 'DELETE' });
+    if (!response.ok) throw new Error('Failed to delete help content');
+  },
+
+  async initDefaultHelpContents(): Promise<{ status: string; message: string }> {
+    const response = await fetch(joinApiPath('/help/init-default'), { method: 'POST' });
+    if (!response.ok) throw new Error('Failed to init default help contents');
+    return response.json();
   },
 };

@@ -17,13 +17,14 @@ import Reports from './components/Reports';
 import Users from './components/Users';
 import ScanProfiles from './components/ScanProfiles';
 import NewScanModal from './components/NewScanModal';
+import HelpContentManage from './components/HelpContentManage';
 
 /**
  * 主应用内容组件（在 AuthProvider 内部）
  */
 const AppContent: React.FC = () => {
   const { isAuthenticated, isLoading, logout } = useAuth();
-  const [currentPage, setCurrentPage] = useState<'overview' | 'discovery' | 'targets' | 'scans' | 'vulnerabilities' | 'reports' | 'users' | 'settings'>('overview');
+  const [currentPage, setCurrentPage] = useState<'overview' | 'discovery' | 'targets' | 'scans' | 'vulnerabilities' | 'reports' | 'users' | 'settings' | 'help'>('overview');
   const [isNewScanModalOpen, setIsNewScanModalOpen] = useState(false);
 
   // 加载中状态
@@ -99,6 +100,12 @@ const AppContent: React.FC = () => {
       active: currentPage === 'settings',
       onClick: () => setCurrentPage('settings'),
     },
+    {
+      icon: 'settings',
+      label: 'Help Content',
+      active: currentPage === 'help',
+      onClick: () => setCurrentPage('help'),
+    },
   ];
 
   const handleNewScanSuccess = () => {
@@ -133,6 +140,8 @@ const AppContent: React.FC = () => {
         return <Users />;
       case 'settings':
         return <ScanProfiles />;
+      case 'help':
+        return <HelpContentManage />;
       default:
         return <Dashboard />;
     }

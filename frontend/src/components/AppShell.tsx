@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
 import { LayoutDashboard, Target, Shield, FileText, Settings, Bot, Plus, Search, LogOut, HelpCircle, Bell, Compass, Users, X, ExternalLink, BookOpen, MessageCircle, CheckCircle, AlertCircle, KeyRound } from './Icons';
 import ChangePasswordModal from './ChangePasswordModal';
+import { api } from '../api';
+import type { HelpContent } from '../api';
 
 interface NavItemData {
   icon?: React.FC<any> | string;
@@ -57,6 +59,31 @@ const AppShell: React.FC<AppShellProps> = ({
   const [showAllNotifications, setShowAllNotifications] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
+  
+  // 帮助内容相关状态
+  const [helpContents, setHelpContents] = useState<HelpContent[]>([]);
+  const [helpLoading, setHelpLoading] = useState(false);
+  const [selectedHelpContent, setSelectedHelpContent] = useState<HelpContent | null>(null);
+
+  // 获取帮助内容
+  const fetchHelpContents = async () => {
+    try {
+      setHelpLoading(true);
+      const data = await api.getHelpContents(true); // 只获取启用的内容
+      setHelpContents(data);
+    } catch (error) {
+      console.error('Failed to fetch help contents:', error);
+    } finally {
+      setHelpLoading(false);
+    }
+  };
+
+  // 当帮助模态框打开时获取数据
+  useEffect(() => {
+    if (showHelpModal && helpContents.length === 0) {
+      fetchHelpContents();
+    }
+  }, [showHelpModal]);
 
   // 基础通知数据（不包含已读状态）
   const baseNotifications = [
@@ -467,7 +494,7 @@ const AppShell: React.FC<AppShellProps> = ({
       {showHelpModal && (
         <div 
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-          onClick={() => setShowHelpModal(false)}
+          onClick={() => { setShowHelpModal(false); setSelectedHelpContent(null); }}
         >
           <div 
             className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden"
@@ -485,7 +512,7 @@ const AppShell: React.FC<AppShellProps> = ({
                 </div>
               </div>
               <button 
-                onClick={() => setShowHelpModal(false)}
+                onClick={() => { setShowHelpModal(false); setSelectedHelpContent(null); }}
                 className="p-2 hover:bg-white/20 rounded-lg transition-colors"
               >
                 <X size={20} className="text-white" />
@@ -494,87 +521,130 @@ const AppShell: React.FC<AppShellProps> = ({
             
             {/* 模态框内容 */}
             <div className="p-6 max-h-[60vh] overflow-y-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* 快速入门 */}
-                <div className="p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-8 h-8 bg-[#ff6b00]/10 rounded-lg flex items-center justify-center">
-                      <BookOpen size={18} className="text-[#ff6b00]" />
+              {selectedHelpContent ? (
+                // 显示详细内容
+                <div>
+                  <button
+                    onClick={() => setSelectedHelpContent(null)}
+                    className="text-sm text-gray-500 hover:text-gray-700 mb-4 flex items-center gap-1"
+                  >
+                    ← 返回列表
+                  </button>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div 
+                      className="w-10 h-10 rounded-lg flex items-center justify-center"
+                      style={{ backgroundColor: `${selectedHelpContent.icon_color}20` }}
+                    >
+                      {selectedHelpContent.icon === 'Shield' ? (
+                        <Shield size={24} style={{ color: selectedHelpContent.icon_color }} />
+                      ) : selectedHelpContent.icon === 'FileText' ? (
+                        <FileText size={24} style={{ color: selectedHelpContent.icon_color }} />
+                      ) : selectedHelpContent.icon === 'MessageCircle' ? (
+                        <MessageCircle size={24} style={{ color: selectedHelpContent.icon_color }} />
+                      ) : (
+                        <BookOpen size={24} style={{ color: selectedHelpContent.icon_color }} />
+                      )}
                     </div>
-                    <h3 className="font-semibold text-gray-800">快速入门</h3>
+                    <h3 className="text-xl font-bold text-gray-800">{selectedHelpContent.title}</h3>
                   </div>
-                  <p className="text-sm text-gray-500">了解如何创建第一个扫描任务，配置扫描目标。</p>
-                </div>
-                
-                {/* 扫描指南 */}
-                <div className="p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center">
-                      <Shield size={18} className="text-blue-500" />
+                  {selectedHelpContent.description && (
+                    <p className="text-gray-600 mb-4">{selectedHelpContent.description}</p>
+                  )}
+                  {selectedHelpContent.content && (
+                    <div className="prose prose-sm max-w-none bg-gray-50 rounded-lg p-4 whitespace-pre-wrap font-mono text-sm">
+                      {selectedHelpContent.content}
                     </div>
-                    <h3 className="font-semibold text-gray-800">扫描指南</h3>
-                  </div>
-                  <p className="text-sm text-gray-500">学习不同扫描类型的配置方法和最佳实践。</p>
-                </div>
-                
-                {/* 报告解读 */}
-                <div className="p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-8 h-8 bg-green-500/10 rounded-lg flex items-center justify-center">
-                      <FileText size={18} className="text-green-500" />
+                  )}
+                  {selectedHelpContent.link && (
+                    <div className="mt-4">
+                      <a 
+                        href={selectedHelpContent.link} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-[#ff6b00] hover:underline flex items-center gap-1"
+                      >
+                        了解更多
+                        <ExternalLink size={14} />
+                      </a>
                     </div>
-                    <h3 className="font-semibold text-gray-800">报告解读</h3>
-                  </div>
-                  <p className="text-sm text-gray-500">理解漏洞扫描报告，分析安全风险等级。</p>
+                  )}
                 </div>
-                
-                {/* 联系支持 */}
-                <div className="p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-8 h-8 bg-purple-500/10 rounded-lg flex items-center justify-center">
-                      <MessageCircle size={18} className="text-purple-500" />
+              ) : (
+                // 显示卡片列表
+                <>
+                  {helpLoading ? (
+                    <div className="py-12 text-center text-gray-400">
+                      <div className="w-8 h-8 border-2 border-[#ff6b00]/30 border-t-[#ff6b00] rounded-full animate-spin mx-auto mb-4"></div>
+                      加载中...
                     </div>
-                    <h3 className="font-semibold text-gray-800">联系支持</h3>
+                  ) : helpContents.length === 0 ? (
+                    <div className="py-12 text-center text-gray-400">
+                      <BookOpen size={48} className="mx-auto mb-4 text-gray-300" />
+                      <p>暂无帮助内容</p>
+                      <p className="text-sm mt-2">请联系管理员添加帮助内容</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {helpContents.map((content) => (
+                        <div 
+                          key={content.id}
+                          onClick={() => setSelectedHelpContent(content)}
+                          className="p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer"
+                        >
+                          <div className="flex items-center gap-3 mb-2">
+                            <div 
+                              className="w-8 h-8 rounded-lg flex items-center justify-center"
+                              style={{ backgroundColor: `${content.icon_color}20` }}
+                            >
+                              {content.icon === 'Shield' ? (
+                                <Shield size={18} style={{ color: content.icon_color }} />
+                              ) : content.icon === 'FileText' ? (
+                                <FileText size={18} style={{ color: content.icon_color }} />
+                              ) : content.icon === 'MessageCircle' ? (
+                                <MessageCircle size={18} style={{ color: content.icon_color }} />
+                              ) : (
+                                <BookOpen size={18} style={{ color: content.icon_color }} />
+                              )}
+                            </div>
+                            <h3 className="font-semibold text-gray-800">{content.title}</h3>
+                          </div>
+                          <p className="text-sm text-gray-500">{content.description || '点击查看详情'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* 常用快捷键 */}
+                  <div className="mt-6 pt-6 border-t border-gray-100">
+                    <h3 className="font-semibold text-gray-800 mb-3">快捷键</h3>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500">新建扫描</span>
+                        <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">Ctrl + N</kbd>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500">搜索</span>
+                        <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">Ctrl + K</kbd>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500">帮助</span>
+                        <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">?</kbd>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500">关闭弹窗</span>
+                        <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">Esc</kbd>
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-sm text-gray-500">遇到问题？联系技术支持获取帮助。</p>
-                </div>
-              </div>
-              
-              {/* 常用快捷键 */}
-              <div className="mt-6 pt-6 border-t border-gray-100">
-                <h3 className="font-semibold text-gray-800 mb-3">快捷键</h3>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-500">新建扫描</span>
-                    <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">Ctrl + N</kbd>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-500">搜索</span>
-                    <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">Ctrl + K</kbd>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-500">帮助</span>
-                    <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">?</kbd>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-500">关闭弹窗</span>
-                    <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">Esc</kbd>
-                  </div>
-                </div>
-              </div>
+                </>
+              )}
             </div>
             
             {/* 模态框底部 */}
             <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
-              <a 
-                href="#" 
-                className="text-sm text-[#ff6b00] font-medium hover:text-[#e66000] flex items-center gap-1 transition-colors"
-              >
-                查看完整文档
-                <ExternalLink size={14} />
-              </a>
+              <span className="text-sm text-gray-400">管理员可在设置中编辑帮助内容</span>
               <button 
-                onClick={() => setShowHelpModal(false)}
+                onClick={() => { setShowHelpModal(false); setSelectedHelpContent(null); }}
                 className="px-4 py-2 bg-[#ff6b00] text-white rounded-lg text-sm font-medium hover:bg-[#e66000] transition-colors"
               >
                 知道了

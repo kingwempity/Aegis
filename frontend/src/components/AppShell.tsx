@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
-import { LayoutDashboard, Target, Shield, FileText, Settings, Bot, Plus, Search, LogOut, HelpCircle, Bell, Compass, Users, X, ExternalLink, BookOpen, MessageCircle, CheckCircle, AlertCircle } from './Icons';
+import { LayoutDashboard, Target, Shield, FileText, Settings, Bot, Plus, Search, LogOut, HelpCircle, Bell, Compass, Users, X, ExternalLink, BookOpen, MessageCircle, CheckCircle, AlertCircle, KeyRound } from './Icons';
+import ChangePasswordModal from './ChangePasswordModal';
 
 interface NavItemData {
   icon?: React.FC<any> | string;
@@ -54,6 +55,7 @@ const AppShell: React.FC<AppShellProps> = ({
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showAllNotifications, setShowAllNotifications] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
 
   // 基础通知数据（不包含已读状态）
@@ -216,7 +218,21 @@ const AppShell: React.FC<AppShellProps> = ({
         </div>
 
         {/* 侧边栏底部 */}
-        <div className="p-6 border-t border-gray-800/50">
+        <div className="p-6 border-t border-gray-800/50 space-y-2">
+          {/* 修改密码按钮 */}
+          <button 
+            onClick={() => setShowChangePassword(true)}
+            className="w-full flex items-center gap-3 text-[#8a92a6] hover:text-white cursor-pointer transition-colors overflow-hidden"
+          >
+            <div className="flex-shrink-0">
+              <KeyRound size={20} />
+            </div>
+            <span className={`text-sm font-medium transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>
+              修改密码
+            </span>
+          </button>
+          
+          {/* 退出登录按钮 */}
           <button 
             onClick={onLogout}
             className="w-full flex items-center gap-3 text-[#8a92a6] hover:text-white cursor-pointer transition-colors overflow-hidden"
@@ -567,6 +583,19 @@ const AppShell: React.FC<AppShellProps> = ({
           </div>
         </div>
       )}
+
+      {/* ==================== 修改密码模态框 ==================== */}
+      <ChangePasswordModal 
+        isOpen={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+        onSuccess={() => {
+          setShowChangePassword(false);
+          // 密码修改成功后执行登出
+          if (onLogout) {
+            onLogout();
+          }
+        }}
+      />
     </div>
   );
 };

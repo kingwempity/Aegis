@@ -53,5 +53,5 @@ COPY --from=frontend-builder /frontend/dist /app/static
 # 暴露端口
 EXPOSE 8000
 
-# 启动命令
-CMD ["gunicorn", "app.main:app", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000", "--timeout", "120"]
+# 启动命令 - 低配服务器优化：单 worker 减少内存占用
+CMD ["gunicorn", "app.main:app", "-w", "1", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000", "--timeout", "120", "--threads", "2"]

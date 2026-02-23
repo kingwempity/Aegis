@@ -1,6 +1,8 @@
 # Compose v2 不再需要 version 字段，可省略
+# 低配服务器优化配置
+
 services:
-  # 数据库
+  # 数据库 - 低配服务器优化
   aegis-db:
     image: mysql:8.0
     container_name: aegis-db
@@ -8,27 +10,45 @@ services:
     environment:
       MYSQL_DATABASE: aegis
       MYSQL_ROOT_PASSWORD: aegis_password
+      # MySQL 内存优化配置
+      MYSQL_INNODB_BUFFER_POOL_SIZE: 128M
+      MYSQL_INNODB_LOG_BUFFER_SIZE: 8M
     ports:
       - "3307:3306"
     volumes:
       - ./data/mysql:/var/lib/mysql
     networks:
       - aegis-network
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$${MYSQL_ROOT_PASSWORD}"]
-      interval: 5s
-      timeout: 5s
+      interval: 10s
+      timeout: 10s
       retries: 10
 
-  # 缓存
+  # 缓存 - 低配服务器优化
   aegis-redis:
     image: redis:alpine
     container_name: aegis-redis
     restart: always
+    # Redis 内存限制
+    command: redis-server --maxmemory 64m --maxmemory-policy allkeys-lru
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
     networks:
       - aegis-network
 
-  # API 服务（资产发现从容器内发起，经宿主机访问 VPC，一般无需改 Docker 网络）
+  # API 服务 - 低配服务器优化
   aegis-api:
     build: .
     container_name: aegis-api
@@ -50,15 +70,23 @@ services:
         condition: service_healthy
       aegis-redis:
         condition: service_started
+    # 资源限制 - API 服务
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
     networks:
       - aegis-network
 
-  # Worker 服务
+  # Worker 服务 - 低配服务器优化
   aegis-worker:
     build: .
     container_name: aegis-worker
     restart: always
-    command: celery -A worker.celery_app worker --loglevel=info
+    # Celery 限制并发数，减少内存占用
+    command: celery -A worker.celery_app worker --loglevel=info --concurrency=1 --max-tasks-per-child=10
     volumes:
       - .:/app
     environment:
@@ -72,6 +100,13 @@ services:
         condition: service_healthy
       aegis-redis:
         condition: service_started
+    # 资源限制 - Worker 服务
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
     networks:
       - aegis-network
 

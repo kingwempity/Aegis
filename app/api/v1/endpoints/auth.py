@@ -23,6 +23,11 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr
 import jwt
 
+# 从 users 模块导入用户查询函数，共享用户数据
+from app.api.v1.endpoints.users import get_user_by_email as users_get_by_email
+from app.api.v1.endpoints.users import get_user_by_username as users_get_by_username
+from app.api.v1.endpoints.users import verify_password, hash_password
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -36,66 +41,14 @@ JWT_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "24"))
 security = HTTPBearer(auto_error=False)
 
 
-# ============== 密码哈希工具 ==============
-
-# 尝试导入 bcrypt，如果没有则使用简单的哈希
-try:
-    import bcrypt
-    
-    def hash_password(password: str) -> str:
-        return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-    
-    def verify_password(plain_password: str, hashed_password: str) -> bool:
-        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
-except ImportError:
-    import hashlib
-    
-    def hash_password(password: str) -> str:
-        return hashlib.sha256(password.encode('utf-8')).hexdigest()
-    
-    def verify_password(plain_password: str, hashed_password: str) -> bool:
-        return hashlib.sha256(plain_password.encode('utf-8')).hexdigest() == hashed_password
-
-
-def generate_default_password(username: str) -> str:
-    """生成默认密码：用户名@123"""
-    return f"{username}@123"
-
-
-def create_user_record(user_id: int, username: str, email: str, role: str, status: str) -> dict:
-    """创建用户记录"""
-    default_password = generate_default_password(username)
-    return {
-        "id": user_id,
-        "username": username,
-        "email": email,
-        "role": role,
-        "status": status,
-        "password_hash": hash_password(default_password)
-    }
-
-
-# 模拟用户数据库
-_mock_users = [
-    create_user_record(1, "admin", "admin@aegis.io", "Administrator", "Active"),
-    create_user_record(2, "security_auditor", "auditor@aegis.io", "Auditor", "Active"),
-]
-
-
 def get_user_by_email(email: str) -> Optional[dict]:
-    """根据邮箱获取用户"""
-    for user in _mock_users:
-        if user["email"].lower() == email.lower():
-            return user
-    return None
+    """根据邮箱获取用户（委托给 users 模块）"""
+    return users_get_by_email(email)
 
 
 def get_user_by_username(username: str) -> Optional[dict]:
-    """根据用户名获取用户"""
-    for user in _mock_users:
-        if user["username"] == username:
-            return user
-    return None
+    """根据用户名获取用户（委托给 users 模块）"""
+    return users_get_by_username(username)
 
 
 # ============== Pydantic 模型 ==============

@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from sqlalchemy.orm import Session
 
 # 使用别名导入以避免命名冲突
 from app.api.v1.endpoints import (
@@ -15,8 +16,9 @@ from app.api.v1.endpoints import (
     discovery as discovery_router, 
     users, profiles, auth, help
 )
-from app.db.database import engine, Base
+from app.db.database import engine, Base, SessionLocal
 from app.models import discovery as discovery_model
+from app.models.help import HelpContent
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("uvicorn")
@@ -103,6 +105,182 @@ app.include_router(profiles.router, prefix="/api/v1/profiles", tags=["Profiles"]
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(help.router, prefix="/api/v1/help", tags=["Help"])
 app.include_router(ws.router, tags=["WebSocket"])
+
+
+# ==================== 初始化默认帮助内容 ====================
+def init_default_help_contents():
+    """
+    初始化默认帮助内容。
+    当数据库中没有帮助内容时，创建默认的四项内容。
+    """
+    db: Session = SessionLocal()
+    try:
+        # 检查是否已有内容
+        existing_count = db.query(HelpContent).count()
+        if existing_count > 0:
+            logger.info(f"Help contents already exist ({existing_count} items), skipping initialization.")
+            return
+        
+        # 默认帮助内容
+        default_contents = [
+            {
+                "key": "quick_start",
+                "title": "快速入门",
+                "description": "了解如何创建第一个扫描任务，配置扫描目标。",
+                "content": """## 快速入门指南
+
+欢迎使用 Aegis 漏洞扫描系统！本指南将帮助您快速上手。
+
+### 1. 添加扫描目标
+- 进入「目标管理」页面
+- 点击「添加目标」按钮
+- 输入目标 URL 或 IP 地址
+
+### 2. 创建扫描任务
+- 点击右上角「新扫描」按钮
+- 选择扫描目标和扫描策略
+- 确认后开始扫描
+
+### 3. 查看扫描结果
+- 在「扫描任务」页面查看进度
+- 扫描完成后查看漏洞详情
+- 导出扫描报告
+
+### 需要帮助？
+如有疑问，请联系系统管理员。""",
+                "icon": "BookOpen",
+                "icon_color": "#ff6b00",
+                "link": None,
+                "order": 1,
+                "is_active": True
+            },
+            {
+                "key": "scan_guide",
+                "title": "扫描指南",
+                "description": "学习不同扫描类型的配置方法和最佳实践。",
+                "content": """## 扫描指南
+
+### 扫描类型说明
+
+#### 1. 快速扫描
+- 适用于初步安全评估
+- 扫描时间：5-10分钟
+- 检测常见漏洞
+
+#### 2. 标准扫描
+- 全面安全检测
+- 扫描时间：30-60分钟
+- 检测中高危漏洞
+
+#### 3. 深度扫描
+- 最全面的安全检测
+- 扫描时间：1-3小时
+- 检测所有类型漏洞
+
+### 最佳实践
+
+1. **选择合适的扫描时间**：避开业务高峰期
+2. **设置合理的并发数**：避免对目标造成过大压力
+3. **定期扫描**：建议每周至少一次安全扫描
+4. **及时修复**：发现高危漏洞应立即处理""",
+                "icon": "Shield",
+                "icon_color": "#3b82f6",
+                "link": None,
+                "order": 2,
+                "is_active": True
+            },
+            {
+                "key": "report_guide",
+                "title": "报告解读",
+                "description": "理解漏洞扫描报告，分析安全风险等级。",
+                "content": """## 报告解读指南
+
+### 风险等级说明
+
+| 等级 | 说明 | 建议处理时间 |
+|------|------|-------------|
+| 严重 | 可直接导致系统被入侵 | 立即处理 |
+| 高危 | 存在被利用的风险 | 24小时内 |
+| 中危 | 需要关注的安全问题 | 7天内 |
+| 低危 | 建议优化的问题 | 30天内 |
+| 信息 | 仅供参考的信息 | 可选处理 |
+
+### 报告内容说明
+
+#### 漏洞详情
+- 漏洞名称和类型
+- 受影响的 URL
+- 漏洞证明（请求/响应）
+
+#### 修复建议
+- 漏洞成因分析
+- 具体修复方案
+- 相关安全参考
+
+### 导出报告
+支持导出 PDF、HTML、JSON 格式的报告。""",
+                "icon": "FileText",
+                "icon_color": "#22c55e",
+                "link": None,
+                "order": 3,
+                "is_active": True
+            },
+            {
+                "key": "contact_support",
+                "title": "联系支持",
+                "description": "遇到问题？联系技术支持获取帮助。",
+                "content": """## 联系技术支持
+
+### 支持渠道
+
+#### 在线支持
+- 工作时间：周一至周五 9:00-18:00
+- 响应时间：2小时内
+
+#### 邮件支持
+- 邮箱：support@aegis.local
+- 响应时间：24小时内
+
+### 常见问题
+
+**Q: 扫描任务卡在「运行中」状态？**
+A: 请检查网络连接，或联系管理员重启扫描服务。
+
+**Q: 无法添加扫描目标？**
+A: 请确认目标格式正确（URL 需包含协议头，如 https://）。
+
+**Q: 如何获取更高权限？**
+A: 请联系系统管理员申请相应权限。
+
+### 问题反馈
+如发现系统问题或有功能建议，欢迎反馈！""",
+                "icon": "MessageCircle",
+                "icon_color": "#a855f7",
+                "link": None,
+                "order": 4,
+                "is_active": True
+            }
+        ]
+        
+        # 批量插入
+        for content_data in default_contents:
+            content = HelpContent(**content_data)
+            db.add(content)
+        
+        db.commit()
+        logger.info(f"Successfully initialized {len(default_contents)} default help contents.")
+    except Exception as e:
+        logger.error(f"Failed to initialize default help contents: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+# 应用启动时初始化默认帮助内容
+@app.on_event("startup")
+async def startup_event():
+    """应用启动时执行初始化操作。"""
+    init_default_help_contents()
 
 # 静态文件服务
 static_path = "/app/static"

@@ -212,11 +212,11 @@ const AppShell: React.FC<AppShellProps> = ({
       >
         {/* Logo 区域 */}
         <div className="px-6 py-8 flex items-center gap-3 overflow-hidden">
-          <div className="w-10 h-10 rounded-xl flex-shrink-0 bg-gradient-to-br from-[#ff6b00] to-[#ff8c00] p-0.5 shadow-lg shadow-orange-500/30">
+          <div className="w-10 h-10 rounded-xl flex-shrink-0 bg-[#2a2d3a] shadow-lg shadow-black/30 border border-white/10">
             <img 
               src="/logo.png" 
               alt="Aegis Logo" 
-              className="w-full h-full rounded-[10px] object-cover"
+              className="w-full h-full rounded-xl object-cover"
             />
           </div>
           <span className={`text-white text-xl font-bold tracking-tight transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>

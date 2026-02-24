@@ -119,7 +119,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 <User size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="admin 或 admin@aegis.io"
+                  placeholder="输入用户名或邮箱"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   onKeyDown={handleKeyDown}
@@ -177,17 +177,6 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           </div>
         </div>
 
-        {/* 默认账户信息 */}
-        <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
-          <h3 className="text-blue-400 text-sm font-bold mb-2">💡 测试账户</h3>
-          <div className="text-gray-300 text-sm space-y-1">
-            <p><span className="text-gray-400">用户名：</span>admin</p>
-            <p><span className="text-gray-400">密码：</span>admin@123</p>
-          </div>
-          <p className="text-gray-500 text-xs mt-2">
-            新创建的用户默认密码为：用户名@123
-          </p>
-        </div>
       </div>
     </div>
   );

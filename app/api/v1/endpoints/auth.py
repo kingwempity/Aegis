@@ -10,7 +10,7 @@
 Notes:
     - 使用 JWT Token 进行身份认证
     - 默认密码格式：用户名@123
-    - Token 有效期24小时
+    - Token 有效期3小时
 """
 
 import os
@@ -35,7 +35,7 @@ router = APIRouter()
 # JWT 配置
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "aegis-secret-key-change-in-production")
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "24"))
+JWT_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "3"))
 
 # HTTP Bearer 认证方案
 security = HTTPBearer(auto_error=False)

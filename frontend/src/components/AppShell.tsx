@@ -212,9 +212,11 @@ const AppShell: React.FC<AppShellProps> = ({
       >
         {/* Logo 区域 */}
         <div className="px-6 py-8 flex items-center gap-3 overflow-hidden">
-          <div className="w-8 h-8 bg-[#ff6b00] rounded-lg flex items-center justify-center text-white flex-shrink-0 shadow-lg shadow-orange-500/20">
-            <Bot size={20} />
-          </div>
+          <img 
+            src="/logo.png" 
+            alt="Aegis Logo" 
+            className="w-8 h-8 rounded-lg flex-shrink-0 shadow-lg shadow-orange-500/20 object-cover"
+          />
           <span className={`text-white text-xl font-bold tracking-tight transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>
             Aegis
           </span>

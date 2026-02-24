@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
 import { LayoutDashboard, Target, Shield, FileText, Settings, Bot, Plus, Search, LogOut, HelpCircle, Bell, Compass, Users, X, ExternalLink, BookOpen, MessageCircle, CheckCircle, AlertCircle, KeyRound } from './Icons';
 import ChangePasswordModal from './ChangePasswordModal';
 import { api } from '../api';
-import type { HelpContent } from '../api';
+import type { HelpContent, Notification } from '../api';
 
 interface NavItemData {
   icon?: React.FC<any> | string;
@@ -95,59 +95,57 @@ const AppShell: React.FC<AppShellProps> = ({
     }
   }, [showHelpModal]);
 
-  // 基础通知数据（不包含已读状态）
-  const baseNotifications = [
-    { id: 1, type: 'success', title: '扫描完成', message: '目标 example.com 的扫描已完成', time: '5分钟前' },
-    { id: 2, type: 'warning', title: '发现漏洞', message: '在 target.com 发现 2 个高危漏洞', time: '15分钟前' },
-    { id: 3, type: 'info', title: '系统更新', message: '系统已更新至最新版本 v2.1.0', time: '1小时前' },
-  ];
+  // ==================== 通知相关状态 ====================
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  // 从 localStorage 获取已读 ID 集合
-  const getStoredReadIds = (): Set<number> => {
+  // 获取通知列表
+  const fetchNotifications = useCallback(async () => {
     try {
-      const stored = localStorage.getItem(NOTIFICATION_READ_KEY);
-      if (stored) {
-        return new Set<number>(JSON.parse(stored));
-      }
-    } catch (e) {
-      console.warn('[AppShell] 读取通知已读状态失败:', e);
+      setNotificationsLoading(true);
+      const response = await api.getNotifications();
+      setNotifications(response.notifications);
+      setUnreadCount(response.unread_count);
+    } catch (error) {
+      console.error('[AppShell] Failed to fetch notifications:', error);
+    } finally {
+      setNotificationsLoading(false);
     }
-    return new Set<number>();
-  };
+  }, []);
 
-  // 保存已读 ID 集合到 localStorage
-  const saveReadIds = (ids: Set<number>) => {
-    try {
-      localStorage.setItem(NOTIFICATION_READ_KEY, JSON.stringify([...ids]));
-    } catch (e) {
-      console.warn('[AppShell] 保存通知已读状态失败:', e);
-    }
-  };
-
-  // 已读状态管理
-  const [readIds, setReadIds] = useState<Set<number>>(getStoredReadIds);
-
-  // 合并通知数据与已读状态
-  const notifications = baseNotifications.map(n => ({
-    ...n,
-    read: readIds.has(n.id)
-  }));
+  // 初始加载通知
+  useEffect(() => {
+    fetchNotifications();
+    // 每30秒刷新一次通知
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
 
   // 标记单条通知为已读
-  const markAsRead = (id: number) => {
-    setReadIds(prev => {
-      const newSet = new Set(prev);
-      newSet.add(id);
-      saveReadIds(newSet);
-      return newSet;
-    });
+  const markAsRead = async (id: string) => {
+    try {
+      await api.markNotificationAsRead(id);
+      // 更新本地状态
+      setNotifications(prev => 
+        prev.map(n => n.id === id ? { ...n, read: true } : n)
+      );
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('[AppShell] Failed to mark notification as read:', error);
+    }
   };
 
   // 标记所有通知为已读
-  const markAllAsRead = () => {
-    const allIds = new Set(baseNotifications.map(n => n.id));
-    saveReadIds(allIds);
-    setReadIds(allIds);
+  const markAllAsRead = async () => {
+    try {
+      await api.markAllNotificationsAsRead();
+      // 更新本地状态
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch (error) {
+      console.error('[AppShell] Failed to mark all notifications as read:', error);
+    }
   };
 
   // 查看全部通知
@@ -193,8 +191,6 @@ const AppShell: React.FC<AppShellProps> = ({
   }, []);
 
   const resolvedNavItems = propNavItems.length > 0 ? propNavItems : fallbackNavItems;
-
-  const unreadCount = notifications.filter(n => !n.read).length;
 
   const getNotificationIcon = (type: string) => {
     switch (type) {

@@ -154,6 +154,24 @@ export interface HelpContentUpdate {
   is_active?: boolean;
 }
 
+// 通知相关类型
+export interface Notification {
+  id: string;
+  type: 'success' | 'warning' | 'info' | 'error';
+  category: 'user_management' | 'scan' | 'system' | 'security';
+  title: string;
+  message: string;
+  time: string;
+  read: boolean;
+  extra_data?: Record<string, any>;
+}
+
+export interface NotificationListResponse {
+  total: number;
+  unread_count: number;
+  notifications: Notification[];
+}
+
 export interface DashboardStats {
   running_scans: number;
   pending_scans: number;
@@ -408,6 +426,59 @@ export const api = {
   async initDefaultHelpContents(): Promise<{ status: string; message: string }> {
     const response = await fetch(joinApiPath('/help/init-default'), { method: 'POST' });
     if (!response.ok) throw new Error('Failed to init default help contents');
+    return response.json();
+  },
+
+  // ==================== 通知管理 API ====================
+
+  async getNotifications(category?: string, unreadOnly: boolean = false, limit: number = 50): Promise<NotificationListResponse> {
+    const params = new URLSearchParams();
+    if (category) params.append('category', category);
+    params.append('unread_only', String(unreadOnly));
+    params.append('limit', String(limit));
+    
+    const response = await fetch(joinApiPath(`/notifications?${params.toString()}`));
+    if (!response.ok) throw new Error('Failed to fetch notifications');
+    return response.json();
+  },
+
+  async getUnreadNotificationCount(): Promise<{ unread_count: number }> {
+    const response = await fetch(joinApiPath('/notifications/unread-count'));
+    if (!response.ok) throw new Error('Failed to fetch unread count');
+    return response.json();
+  },
+
+  async markNotificationAsRead(notificationId: string): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(joinApiPath(`/notifications/${notificationId}/mark-read`), {
+      method: 'POST',
+    });
+    if (!response.ok) throw new Error('Failed to mark notification as read');
+    return response.json();
+  },
+
+  async markAllNotificationsAsRead(notificationIds?: string[]): Promise<{ success: boolean; marked_count: number }> {
+    const response = await fetch(joinApiPath('/notifications/mark-read'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notification_ids: notificationIds || null }),
+    });
+    if (!response.ok) throw new Error('Failed to mark all notifications as read');
+    return response.json();
+  },
+
+  async deleteNotification(notificationId: string): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(joinApiPath(`/notifications/${notificationId}`), {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error('Failed to delete notification');
+    return response.json();
+  },
+
+  async clearAllNotifications(): Promise<{ success: boolean; message: string; cleared_count: number }> {
+    const response = await fetch(joinApiPath('/notifications/clear-all'), {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error('Failed to clear all notifications');
     return response.json();
   },
 };

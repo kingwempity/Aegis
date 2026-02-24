@@ -5,10 +5,12 @@
 - 用户 CRUD 操作
 - 用户创建时自动生成默认密码
 - 用户状态管理
+- 用户操作通知
 
 Notes:
     - 默认密码格式：用户名@123（如 admin@123）
     - 密码使用 bcrypt 哈希存储
+    - 用户操作会生成系统通知
 """
 
 import os
@@ -16,6 +18,14 @@ import logging
 from typing import List, Optional
 from pydantic import BaseModel, EmailStr
 from fastapi import APIRouter, HTTPException
+
+# 导入通知服务
+from app.services.notification_service import (
+    notify_user_created,
+    notify_user_updated,
+    notify_user_deleted,
+    notify_user_status_changed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -225,6 +235,13 @@ async def create_user(user_in: UserCreate):
     default_password = generate_default_password(user_in.username)
     logger.info(f"用户创建成功: {user_in.username}, 默认密码: {default_password}")
     
+    # 发送用户创建通知
+    notify_user_created(
+        username=user_in.username,
+        email=user_in.email,
+        role=user_in.role
+    )
+    
     return {
         "id": new_user["id"],
         "username": new_user["username"],
@@ -271,17 +288,29 @@ async def update_user(user_id: int, user_in: UserUpdate):
         if any(u["email"].lower() == user_in.email.lower() and u["id"] != user_id for u in _mock_users):
             raise HTTPException(status_code=400, detail="邮箱已存在")
     
-    # 更新字段
-    if user_in.username is not None:
+    # 记录变更字段
+    changes = []
+    if user_in.username is not None and user_in.username != user["username"]:
+        changes.append("用户名")
         user["username"] = user_in.username
-    if user_in.email is not None:
+    if user_in.email is not None and user_in.email.lower() != user["email"].lower():
+        changes.append("邮箱")
         user["email"] = user_in.email
-    if user_in.role is not None:
+    if user_in.role is not None and user_in.role != user["role"]:
+        changes.append("角色")
         user["role"] = user_in.role
-    if user_in.status is not None:
+    if user_in.status is not None and user_in.status != user["status"]:
+        changes.append("状态")
         user["status"] = user_in.status
     
     logger.info(f"用户更新成功: {user['username']}")
+    
+    # 发送用户更新通知（仅当有变更时）
+    if changes:
+        notify_user_updated(
+            username=user["username"],
+            changes=changes
+        )
     
     return {
         "id": user["id"],
@@ -310,8 +339,13 @@ async def delete_user(user_id: int):
     
     for i, user in enumerate(_mock_users):
         if user["id"] == user_id:
-            deleted_user = _mock_users.pop(i)
-            logger.info(f"用户删除成功: {deleted_user['username']}")
+            deleted_username = user["username"]
+            _mock_users.pop(i)
+            logger.info(f"用户删除成功: {deleted_username}")
+            
+            # 发送用户删除通知
+            notify_user_deleted(username=deleted_username)
+            
             return {"success": True, "message": "用户已删除"}
     
     raise HTTPException(status_code=404, detail="用户不存在")

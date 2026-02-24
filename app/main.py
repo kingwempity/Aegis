@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.api.v1.endpoints import (
     tasks, reports, stats, vulnerabilities, ws, 
     discovery as discovery_router, 
-    users, profiles, auth, help
+    users, profiles, auth, help, notifications
 )
 from app.db.database import engine, Base, SessionLocal
 from app.models import discovery as discovery_model
@@ -105,6 +105,7 @@ app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
 app.include_router(profiles.router, prefix="/api/v1/profiles", tags=["Profiles"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(help.router, prefix="/api/v1/help", tags=["Help"])
+app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["Notifications"])
 app.include_router(ws.router, tags=["WebSocket"])
 
 

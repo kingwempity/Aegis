@@ -281,6 +281,10 @@ class NotificationService:
         return count
 
 
+# 全局单例实例（必须在辅助函数之前创建）
+notification_service = NotificationService()
+
+
 # ============== 用户管理通知辅助函数 ==============
 
 def notify_user_created(username: str, email: str, role: str, operator: str = "管理员") -> Notification:
@@ -405,7 +409,3 @@ def notify_password_changed(username: str, operator: str = "用户") -> Notifica
             "username": username
         }
     )
-
-
-# 全局单例实例
-notification_service = NotificationService()

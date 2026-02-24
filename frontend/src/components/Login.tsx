@@ -97,11 +97,11 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       <div className="relative w-full max-w-md">
         {/* Logo 和标题 */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl shadow-lg shadow-orange-500/30 mb-4 overflow-hidden">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl shadow-2xl shadow-orange-500/40 mb-4 overflow-hidden bg-gradient-to-br from-[#ff6b00] to-[#ff8c00] p-1">
             <img 
               src="/logo.png" 
               alt="Aegis Logo" 
-              className="w-16 h-16 object-cover"
+              className="w-full h-full rounded-xl object-cover"
             />
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Aegis</h1>

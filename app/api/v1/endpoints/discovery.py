@@ -1,3 +1,12 @@
+"""
+aegis.app.api.v1.endpoints.discovery
+------------------------------------
+资产发现与目标管理 API。
+
+Author: Aegis Architect
+Created: 2026-01-21
+"""
+
 from fastapi import APIRouter, HTTPException, Depends, status
 from typing import List, Optional
 from datetime import datetime
@@ -9,7 +18,9 @@ import os
 from app.services.network_scanner import NetworkScanner
 from app.db.database import get_db, SessionLocal
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.models.discovery import DiscoveryResult
+from app.models.task import ScanTask, Vulnerability
 from app.schemas.discovery import DiscoveryCreate, DiscoveryResponse, TargetCreate, TargetResponse
 
 router = APIRouter()
@@ -239,12 +250,69 @@ async def get_assets(db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @router.get("/targets", response_model=List[TargetResponse])
-async def get_targets():
+async def get_targets(db: Session = Depends(get_db)):
     """
-    获取目标列表（兼容旧接口）。
+    获取目标列表。
+    
+    从扫描任务中提取唯一的目标URL，并统计每个目标的漏洞数量。
+    
+    Args:
+        db: 数据库会话
+        
+    Returns:
+        目标列表，包含漏洞统计信息
     """
-    logger.info("正在返回模拟目标列表。")
-    return _mock_targets
+    logger.info("正在查询目标列表...")
+    
+    # 从扫描任务中获取唯一的目标URL
+    targets_query = db.query(
+        ScanTask.target_url,
+        func.max(ScanTask.created_at).label('last_scanned'),
+        func.count(ScanTask.id).label('scan_count')
+    ).group_by(ScanTask.target_url).all()
+    
+    # 构建目标列表
+    targets = []
+    for idx, (url, last_scanned, scan_count) in enumerate(targets_query, 1):
+        # 查询该目标的漏洞统计
+        # 使用 URL 匹配或包含关系来关联漏洞
+        vuln_query = db.query(Vulnerability).filter(
+            Vulnerability.url.like(f"%{url}%")
+        ).all()
+        
+        # 统计各级别漏洞数量
+        critical_count = 0
+        high_count = 0
+        medium_count = 0
+        low_count = 0
+        
+        for v in vuln_query:
+            if v.severity:
+                sev = v.severity.lower()
+                if sev == "critical":
+                    critical_count += 1
+                elif sev == "high":
+                    high_count += 1
+                elif sev == "medium":
+                    medium_count += 1
+                elif sev in ["low", "info"]:
+                    low_count += 1
+        
+        target = TargetResponse(
+            id=idx,
+            url=url,
+            description=f"已扫描 {scan_count} 次",
+            status="active",
+            created_at=last_scanned or datetime.now(),
+            last_scanned=last_scanned,
+            critical_vulns=critical_count,
+            high_vulns=high_count,
+            low_vulns=low_count + medium_count  # 前端显示 low 包含 medium
+        )
+        targets.append(target)
+    
+    logger.info(f"返回 {len(targets)} 个目标")
+    return targets
 
 @router.post("/targets", response_model=TargetResponse)
 async def create_target(target_in: TargetCreate):

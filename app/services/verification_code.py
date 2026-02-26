@@ -90,9 +90,31 @@ class RedisStorage(VerificationCodeStorage):
         
         Args:
             redis_url: Redis 连接URL
+            
+        Raises:
+            ConnectionError: 当 Redis 无法连接时抛出
         """
         self.client = redis.from_url(redis_url, decode_responses=True)
-        logger.info("Verification code storage: Redis mode")
+        self._connected = False
+        if not self._ping():
+            raise ConnectionError(f"Cannot connect to Redis at {redis_url}")
+        
+    def _ping(self) -> bool:
+        """
+        检测 Redis 连接是否可用
+        
+        Returns:
+            bool: 连接是否可用
+        """
+        try:
+            self.client.ping()
+            self._connected = True
+            logger.info("Verification code storage: Redis mode (connected)")
+            return True
+        except Exception as e:
+            self._connected = False
+            logger.warning(f"Redis connection failed: {e}")
+            return False
     
     def store(self, key: str, code: str, config: VerificationCodeConfig) -> bool:
         """

@@ -425,7 +425,13 @@ async def send_verification_code(request: SendCodeRequest, http_request: Request
         )
     else:
         logger.warning(f"Failed to send verification code to {email}: {message}")
-        raise HTTPException(status_code=429, detail=message)
+        # 区分错误类型：频率限制返回 429，其他错误返回 503
+        if "等待" in message and "秒" in message:
+            # 频率限制
+            raise HTTPException(status_code=429, detail=message)
+        else:
+            # 服务不可用（存储失败、邮件发送失败等）
+            raise HTTPException(status_code=503, detail=message)
 
 
 @router.post("/login-email", response_model=LoginResponse)

@@ -3,14 +3,18 @@
 
 功能：
 - 用户名/邮箱 + 密码登录
+- 邮箱 + 验证码登录（多因素认证支持）
 - 用户信息获取接口
 - 登出接口
 - 修改密码接口
+- 发送验证码接口
 
 Notes:
     - 使用 JWT Token 进行身份认证
     - 默认密码格式：用户名@123
     - Token 有效期3小时
+    - 验证码有效期5分钟
+    - 支持双登录方式：密码登录 / 邮箱验证码登录
 """
 
 import os
@@ -18,15 +22,18 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 import jwt
 
 # 从 users 模块导入用户查询函数，共享用户数据
 from app.api.v1.endpoints.users import get_user_by_email as users_get_by_email
 from app.api.v1.endpoints.users import get_user_by_username as users_get_by_username
 from app.api.v1.endpoints.users import verify_password, hash_password
+
+# 导入验证码服务
+from app.services.verification_code import get_verification_code_service
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +72,25 @@ class LoginResponse(BaseModel):
     message: str
     token: Optional[str] = None
     user: Optional[dict] = None
+
+
+class SendCodeRequest(BaseModel):
+    """发送验证码请求"""
+    email: EmailStr
+
+
+class SendCodeResponse(BaseModel):
+    """发送验证码响应"""
+    success: bool
+    message: str
+    # 开发模式下返回验证码（生产环境应移除）
+    code: Optional[str] = None
+
+
+class EmailLoginRequest(BaseModel):
+    """邮箱验证码登录请求"""
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6, description="6位验证码")
 
 
 class ChangePasswordRequest(BaseModel):
@@ -340,3 +366,149 @@ async def change_password(request: ChangePasswordRequest, user: dict = Depends(r
     logger.info(f"Password changed for user: {user.get('username')}")
     
     return {"success": True, "message": "密码修改成功"}
+
+
+# ============== 邮箱验证码登录端点 ==============
+
+@router.post("/send-code", response_model=SendCodeResponse)
+async def send_verification_code(request: SendCodeRequest, http_request: Request):
+    """
+    发送邮箱验证码
+    
+    用于邮箱验证码登录方式。验证码发送到用户邮箱，有效期5分钟。
+    
+    Args:
+        request: 包含邮箱的请求体
+        http_request: HTTP请求对象（用于获取客户端IP）
+        
+    Returns:
+        SendCodeResponse: 发送结果
+        
+    Notes:
+        - 验证码有效期：5分钟
+        - 发送频率限制：60秒内只能发送一次
+        - 开发模式下会在响应中返回验证码
+    """
+    email = request.email.lower().strip()
+    
+    # 检查用户是否存在
+    user = get_user_by_email(email)
+    if not user:
+        # 为了安全，不暴露用户是否存在的信息
+        logger.warning(f"Verification code requested for non-existent email: {email}")
+        raise HTTPException(status_code=400, detail="该邮箱未注册")
+    
+    # 检查用户状态
+    if user.get("status") != "Active":
+        raise HTTPException(status_code=403, detail="该账户已被禁用，请联系管理员")
+    
+    # 获取客户端IP（用于日志记录）
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    forwarded_for = http_request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+    
+    # 发送验证码
+    code_service = get_verification_code_service()
+    success, message, code = code_service.send_code(email)
+    
+    if success:
+        logger.info(f"Verification code sent to {email} from IP: {client_ip}")
+        return SendCodeResponse(
+            success=True,
+            message=message,
+            code=code  # 开发模式返回验证码，生产环境应为 None
+        )
+    else:
+        logger.warning(f"Failed to send verification code to {email}: {message}")
+        raise HTTPException(status_code=429, detail=message)
+
+
+@router.post("/login-email", response_model=LoginResponse)
+async def login_with_email(request: EmailLoginRequest, http_request: Request):
+    """
+    邮箱验证码登录
+    
+    使用邮箱和验证码进行登录，验证成功后返回 JWT Token。
+    
+    Args:
+        request: 包含邮箱和验证码的请求体
+        http_request: HTTP请求对象（用于获取客户端IP）
+        
+    Returns:
+        LoginResponse: 登录结果，包含 Token 和用户信息
+        
+    Notes:
+        - 验证码有效期：5分钟
+        - 最大尝试次数：5次
+        - 验证成功后验证码立即失效
+    """
+    email = request.email.lower().strip()
+    code = request.code.strip()
+    
+    # 获取客户端IP
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    forwarded_for = http_request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+    
+    # 验证验证码
+    code_service = get_verification_code_service()
+    valid, message = code_service.verify_code(email, code)
+    
+    if not valid:
+        logger.warning(f"Failed email login attempt for {email} from IP: {client_ip} - {message}")
+        raise HTTPException(status_code=401, detail=message)
+    
+    # 获取用户信息
+    user = get_user_by_email(email)
+    if not user:
+        # 这种情况理论上不应该发生
+        logger.error(f"User not found after verification code validation: {email}")
+        raise HTTPException(status_code=500, detail="系统错误，请稍后重试")
+    
+    # 检查用户状态
+    if user.get("status") != "Active":
+        raise HTTPException(status_code=403, detail="该账户已被禁用，请联系管理员")
+    
+    # 创建 JWT Token
+    token = create_jwt_token(user)
+    
+    logger.info(f"User logged in via email code: {user['username']} ({user['email']}) from IP: {client_ip}")
+    
+    return LoginResponse(
+        success=True,
+        message="登录成功",
+        token=token,
+        user={
+            "id": user["id"],
+            "username": user["username"],
+            "email": user["email"],
+            "role": user["role"],
+        }
+    )
+
+
+@router.get("/can-send-code/{email}")
+async def can_send_code(email: str):
+    """
+    检查是否可以发送验证码
+    
+    用于前端倒计时显示。
+    
+    Args:
+        email: 邮箱地址
+        
+    Returns:
+        dict: 包含是否可以发送和剩余等待时间
+    """
+    code_service = get_verification_code_service()
+    can_send, wait_seconds = code_service.storage.can_resend(
+        email.lower().strip(), 
+        code_service.config
+    )
+    
+    return {
+        "can_send": can_send,
+        "wait_seconds": wait_seconds
+    }

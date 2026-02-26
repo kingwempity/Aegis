@@ -10,6 +10,9 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
 
+# 导入审计中间件
+from app.middleware.audit_middleware import add_audit_middleware
+
 # 使用别名导入以避免命名冲突
 from app.api.v1.endpoints import (
     tasks, reports, stats, vulnerabilities, ws, 
@@ -277,6 +280,9 @@ A: 请联系系统管理员申请相应权限。
     finally:
         db.close()
 
+
+# 添加审计中间件
+add_audit_middleware(app)
 
 # 应用启动时初始化默认帮助内容
 @app.on_event("startup")

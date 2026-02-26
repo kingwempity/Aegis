@@ -1,0 +1,80 @@
+specification {
+  element person
+  element system
+  element container
+}
+
+model {
+  user = person '用户' {
+    description '系统使用者，包括安全工程师、开发人员和管理员'
+  }
+
+  aegis = system 'Aegis System' {
+    description '基于模拟攻击的Web应用程序漏洞检测系统'
+
+    frontend = container '前端应用 (AFE)' {
+      description 'React + TypeScript + Ant Design 构建的Web前端界面'
+    }
+
+    backend = container '后端API服务 (Aegis)' {
+      description 'FastAPI 构建的RESTful API服务'
+    }
+
+    scanner = container '扫描引擎 (Scanner)' {
+      description '核心漏洞扫描引擎，执行模拟攻击检测'
+    }
+
+    worker = container '异步任务处理器 (Celery Worker)' {
+      description 'Celery异步任务工作进程，处理后台扫描任务'
+    }
+
+    mysql = container '数据库 (MySQL)' {
+      description '存储扫描任务、漏洞结果和系统配置'
+    }
+
+    redis = container '消息队列 (Redis)' {
+      description 'Celery消息代理和缓存'
+    }
+  }
+
+  target = system '目标系统' {
+    description '被扫描的Web应用程序'
+  }
+
+  nmap = system '网络扫描工具 (Nmap)' {
+    description '用于网络设备发现和端口扫描'
+  }
+
+  user -> frontend '使用'
+  frontend -> backend 'HTTP/HTTPS REST API'
+  frontend -> backend 'WebSocket 实时通信'
+  backend -> mysql '数据持久化'
+  backend -> redis '缓存'
+  backend -> worker '提交扫描任务'
+  worker -> scanner '调用扫描引擎'
+  worker -> mysql '保存扫描结果'
+  worker -> redis '任务状态同步'
+  scanner -> target 'HTTP请求/模拟攻击'
+  backend -> nmap '网络发现'
+  scanner -> backend '返回漏洞数据'
+}
+
+views {
+  view index {
+    title '系统整体架构'
+    description '展示Aegis系统的整体架构和各组件之间的关系'
+    include *
+  }
+
+  view data_flow {
+    title '数据流架构'
+    description '展示系统中的主要数据流向'
+    include user, frontend, backend, scanner, worker, mysql, redis, target
+  }
+
+  view deployment {
+    title '部署架构'
+    description '展示系统的部署架构和容器化方案'
+    include user, frontend, backend, scanner, worker, mysql, redis, target, nmap
+  }
+}

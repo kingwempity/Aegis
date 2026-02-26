@@ -27,6 +27,9 @@ from app.services.notification_service import (
     notify_user_status_changed,
 )
 
+# 导入验证码服务（用于清除邮箱变更后的验证码缓存）
+from app.services.verification_code import get_verification_code_service
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -290,11 +293,14 @@ async def update_user(user_id: int, user_in: UserUpdate):
     
     # 记录变更字段
     changes = []
+    old_email = None  # 记录旧邮箱，用于清除验证码缓存
+    
     if user_in.username is not None and user_in.username != user["username"]:
         changes.append("用户名")
         user["username"] = user_in.username
     if user_in.email is not None and user_in.email.lower() != user["email"].lower():
         changes.append("邮箱")
+        old_email = user["email"]  # 保存旧邮箱
         user["email"] = user_in.email
     if user_in.role is not None and user_in.role != user["role"]:
         changes.append("角色")
@@ -304,6 +310,18 @@ async def update_user(user_id: int, user_in: UserUpdate):
         user["status"] = user_in.status
     
     logger.info(f"用户更新成功: {user['username']}")
+    
+    # 如果邮箱变更，清除验证码缓存
+    if old_email:
+        try:
+            code_service = get_verification_code_service()
+            # 清除旧邮箱的验证码缓存
+            code_service.invalidate_code(old_email.lower())
+            # 也清除新邮箱的验证码缓存（防止之前有人请求过）
+            code_service.invalidate_code(user["email"].lower())
+            logger.info(f"已清除邮箱变更相关的验证码缓存: {old_email} -> {user['email']}")
+        except Exception as e:
+            logger.warning(f"清除验证码缓存失败: {e}")
     
     # 发送用户更新通知（仅当有变更时）
     if changes:

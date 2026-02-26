@@ -22,10 +22,6 @@ scanner.engine.template_generator
     >>> scripts = builder.build_from_plugin(plugin_yaml, target_url, context)
     >>> for script in scripts:
     ...     print(script.request.url, script.payload.original)
-
-作者：Aegis Security Team
-创建时间：2024-01-01
-版本：1.0.0
 """
 
 from __future__ import annotations

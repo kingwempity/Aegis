@@ -11,7 +11,6 @@
 4. 批量生成 - 批量处理多个模板
 5. 与扫描引擎集成 - 实际扫描场景
 
-作者：Aegis Security Team
 """
 
 import os

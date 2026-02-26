@@ -4,7 +4,6 @@ info:
   severity: High
   description: |
     检测反射型XSS漏洞，通过注入测试payload并检查响应中是否包含未转义的payload。
-  author: Aegis Security Team
   tags:
     - xss
     - injection

@@ -441,9 +441,6 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           <p className="text-gray-500 text-xs">
             登录即表示您同意遵守系统使用规范
           </p>
-          <p className="text-gray-600 text-xs mt-1">
-            🔒 支持多重身份验证 | 全链路加密传输
-          </p>
         </div>
       </div>
     </div>

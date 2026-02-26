@@ -388,15 +388,19 @@ async def send_verification_code(request: SendCodeRequest, http_request: Request
         - 验证码有效期：5分钟
         - 发送频率限制：60秒内只能发送一次
         - 开发模式下会在响应中返回验证码
+        - 默认用户邮箱：admin@aegis.io, auditor@aegis.io
     """
     email = request.email.lower().strip()
     
     # 检查用户是否存在
     user = get_user_by_email(email)
     if not user:
-        # 为了安全，不暴露用户是否存在的信息
+        # 提供更友好的错误提示
         logger.warning(f"Verification code requested for non-existent email: {email}")
-        raise HTTPException(status_code=400, detail="该邮箱未注册")
+        raise HTTPException(
+            status_code=400, 
+            detail="该邮箱未注册。"
+        )
     
     # 检查用户状态
     if user.get("status") != "Active":

@@ -28,12 +28,22 @@ from pydantic import BaseModel, EmailStr, Field
 import jwt
 
 # 从 users 模块导入用户查询函数，共享用户数据
-from app.api.v1.endpoints.users import get_user_by_email as users_get_by_email
-from app.api.v1.endpoints.users import get_user_by_username as users_get_by_username
-from app.api.v1.endpoints.users import verify_password, hash_password
+try:
+    from app.api.v1.endpoints.users import get_user_by_email as users_get_by_email
+    from app.api.v1.endpoints.users import get_user_by_username as users_get_by_username
+    from app.api.v1.endpoints.users import verify_password, hash_password
+except ImportError as e:
+    logger.error(f"Failed to import from users module: {e}")
+    raise
 
-# 导入验证码服务
-from app.services.verification_code import get_verification_code_service
+# 导入验证码服务（带异常保护）
+try:
+    from app.services.verification_code import get_verification_code_service
+    _verification_code_available = True
+except ImportError as e:
+    logger.warning(f"Verification code service not available: {e}")
+    _verification_code_available = False
+    def get_verification_code_service(): return None
 
 logger = logging.getLogger(__name__)
 
@@ -227,41 +237,48 @@ async def login(request: LoginRequest):
         默认密码格式：用户名@123
         例如：admin 用户的默认密码是 admin@123
     """
-    username_input = request.username.strip()
-    password = request.password
-    
-    # 尝试通过用户名或邮箱查找用户
-    user = get_user_by_username(username_input) or get_user_by_email(username_input)
-    
-    if not user:
-        logger.warning(f"Login attempt with unknown user: {username_input}")
-        raise HTTPException(status_code=401, detail="用户名或密码错误")
-    
-    # 检查用户状态
-    if user.get("status") != "Active":
-        raise HTTPException(status_code=403, detail="该账户已被禁用，请联系管理员")
-    
-    # 验证密码
-    if not verify_password(password, user.get("password_hash", "")):
-        logger.warning(f"Failed login attempt for user: {username_input}")
-        raise HTTPException(status_code=401, detail="用户名或密码错误")
-    
-    # 创建 JWT Token
-    token = create_jwt_token(user)
-    
-    logger.info(f"User logged in: {user['username']} ({user['email']})")
-    
-    return LoginResponse(
-        success=True,
-        message="登录成功",
-        token=token,
-        user={
-            "id": user["id"],
-            "username": user["username"],
-            "email": user["email"],
-            "role": user["role"],
-        }
-    )
+    try:
+        username_input = request.username.strip()
+        password = request.password
+        
+        # 尝试通过用户名或邮箱查找用户
+        user = get_user_by_username(username_input) or get_user_by_email(username_input)
+        
+        if not user:
+            logger.warning(f"Login attempt with unknown user: {username_input}")
+            raise HTTPException(status_code=401, detail="用户名或密码错误")
+        
+        # 检查用户状态
+        if user.get("status") != "Active":
+            raise HTTPException(status_code=403, detail="该账户已被禁用，请联系管理员")
+        
+        # 验证密码
+        if not verify_password(password, user.get("password_hash", "")):
+            logger.warning(f"Failed login attempt for user: {username_input}")
+            raise HTTPException(status_code=401, detail="用户名或密码错误")
+        
+        # 创建 JWT Token
+        token = create_jwt_token(user)
+        
+        logger.info(f"User logged in: {user['username']} ({user['email']})")
+        
+        return LoginResponse(
+            success=True,
+            message="登录成功",
+            token=token,
+            user={
+                "id": user["id"],
+                "username": user["username"],
+                "email": user["email"],
+                "role": user["role"],
+            }
+        )
+    except HTTPException:
+        # 重新抛出 HTTP 异常
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in login: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="登录服务暂时不可用，请稍后重试")
 
 
 @router.get("/me", response_model=UserInfoResponse)

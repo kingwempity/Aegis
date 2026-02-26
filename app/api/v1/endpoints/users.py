@@ -19,16 +19,32 @@ from typing import List, Optional
 from pydantic import BaseModel, EmailStr
 from fastapi import APIRouter, HTTPException
 
-# 导入通知服务
-from app.services.notification_service import (
-    notify_user_created,
-    notify_user_updated,
-    notify_user_deleted,
-    notify_user_status_changed,
-)
+# 导入通知服务（带异常保护）
+try:
+    from app.services.notification_service import (
+        notify_user_created,
+        notify_user_updated,
+        notify_user_deleted,
+        notify_user_status_changed,
+    )
+    _notification_available = True
+except ImportError as e:
+    logger.warning(f"Notification service not available: {e}")
+    _notification_available = False
+    # 创建空函数作为降级处理
+    def notify_user_created(*args, **kwargs): pass
+    def notify_user_updated(*args, **kwargs): pass
+    def notify_user_deleted(*args, **kwargs): pass
+    def notify_user_status_changed(*args, **kwargs): pass
 
 # 导入验证码服务（用于清除邮箱变更后的验证码缓存）
-from app.services.verification_code import get_verification_code_service
+try:
+    from app.services.verification_code import get_verification_code_service
+    _verification_code_available = True
+except ImportError as e:
+    logger.warning(f"Verification code service not available: {e}")
+    _verification_code_available = False
+    def get_verification_code_service(): return None
 
 logger = logging.getLogger(__name__)
 

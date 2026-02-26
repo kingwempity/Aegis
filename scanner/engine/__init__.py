@@ -9,6 +9,7 @@ scanner.engine
 - core: 核心扫描引擎
 - attack: 攻击脚本生成与路径探索算法
 - parser: YAML模板解析器
+- template_generator: 模板化攻击脚本生成器（新增）
 """
 
 from scanner.engine.core import (
@@ -57,6 +58,37 @@ from scanner.engine.attack import (
 
 from scanner.engine.parser import TemplateParser
 
+# 导入模板化攻击脚本生成器（新模块）
+from scanner.engine.template_generator import (
+    # 枚举类型
+    AttackStrategy,
+    PayloadCategory,
+    EncodingMethod,
+    VariableScope,
+    
+    # 数据实体
+    Payload,
+    AttackRequest,
+    AttackScript,
+    TemplateVariable,
+    Template,
+    
+    # 核心组件
+    VariableResolver,
+    PayloadEncoder as TemplatePayloadEncoder,
+    PayloadMutator as TemplatePayloadMutator,
+    PayloadGenerator,
+    TemplateRenderer,
+    AttackScriptBuilder,
+    TemplateManager,
+    BatchScriptGenerator,
+    
+    # 便捷函数
+    create_script_builder,
+    generate_attack_scripts,
+    load_and_generate,
+)
+
 __all__ = [
     # 核心扫描引擎
     "ScannerEngine",
@@ -67,23 +99,46 @@ __all__ = [
     "create_aggressive_engine",
     "create_stealthy_engine",
     
-    # 枚举类型
+    # 枚举类型（attack模块）
     "PayloadType",
     "EncodingType",
     
-    # 数据实体
+    # 枚举类型（template_generator模块）
+    "AttackStrategy",
+    "PayloadCategory",
+    "EncodingMethod",
+    "VariableScope",
+    
+    # 数据实体（attack模块）
     "PathCandidate",
     "PayloadVariant",
     "AttackContext",
     "AttackPathNode",
     "AttackPathResult",
     
-    # 核心组件
+    # 数据实体（template_generator模块）
+    "Payload",
+    "AttackRequest",
+    "AttackScript",
+    "TemplateVariable",
+    "Template",
+    
+    # 核心组件（attack模块）
     "PayloadEncoder",
     "PayloadMutator",
     "ContextAwareEngine",
     "AttackScriptGenerator",
     "AttackPathExplorer",
+    
+    # 核心组件（template_generator模块）
+    "VariableResolver",
+    "TemplatePayloadEncoder",
+    "TemplatePayloadMutator",
+    "PayloadGenerator",
+    "TemplateRenderer",
+    "AttackScriptBuilder",
+    "TemplateManager",
+    "BatchScriptGenerator",
     
     # 攻击路径搜索算法
     "HeuristicEvaluator",
@@ -92,12 +147,17 @@ __all__ = [
     "AttackPathSearchAlgorithm",
     "AttackGraphBuilder",
     
-    # 便捷函数
+    # 便捷函数（attack模块）
     "create_default_generator",
     "create_aggressive_generator",
     "create_default_explorer",
     "create_default_search_algorithm",
     "create_attack_node",
+    
+    # 便捷函数（template_generator模块）
+    "create_script_builder",
+    "generate_attack_scripts",
+    "load_and_generate",
     
     # 解析器
     "TemplateParser",

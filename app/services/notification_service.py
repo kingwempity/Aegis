@@ -13,7 +13,7 @@ Notes:
 
 import logging
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from enum import Enum
 import uuid
@@ -110,6 +110,7 @@ class NotificationService:
     
     def _initialize_default_notifications(self):
         """初始化默认通知（示例数据）"""
+        now = datetime.now()
         # 添加一些示例通知
         self._notifications = [
             Notification(
@@ -118,7 +119,7 @@ class NotificationService:
                 category=NotificationCategory.SCAN.value,
                 title="扫描完成",
                 message="目标 example.com 的扫描已完成",
-                time=datetime.now().replace(minute=datetime.now().minute - 5),
+                time=now - timedelta(minutes=5),
                 read=False
             ),
             Notification(
@@ -127,7 +128,7 @@ class NotificationService:
                 category=NotificationCategory.SCAN.value,
                 title="发现漏洞",
                 message="在 target.com 发现 2 个高危漏洞",
-                time=datetime.now().replace(minute=datetime.now().minute - 15),
+                time=now - timedelta(minutes=15),
                 read=False
             ),
             Notification(
@@ -136,7 +137,7 @@ class NotificationService:
                 category=NotificationCategory.SYSTEM.value,
                 title="系统更新",
                 message="系统已更新至最新版本 v2.1.0",
-                time=datetime.now().replace(hour=datetime.now().hour - 1),
+                time=now - timedelta(hours=1),
                 read=False
             ),
         ]

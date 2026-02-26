@@ -497,11 +497,11 @@ class ScanReportExportView(APIView):
             include_screenshots = request.GET.get('include_screenshots', 'true').lower() == 'true'
 
             # 验证导出格式
-            supported_formats = ['pdf', 'excel', 'html', 'markdown']
+            supported_formats = ['pdf', 'excel', 'html', 'markdown', 'json']
             if export_format not in supported_formats:
                 return Response({
                     'code': 400,
-                    'message': 'Unsupported export format',
+                    'message': f'Unsupported export format. Supported formats: {", ".join(supported_formats)}',
                     'data': {}
                 }, status=status.HTTP_400_BAD_REQUEST)
 
@@ -511,13 +511,11 @@ class ScanReportExportView(APIView):
             elif export_format == 'pdf':
                 return self._export_pdf_report(scan_task, include_evidence, include_screenshots)
             elif export_format == 'excel':
-                return Response({
-                    'code': 501,
-                    'message': 'Excel export not implemented yet. Please use HTML format.',
-                    'data': {}
-                }, status=status.HTTP_501_NOT_IMPLEMENTED)
+                return self._export_excel_report(scan_task, include_evidence, include_screenshots)
             elif export_format == 'markdown':
                 return self._export_markdown_report(scan_task, include_evidence, include_screenshots)
+            elif export_format == 'json':
+                return self._export_json_report(scan_task, include_evidence, include_screenshots)
             else:
                 return Response({
                     'code': 400,
@@ -1057,13 +1055,349 @@ class ScanReportExportView(APIView):
         return response
 
     def _export_excel_report(self, scan_task, include_evidence, include_screenshots):
-        """导出Excel报告"""
+        """
+        导出Excel报告
+        
+        Args:
+            scan_task: 扫描任务对象
+            include_evidence: 是否包含攻击证据
+            include_screenshots: 是否包含截图信息
+            
+        Returns:
+            HttpResponse: Excel文件响应
+        """
         from django.http import HttpResponse
-
-        response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from openpyxl.utils import get_column_letter
+        from io import BytesIO
+        
+        # 创建工作簿
+        wb = Workbook()
+        
+        # ========== 概览工作表 ==========
+        ws_overview = wb.active
+        ws_overview.title = "扫描概览"
+        
+        # 定义样式
+        header_font = Font(bold=True, size=14, color="FFFFFF")
+        header_fill = PatternFill(start_color="2d3343", end_color="2d3343", fill_type="solid")
+        subheader_font = Font(bold=True, size=11)
+        subheader_fill = PatternFill(start_color="f8f9fa", end_color="f8f9fa", fill_type="solid")
+        border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # 获取漏洞数据
+        vulnerabilities = Vulnerability.objects.filter(task=scan_task)
+        
+        # 统计数据
+        summary = {
+            "total_vulnerabilities": vulnerabilities.count(),
+            "critical": vulnerabilities.filter(risk_level="critical").count(),
+            "high": vulnerabilities.filter(risk_level="high").count(),
+            "medium": vulnerabilities.filter(risk_level="medium").count(),
+            "low": vulnerabilities.filter(risk_level="low").count(),
+            "info": vulnerabilities.filter(risk_level="info").count(),
+        }
+        
+        # 获取技术栈信息
+        technology_stack = {}
+        try:
+            scan_result = ScanResult.objects.get(task=scan_task)
+            technology_stack = scan_result.technology_stack or {}
+        except ScanResult.DoesNotExist:
+            pass
+        
+        # 标题
+        ws_overview.merge_cells('A1:D1')
+        ws_overview['A1'] = "Web应用程序漏洞检测报告"
+        ws_overview['A1'].font = Font(bold=True, size=18)
+        ws_overview['A1'].alignment = Alignment(horizontal='center')
+        
+        # 基本信息
+        ws_overview['A3'] = "基本信息"
+        ws_overview['A3'].font = subheader_font
+        ws_overview.merge_cells('A3:D3')
+        ws_overview['A3'].fill = subheader_fill
+        
+        basic_info = [
+            ("任务ID", scan_task.task_id),
+            ("目标URL", scan_task.target_url),
+            ("扫描时间", scan_task.completed_at.strftime("%Y-%m-%d %H:%M:%S") if scan_task.completed_at else "N/A"),
+            ("扫描持续时间", f"{scan_task.duration_seconds()} 秒"),
+            ("扫描页面数", scan_task.pages_scanned or 0),
+            ("执行模块数", len(scan_task.custom_modules) if scan_task.custom_modules else 5),
+        ]
+        
+        for idx, (label, value) in enumerate(basic_info, start=4):
+            ws_overview[f'A{idx}'] = label
+            ws_overview[f'A{idx}'].font = Font(bold=True)
+            ws_overview[f'B{idx}'] = str(value)
+            ws_overview.merge_cells(f'B{idx}:D{idx}')
+        
+        # 漏洞统计
+        row = len(basic_info) + 5
+        ws_overview[f'A{row}'] = "漏洞统计"
+        ws_overview[f'A{row}'].font = subheader_font
+        ws_overview.merge_cells(f'A{row}:D{row}')
+        ws_overview[f'A{row}'].fill = subheader_fill
+        
+        vuln_stats = [
+            ("总漏洞数", summary["total_vulnerabilities"]),
+            ("危急", summary["critical"]),
+            ("高危", summary["high"]),
+            ("中危", summary["medium"]),
+            ("低危", summary["low"]),
+            ("信息", summary["info"]),
+        ]
+        
+        # 风险等级颜色
+        risk_colors = {
+            "危急": "dc3545",
+            "高危": "fd7e14", 
+            "中危": "ffc107",
+            "低危": "28a745",
+            "信息": "17a2b8",
+        }
+        
+        for idx, (label, value) in enumerate(vuln_stats, start=row+1):
+            ws_overview[f'A{idx}'] = label
+            ws_overview[f'A{idx}'].font = Font(bold=True)
+            ws_overview[f'B{idx}'] = value
+            if label in risk_colors:
+                ws_overview[f'A{idx}'].fill = PatternFill(start_color=risk_colors[label], end_color=risk_colors[label], fill_type="solid")
+                ws_overview[f'A{idx}'].font = Font(bold=True, color="FFFFFF")
+        
+        # 技术栈信息
+        row = row + len(vuln_stats) + 2
+        ws_overview[f'A{row}'] = "技术栈信息"
+        ws_overview[f'A{row}'].font = subheader_font
+        ws_overview.merge_cells(f'A{row}:D{row}')
+        ws_overview[f'A{row}'].fill = subheader_fill
+        
+        tech_info = [
+            ("服务器", technology_stack.get('server', '未知')),
+            ("编程语言", technology_stack.get('language', '未知')),
+            ("框架", technology_stack.get('framework', '未知')),
+            ("数据库", technology_stack.get('database', '未知')),
+        ]
+        
+        for idx, (label, value) in enumerate(tech_info, start=row+1):
+            ws_overview[f'A{idx}'] = label
+            ws_overview[f'A{idx}'].font = Font(bold=True)
+            ws_overview[f'B{idx}'] = str(value)
+            ws_overview.merge_cells(f'B{idx}:D{idx}')
+        
+        # 设置列宽
+        ws_overview.column_dimensions['A'].width = 20
+        ws_overview.column_dimensions['B'].width = 30
+        ws_overview.column_dimensions['C'].width = 20
+        ws_overview.column_dimensions['D'].width = 20
+        
+        # ========== 漏洞详情工作表 ==========
+        ws_vulns = wb.create_sheet("漏洞详情")
+        
+        # 表头
+        headers = ["序号", "漏洞名称", "风险等级", "CVSS评分", "漏洞类型", "URL", "参数", "请求方法"]
+        if include_evidence:
+            headers.extend(["攻击载荷", "证据"])
+        headers.extend(["漏洞描述", "修复建议", "发现时间"])
+        
+        for col, header in enumerate(headers, start=1):
+            cell = ws_vulns.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+            cell.border = border
+        
+        # 填充漏洞数据
+        for idx, vuln in enumerate(vulnerabilities, start=1):
+            row = idx + 1
+            col = 1
+            
+            ws_vulns.cell(row=row, column=col, value=idx).border = border
+            col += 1
+            ws_vulns.cell(row=row, column=col, value=vuln.name).border = border
+            col += 1
+            
+            # 风险等级单元格
+            risk_cell = ws_vulns.cell(row=row, column=col, value=vuln.risk_level.upper())
+            risk_cell.border = border
+            risk_colors_cell = {
+                'critical': "dc3545",
+                'high': "fd7e14",
+                'medium': "ffc107",
+                'low': "28a745",
+                'info': "17a2b8",
+            }
+            if vuln.risk_level.lower() in risk_colors_cell:
+                risk_cell.fill = PatternFill(start_color=risk_colors_cell[vuln.risk_level.lower()], 
+                                            end_color=risk_colors_cell[vuln.risk_level.lower()], 
+                                            fill_type="solid")
+                risk_cell.font = Font(bold=True, color="FFFFFF")
+            col += 1
+            
+            ws_vulns.cell(row=row, column=col, value=vuln.cvss_score).border = border
+            col += 1
+            ws_vulns.cell(row=row, column=col, value=vuln.type).border = border
+            col += 1
+            ws_vulns.cell(row=row, column=col, value=vuln.url).border = border
+            col += 1
+            ws_vulns.cell(row=row, column=col, value=vuln.parameter or "N/A").border = border
+            col += 1
+            ws_vulns.cell(row=row, column=col, value=vuln.method).border = border
+            col += 1
+            
+            if include_evidence:
+                ws_vulns.cell(row=row, column=col, value=vuln.payload or "N/A").border = border
+                col += 1
+                ws_vulns.cell(row=row, column=col, value=vuln.evidence or "N/A").border = border
+                col += 1
+            
+            ws_vulns.cell(row=row, column=col, value=vuln.description or "N/A").border = border
+            col += 1
+            ws_vulns.cell(row=row, column=col, value=vuln.remediation or "N/A").border = border
+            col += 1
+            ws_vulns.cell(row=row, column=col, 
+                         value=vuln.detected_at.strftime("%Y-%m-%d %H:%M:%S") if vuln.detected_at else "N/A").border = border
+        
+        # 设置列宽
+        column_widths = [8, 30, 10, 10, 15, 40, 15, 10]
+        if include_evidence:
+            column_widths.extend([30, 30])
+        column_widths.extend([40, 40, 20])
+        
+        for col, width in enumerate(column_widths, start=1):
+            ws_vulns.column_dimensions[get_column_letter(col)].width = width
+        
+        # ========== 风险统计图表数据工作表 ==========
+        ws_stats = wb.create_sheet("统计图表数据")
+        
+        ws_stats['A1'] = "风险等级"
+        ws_stats['B1'] = "数量"
+        ws_stats['A1'].font = Font(bold=True)
+        ws_stats['B1'].font = Font(bold=True)
+        
+        stats_data = [
+            ("危急", summary["critical"]),
+            ("高危", summary["high"]),
+            ("中危", summary["medium"]),
+            ("低危", summary["low"]),
+            ("信息", summary["info"]),
+        ]
+        
+        for idx, (label, value) in enumerate(stats_data, start=2):
+            ws_stats[f'A{idx}'] = label
+            ws_stats[f'B{idx}'] = value
+        
+        ws_stats.column_dimensions['A'].width = 15
+        ws_stats.column_dimensions['B'].width = 10
+        
+        # 写入缓冲区
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        
+        # 创建HTTP响应
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
         response["Content-Disposition"] = f'attachment; filename="scan_report_{scan_task.task_id}.xlsx"'
+        
+        return response
 
-        # 这里应该使用openpyxl或其他Excel库生成真正的Excel文件
-        # 暂时返回一个简单的文本响应
-        response.write(b"Excel export not fully implemented. Please use HTML export for now.")
+    def _export_json_report(self, scan_task, include_evidence, include_screenshots):
+        """
+        导出JSON报告
+        
+        Args:
+            scan_task: 扫描任务对象
+            include_evidence: 是否包含攻击证据
+            include_screenshots: 是否包含截图信息
+            
+        Returns:
+            HttpResponse: JSON文件响应
+        """
+        from django.http import HttpResponse
+        import json
+        
+        # 获取漏洞数据
+        vulnerabilities = Vulnerability.objects.filter(task=scan_task)
+        
+        # 统计数据
+        summary = {
+            "total_vulnerabilities": vulnerabilities.count(),
+            "critical": vulnerabilities.filter(risk_level="critical").count(),
+            "high": vulnerabilities.filter(risk_level="high").count(),
+            "medium": vulnerabilities.filter(risk_level="medium").count(),
+            "low": vulnerabilities.filter(risk_level="low").count(),
+            "info": vulnerabilities.filter(risk_level="info").count(),
+            "pages_scanned": scan_task.pages_scanned,
+            "modules_executed": len(scan_task.custom_modules) if scan_task.custom_modules else 5,
+        }
+        
+        # 获取技术栈信息
+        technology_stack = {}
+        try:
+            scan_result = ScanResult.objects.get(task=scan_task)
+            technology_stack = scan_result.technology_stack or {}
+        except ScanResult.DoesNotExist:
+            pass
+        
+        # 构建漏洞列表
+        vuln_list = []
+        for vuln in vulnerabilities:
+            vuln_data = {
+                "id": vuln.id,
+                "name": vuln.name,
+                "type": vuln.type,
+                "risk_level": vuln.risk_level,
+                "cvss_score": vuln.cvss_score,
+                "cvss_vector": vuln.cvss_vector,
+                "url": vuln.url,
+                "method": vuln.method,
+                "parameter": vuln.parameter,
+                "description": vuln.description,
+                "remediation": vuln.remediation,
+                "detected_at": vuln.detected_at.isoformat() if vuln.detected_at else None,
+            }
+            
+            if include_evidence:
+                vuln_data["payload"] = vuln.payload
+                vuln_data["evidence"] = vuln.evidence
+            
+            if include_screenshots and hasattr(vuln, 'screenshots'):
+                vuln_data["screenshots"] = vuln.screenshots
+            
+            if hasattr(vuln, 'references') and vuln.references:
+                vuln_data["references"] = vuln.references
+            
+            vuln_list.append(vuln_data)
+        
+        # 构建完整报告
+        report = {
+            "report_info": {
+                "task_id": scan_task.task_id,
+                "target_url": scan_task.target_url,
+                "scan_time": scan_task.completed_at.isoformat() if scan_task.completed_at else None,
+                "scan_duration_seconds": scan_task.duration_seconds(),
+                "generated_at": timezone.now().isoformat(),
+            },
+            "summary": summary,
+            "technology_stack": technology_stack,
+            "vulnerabilities": vuln_list,
+        }
+        
+        # 创建HTTP响应
+        response = HttpResponse(
+            json.dumps(report, ensure_ascii=False, indent=2),
+            content_type="application/json; charset=utf-8"
+        )
+        response["Content-Disposition"] = f'attachment; filename="scan_report_{scan_task.task_id}.json"'
+        
         return response

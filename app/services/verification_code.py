@@ -441,7 +441,12 @@ def get_verification_code_service() -> VerificationCodeService:
     global _verification_code_service
     
     if _verification_code_service is None:
-        redis_url = os.getenv("REDIS_URL")
-        _verification_code_service = VerificationCodeService(redis_url=redis_url)
+        try:
+            redis_url = os.getenv("REDIS_URL")
+            _verification_code_service = VerificationCodeService(redis_url=redis_url)
+        except Exception as e:
+            # 确保任何异常都被捕获，降级到内存存储
+            logger.error(f"Failed to initialize verification code service: {e}")
+            _verification_code_service = VerificationCodeService(redis_url=None)
     
     return _verification_code_service

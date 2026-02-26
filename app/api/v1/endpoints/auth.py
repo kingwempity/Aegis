@@ -390,48 +390,56 @@ async def send_verification_code(request: SendCodeRequest, http_request: Request
         - 开发模式下会在响应中返回验证码
         - 默认用户邮箱：admin@aegis.io, auditor@aegis.io
     """
-    email = request.email.lower().strip()
-    
-    # 检查用户是否存在
-    user = get_user_by_email(email)
-    if not user:
-        # 提供更友好的错误提示
-        logger.warning(f"Verification code requested for non-existent email: {email}")
-        raise HTTPException(
-            status_code=400, 
-            detail="该邮箱未注册。"
-        )
-    
-    # 检查用户状态
-    if user.get("status") != "Active":
-        raise HTTPException(status_code=403, detail="该账户已被禁用，请联系管理员")
-    
-    # 获取客户端IP（用于日志记录）
-    client_ip = http_request.client.host if http_request.client else "unknown"
-    forwarded_for = http_request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        client_ip = forwarded_for.split(",")[0].strip()
-    
-    # 发送验证码
-    code_service = get_verification_code_service()
-    success, message, code = code_service.send_code(email)
-    
-    if success:
-        logger.info(f"Verification code sent to {email} from IP: {client_ip}")
-        return SendCodeResponse(
-            success=True,
-            message=message,
-            code=code  # 开发模式返回验证码，生产环境应为 None
-        )
-    else:
-        logger.warning(f"Failed to send verification code to {email}: {message}")
-        # 区分错误类型：频率限制返回 429，其他错误返回 503
-        if "等待" in message and "秒" in message:
-            # 频率限制
-            raise HTTPException(status_code=429, detail=message)
+    try:
+        email = request.email.lower().strip()
+        
+        # 检查用户是否存在
+        user = get_user_by_email(email)
+        if not user:
+            # 提供更友好的错误提示
+            logger.warning(f"Verification code requested for non-existent email: {email}")
+            raise HTTPException(
+                status_code=400, 
+                detail="该邮箱未注册。"
+            )
+        
+        # 检查用户状态
+        if user.get("status") != "Active":
+            raise HTTPException(status_code=403, detail="该账户已被禁用，请联系管理员")
+        
+        # 获取客户端IP（用于日志记录）
+        client_ip = http_request.client.host if http_request.client else "unknown"
+        forwarded_for = http_request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            client_ip = forwarded_for.split(",")[0].strip()
+        
+        # 发送验证码
+        code_service = get_verification_code_service()
+        success, message, code = code_service.send_code(email)
+        
+        if success:
+            logger.info(f"Verification code sent to {email} from IP: {client_ip}")
+            return SendCodeResponse(
+                success=True,
+                message=message,
+                code=code  # 开发模式返回验证码，生产环境应为 None
+            )
         else:
-            # 服务不可用（存储失败、邮件发送失败等）
-            raise HTTPException(status_code=503, detail=message)
+            logger.warning(f"Failed to send verification code to {email}: {message}")
+            # 区分错误类型：频率限制返回 429，其他错误返回 503
+            if "等待" in message and "秒" in message:
+                # 频率限制
+                raise HTTPException(status_code=429, detail=message)
+            else:
+                # 服务不可用（存储失败、邮件发送失败等）
+                raise HTTPException(status_code=503, detail=message)
+                
+    except HTTPException:
+        # 重新抛出 HTTP 异常
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in send_verification_code: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="服务暂时不可用，请稍后重试")
 
 
 @router.post("/login-email", response_model=LoginResponse)

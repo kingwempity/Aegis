@@ -9,6 +9,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import text, inspect
 
 # 导入审计中间件
 from app.middleware.audit_middleware import add_audit_middleware
@@ -27,6 +28,59 @@ from app.models.task import ScanTask, Vulnerability
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("uvicorn")
 
+def migrate_vulnerabilities_table():
+    """
+    为 vulnerabilities 表添加新字段（如果不存在）。
+    
+    支持增量迁移，不会影响现有数据。
+    """
+    # 新字段定义：(列名, 列类型SQL)
+    new_columns = [
+        ("attack_path", "JSON"),
+        ("vuln_type", "VARCHAR(50)"),
+        ("parameter", "VARCHAR(100)"),
+        ("method", "VARCHAR(10)"),
+        ("description", "TEXT"),
+        ("remediation", "TEXT"),
+        ("cvss_score", "INT"),
+        ("detected_at", "DATETIME"),
+    ]
+    
+    try:
+        inspector = inspect(engine)
+        
+        # 检查表是否存在
+        if 'vulnerabilities' not in inspector.get_table_names():
+            logger.info("vulnerabilities 表不存在，将由 create_all 创建")
+            return
+        
+        # 获取现有列
+        existing_columns = {col['name'] for col in inspector.get_columns('vulnerabilities')}
+        
+        # 添加缺失的列
+        with engine.connect() as conn:
+            for col_name, col_type in new_columns:
+                if col_name not in existing_columns:
+                    try:
+                        # MySQL 语法
+                        sql = f"ALTER TABLE vulnerabilities ADD COLUMN {col_name} {col_type}"
+                        conn.execute(text(sql))
+                        conn.commit()
+                        logger.info(f"✅ 添加新列: {col_name}")
+                    except Exception as e:
+                        if "duplicate column" in str(e).lower() or "already exists" in str(e).lower():
+                            logger.info(f"⏭️ 列已存在: {col_name}")
+                        else:
+                            logger.warning(f"⚠️ 添加列失败 {col_name}: {e}")
+                else:
+                    logger.debug(f"⏭️ 列已存在: {col_name}")
+        
+        logger.info("数据库字段迁移完成")
+        
+    except Exception as e:
+        logger.warning(f"数据库迁移检查失败: {e}")
+
+
 # 创建数据库表 (带重试逻辑)
 max_retries = 5
 retry_interval = 5
@@ -35,10 +89,19 @@ for i in range(max_retries):
     try:
         Base.metadata.create_all(bind=engine, checkfirst=True)
         logger.info("Database tables verified/created successfully.")
+        
+        # 执行增量迁移
+        migrate_vulnerabilities_table()
+        
         break
     except Exception as e:
         if "already exists" in str(e):
             logger.info("Tables already exist, skipping creation.")
+            # 即使表已存在，也尝试迁移
+            try:
+                migrate_vulnerabilities_table()
+            except Exception as migrate_err:
+                logger.warning(f"Migration failed: {migrate_err}")
             break
         
         if i < max_retries - 1:

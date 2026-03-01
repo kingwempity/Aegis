@@ -18,12 +18,14 @@ from app.middleware.audit_middleware import add_audit_middleware
 from app.api.v1.endpoints import (
     tasks, reports, stats, vulnerabilities, ws, 
     discovery as discovery_router, 
-    users, profiles, auth, help, notifications
+    users, profiles, auth, help, notifications,
+    lab
 )
 from app.db.database import engine, Base, SessionLocal
 from app.models import discovery as discovery_model
 from app.models.help import HelpContent
 from app.models.task import ScanTask, Vulnerability
+from app.services.lab_init import init_lab_scenarios
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("uvicorn")
@@ -172,6 +174,7 @@ app.include_router(profiles.router, prefix="/api/v1/profiles", tags=["Profiles"]
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(help.router, prefix="/api/v1/help", tags=["Help"])
 app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["Notifications"])
+app.include_router(lab.router, tags=["Vulnerability Lab"])
 app.include_router(ws.router, tags=["WebSocket"])
 
 
@@ -352,6 +355,16 @@ add_audit_middleware(app)
 async def startup_event():
     """应用启动时执行初始化操作。"""
     init_default_help_contents()
+    
+    # 初始化漏洞实验室场景
+    try:
+        db: Session = SessionLocal()
+        count = init_lab_scenarios(db)
+        if count > 0:
+            logger.info(f"Successfully initialized {count} lab scenarios.")
+        db.close()
+    except Exception as e:
+        logger.error(f"Failed to initialize lab scenarios: {e}")
 
 # 静态文件服务
 static_path = "/app/static"

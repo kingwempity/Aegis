@@ -489,4 +489,91 @@ export const api = {
     if (!response.ok) throw new Error('Failed to clear all notifications');
     return response.json();
   },
+
+  // ==================== 漏洞实验室 API ====================
+
+  async getLabScenarios(params?: {
+    vuln_type?: string;
+    difficulty?: string;
+    search?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<{ items: LabScenario[]; total: number }> {
+    const searchParams = new URLSearchParams();
+    if (params?.vuln_type) searchParams.append('vuln_type', params.vuln_type);
+    if (params?.difficulty) searchParams.append('difficulty', params.difficulty);
+    if (params?.search) searchParams.append('search', params.search);
+    if (params?.page) searchParams.append('page', String(params.page));
+    if (params?.page_size) searchParams.append('page_size', String(params.page_size));
+    
+    const response = await fetch(joinApiPath(`/lab/scenarios?${searchParams.toString()}`));
+    if (!response.ok) throw new Error('Failed to fetch lab scenarios');
+    return response.json();
+  },
+
+  async getLabScenario(id: number): Promise<LabScenario> {
+    const response = await fetch(joinApiPath(`/lab/scenarios/${id}`));
+    if (!response.ok) throw new Error('Failed to fetch lab scenario');
+    return response.json();
+  },
+
+  async getLabVulnTypes(): Promise<VulnTypeInfo[]> {
+    const response = await fetch(joinApiPath('/lab/vuln-types'));
+    if (!response.ok) throw new Error('Failed to fetch vuln types');
+    return response.json();
+  },
+
+  async getLabDifficultyLevels(): Promise<Record<string, string>> {
+    const response = await fetch(joinApiPath('/lab/difficulty-levels'));
+    if (!response.ok) throw new Error('Failed to fetch difficulty levels');
+    return response.json();
+  },
 };
+
+// 漏洞实验室相关类型
+export interface LabScenario {
+  id: number;
+  name: string;
+  vuln_type: string;
+  difficulty: string;
+  description?: string;
+  attack_steps: AttackStep[];
+  remediation: Remediation[];
+  learning: Learning;
+  tags: string[];
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AttackStep {
+  step: number;
+  title: string;
+  description?: string;
+  request?: Record<string, unknown>;
+  response?: Record<string, unknown>;
+  payload?: string;
+  payload_explanation?: string;
+  result?: string;
+}
+
+export interface Remediation {
+  title: string;
+  description?: string;
+  code?: string;
+  language?: string;
+}
+
+export interface Learning {
+  principle?: string;
+  cwe?: string;
+  owasp?: string;
+  impact?: string;
+  references?: string[];
+}
+
+export interface VulnTypeInfo {
+  code: string;
+  name: string;
+  count: number;
+}

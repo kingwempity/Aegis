@@ -18,13 +18,14 @@ import Users from './components/Users';
 import ScanProfiles from './components/ScanProfiles';
 import NewScanModal from './components/NewScanModal';
 import HelpContentManage from './components/HelpContentManage';
+import LabHome from './components/LabHome';
 
 /**
  * 主应用内容组件（在 AuthProvider 内部）
  */
 const AppContent: React.FC = () => {
   const { isAuthenticated, isLoading, logout } = useAuth();
-  const [currentPage, setCurrentPage] = useState<'overview' | 'discovery' | 'targets' | 'scans' | 'vulnerabilities' | 'reports' | 'users' | 'settings' | 'help'>('overview');
+  const [currentPage, setCurrentPage] = useState<'overview' | 'discovery' | 'targets' | 'scans' | 'vulnerabilities' | 'reports' | 'lab' | 'users' | 'settings' | 'help'>('overview');
   const [isNewScanModalOpen, setIsNewScanModalOpen] = useState(false);
 
   // 加载中状态
@@ -82,6 +83,12 @@ const AppContent: React.FC = () => {
       active: currentPage === 'reports',
       onClick: () => setCurrentPage('reports'),
     },
+    {
+      icon: 'lab',
+      label: 'Vuln Lab',
+      active: currentPage === 'lab',
+      onClick: () => setCurrentPage('lab'),
+    },
     
     // SETTINGS 分组
     {
@@ -136,6 +143,8 @@ const AppContent: React.FC = () => {
         return <VulnerabilityList />;
       case 'reports':
         return <Reports />;
+      case 'lab':
+        return <LabHome />;
       case 'users':
         return <Users />;
       case 'settings':

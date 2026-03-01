@@ -172,6 +172,13 @@ export interface NotificationListResponse {
   notifications: Notification[];
 }
 
+export interface TopThreat {
+  id: number;
+  title: string;
+  severity: string;
+  target_url: string;
+}
+
 export interface DashboardStats {
   running_scans: number;
   pending_scans: number;
@@ -184,6 +191,7 @@ export interface DashboardStats {
     medium: number;
     low: number;
   };
+  top_threats: TopThreat[];
 }
 
 export interface DiscoveryScanStatus {

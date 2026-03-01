@@ -174,7 +174,7 @@ app.include_router(profiles.router, prefix="/api/v1/profiles", tags=["Profiles"]
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(help.router, prefix="/api/v1/help", tags=["Help"])
 app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["Notifications"])
-app.include_router(lab.router, tags=["Vulnerability Lab"])
+app.include_router(lab.router, prefix="/api/v1/lab", tags=["Vulnerability Lab"])
 app.include_router(ws.router, tags=["WebSocket"])
 
 

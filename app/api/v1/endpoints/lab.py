@@ -22,7 +22,7 @@ from app.schemas.lab import (
     VulnTypeInfo,
 )
 
-router = APIRouter(prefix="/lab", tags=["Vulnerability Lab"])
+router = APIRouter(tags=["Vulnerability Lab"])
 
 
 @router.get("/scenarios", response_model=LabScenarioListResponse)

@@ -273,40 +273,50 @@ class ReportGenerator:
         
         vulnerabilities = []
         for vuln in task.vulnerabilities:
+            # 安全获取可能不存在的新字段
+            vuln_type = getattr(vuln, 'vuln_type', None)
+            parameter = getattr(vuln, 'parameter', None)
+            method = getattr(vuln, 'method', None)
+            description = getattr(vuln, 'description', None)
+            remediation = getattr(vuln, 'remediation', None)
+            cvss_score = getattr(vuln, 'cvss_score', None)
+            attack_path = getattr(vuln, 'attack_path', None)
+            detected_at = getattr(vuln, 'detected_at', None)
+            
             # 构建攻击路径信息
             attack_path_data = None
-            if vuln.attack_path:
-                attack_path_data = vuln.attack_path
+            if attack_path:
+                attack_path_data = attack_path
             elif vuln.url:
                 # 如果没有存储的攻击路径，基于基本信息构建
                 attack_path_data = {
                     "steps": [
                         {
                             "step": 1,
-                            "method": vuln.method or "GET",
+                            "method": method or "GET",
                             "url": vuln.url,
                             "description": "直接向目标发送恶意请求"
                         }
                     ],
                     "request": {
-                        "method": vuln.method or "GET",
+                        "method": method or "GET",
                         "url": vuln.url,
                         "headers": {},
-                        "body": vuln.payload if vuln.method == "POST" else None
+                        "body": vuln.payload if method == "POST" else None
                     }
                 }
             
             vuln_data = {
                 "id": vuln.id,
                 "name": vuln.vuln_name,
-                "type": vuln.vuln_type,
+                "type": vuln_type,
                 "severity": vuln.severity,
-                "cvss_score": vuln.cvss_score,
+                "cvss_score": cvss_score,
                 "url": vuln.url,
-                "parameter": vuln.parameter,
-                "method": vuln.method,
-                "description": vuln.description,
-                "remediation": vuln.remediation,
+                "parameter": parameter,
+                "method": method,
+                "description": description,
+                "remediation": remediation,
                 # 攻击路径 - 核心改进
                 "attack_path": attack_path_data,
                 # 攻击载荷 - 核心改进
@@ -318,7 +328,7 @@ class ReportGenerator:
                 },
                 # 攻击证据
                 "evidence": vuln.evidence,
-                "detected_at": vuln.detected_at.isoformat() if vuln.detected_at else None
+                "detected_at": detected_at.isoformat() if detected_at else None
             }
             
             # 从 evidence 中提取编码信息

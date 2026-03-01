@@ -388,7 +388,7 @@ class ScannerEngine:
                 )
                 
                 self._vulnerabilities.append(result)
-                logger.info(f"🔴 发现漏洞: {result.vuln_name} @ {url}")
+                logger.info(f" 发现漏洞: {result.vuln_name} @ {url}")
                 
                 return True
             
@@ -401,11 +401,11 @@ class ScannerEngine:
             
         except httpx.TimeoutException:
             self._stats.failed_requests += 1
-            logger.debug(f"⏱️ 请求超时: {url}")
+            logger.debug(f" 请求超时: {url}")
             
         except Exception as e:
             self._stats.failed_requests += 1
-            logger.debug(f"⚠️ 请求失败 {url}: {e}")
+            logger.debug(f" 请求失败 {url}: {e}")
         
         return False
     
@@ -416,7 +416,7 @@ class ScannerEngine:
         Args:
             client: HTTP客户端
         """
-        logger.info(f"🔍 开始发现路径扫描...")
+        logger.info(f" 开始发现路径扫描...")
         
         # 获取优先级排序的发现路径
         discovered_paths = self.path_explorer._discovered_paths
@@ -443,7 +443,7 @@ class ScannerEngine:
                 
             except Exception as e:
                 self._stats.failed_requests += 1
-                logger.debug(f"⚠️ 发现路径请求失败 {path.url}: {e}")
+                logger.debug(f" 发现路径请求失败 {path.url}: {e}")
     
     def _check_sensitive_disclosure(self, url: str, response: httpx.Response) -> None:
         """
@@ -485,7 +485,7 @@ class ScannerEngine:
                 
                 self._vulnerabilities.append(result)
                 self._stats.vulnerabilities_found += 1
-                logger.info(f"🔴 发现敏感信息泄露: {pattern_name} @ {url}")
+                logger.info(f" 发现敏感信息泄露: {pattern_name} @ {url}")
     
     async def _request_in_scope(
         self,

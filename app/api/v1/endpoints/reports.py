@@ -242,16 +242,23 @@ def preview_report(task_id: int, db: Session = Depends(get_db)):
     
     vulnerabilities = []
     for vuln in task.vulnerabilities:
+        # 安全获取可能不存在的新字段
+        vuln_type = getattr(vuln, 'vuln_type', None)
+        parameter = getattr(vuln, 'parameter', None)
+        cvss_score = getattr(vuln, 'cvss_score', None)
+        description = getattr(vuln, 'description', None)
+        remediation = getattr(vuln, 'remediation', None)
+        
         vulnerabilities.append({
             "id": vuln.id,
-            "title": vuln.title,
-            "type": vuln.vuln_type,
+            "title": vuln.vuln_name,
+            "type": vuln_type,
             "severity": vuln.severity,
-            "cvss_score": vuln.cvss_score,
+            "cvss_score": cvss_score,
             "url": vuln.url,
-            "parameter": vuln.parameter,
-            "description": vuln.description,
-            "remediation": vuln.remediation
+            "parameter": parameter,
+            "description": description,
+            "remediation": remediation
         })
     
     report_data = {

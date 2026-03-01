@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
-import { LayoutDashboard, Target, Shield, FileText, Settings, Bot, Plus, Search, LogOut, HelpCircle, Bell, Compass, Users, X, ExternalLink, BookOpen, MessageCircle, CheckCircle, AlertCircle, KeyRound } from './Icons';
+import { LayoutDashboard, Target, Shield, FileText, Settings, Bot, Plus, Search, LogOut, HelpCircle, Bell, Compass, Users, X, ExternalLink, BookOpen, MessageCircle, CheckCircle, AlertCircle, KeyRound, FlaskConical } from './Icons';
 import ChangePasswordModal from './ChangePasswordModal';
 import { api } from '../api';
 import type { HelpContent, Notification } from '../api';
@@ -34,6 +34,7 @@ const iconMap: Record<string, React.FC<any>> = {
   reports: FileText,
   users: Users,
   settings: Settings,
+  lab: FlaskConical,
 };
 
 const fallbackNavItems: NavItemData[] = [

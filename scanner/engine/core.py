@@ -670,24 +670,164 @@ class ScannerEngine:
         """
         将扫描结果转换为字典格式。
         
+        包含完整的攻击路径和载荷信息，用于报告生成。
+        
         Args:
             result: 扫描结果
             
         Returns:
             字典格式的结果
         """
+        # 构建攻击路径信息
+        attack_path = {
+            "steps": [
+                {
+                    "step": 1,
+                    "method": result.request.get("method", "GET") if result.request else "GET",
+                    "url": result.url,
+                    "description": self._get_attack_description(result)
+                }
+            ],
+            "request": result.request,
+            "response_summary": {
+                "status": result.response.get("status") if result.response else None,
+                "body_snippet": result.response.get("body_snippet", "")[:500] if result.response else None
+            } if result.response else None
+        }
+        
+        # 提取漏洞类型
+        vuln_type = self._extract_vuln_type(result.plugin_id, result.vuln_name)
+        
+        # 提取参数名
+        parameter = self._extract_parameter(result.url, result.request)
+        
         return {
             "vuln_name": result.vuln_name,
+            "vuln_type": vuln_type,
             "severity": result.severity,
             "url": result.url,
             "payload": result.payload,
+            "parameter": parameter,
+            "method": result.request.get("method", "GET") if result.request else "GET",
             "plugin_id": result.plugin_id,
             "scan_time": result.scan_time,
             "evidence": result.evidence,
+            "attack_path": attack_path,
             "request": result.request,
             "response": result.response,
             "context": result.context,
         }
+    
+    def _get_attack_description(self, result: ScanResult) -> str:
+        """
+        根据漏洞信息生成攻击描述。
+        
+        Args:
+            result: 扫描结果
+            
+        Returns:
+            攻击描述文本
+        """
+        vuln_name = result.vuln_name.lower() if result.vuln_name else ""
+        
+        if "xss" in vuln_name or "cross-site" in vuln_name:
+            return "向目标注入恶意JavaScript代码，验证XSS漏洞存在"
+        elif "sql" in vuln_name or "sqli" in vuln_name:
+            return "向目标发送SQL注入载荷，验证数据库注入漏洞存在"
+        elif "lfi" in vuln_name or "local file" in vuln_name:
+            return "尝试读取本地敏感文件，验证LFI漏洞存在"
+        elif "rfi" in vuln_name or "remote file" in vuln_name:
+            return "尝试包含远程文件，验证RFI漏洞存在"
+        elif "ssrf" in vuln_name or "server-side" in vuln_name:
+            return "构造服务端请求，验证SSRF漏洞存在"
+        elif "traversal" in vuln_name or "path" in vuln_name:
+            return "使用路径穿越序列访问敏感文件"
+        elif "xxe" in vuln_name or "xml" in vuln_name:
+            return "注入恶意XML实体，验证XXE漏洞存在"
+        elif "cmd" in vuln_name or "rce" in vuln_name or "command" in vuln_name:
+            return "注入系统命令，验证命令执行漏洞存在"
+        elif "redirect" in vuln_name:
+            return "构造恶意重定向URL，验证开放重定向漏洞存在"
+        elif "sensitive" in vuln_name or "disclosure" in vuln_name:
+            return "访问敏感资源，验证信息泄露漏洞存在"
+        else:
+            return "向目标发送恶意请求，验证漏洞存在"
+    
+    def _extract_vuln_type(self, plugin_id: str, vuln_name: str) -> str:
+        """
+        从插件ID和漏洞名称提取漏洞类型。
+        
+        Args:
+            plugin_id: 插件ID
+            vuln_name: 漏洞名称
+            
+        Returns:
+            漏洞类型字符串
+        """
+        combined = f"{plugin_id} {vuln_name}".lower()
+        
+        if "xss" in combined or "cross-site" in combined:
+            return "XSS"
+        elif "sql" in combined or "sqli" in combined:
+            return "SQL注入"
+        elif "lfi" in combined or "local file" in combined:
+            return "LFI"
+        elif "rfi" in combined or "remote file" in combined:
+            return "RFI"
+        elif "ssrf" in combined or "server-side" in combined:
+            return "SSRF"
+        elif "traversal" in combined or "path" in combined:
+            return "路径穿越"
+        elif "xxe" in combined or "xml" in combined:
+            return "XXE"
+        elif "cmd" in combined or "rce" in combined or "command" in combined:
+            return "命令注入"
+        elif "redirect" in combined:
+            return "开放重定向"
+        elif "sensitive" in combined or "disclosure" in combined:
+            return "信息泄露"
+        else:
+            return "其他"
+    
+    def _extract_parameter(self, url: str, request: Optional[Dict[str, Any]]) -> str:
+        """
+        从URL或请求中提取参数名。
+        
+        Args:
+            url: 请求URL
+            request: 请求详情
+            
+        Returns:
+            参数名字符串
+        """
+        import re
+        from urllib.parse import urlparse, parse_qs
+        
+        # 从URL查询参数提取
+        try:
+            parsed = urlparse(url)
+            if parsed.query:
+                params = list(parse_qs(parsed.query).keys())
+                if params:
+                    return params[0]
+        except Exception:
+            pass
+        
+        # 从路径参数提取
+        path_params = re.findall(r'\{(\w+)\}|\[(\w+)\]', url)
+        if path_params:
+            return path_params[0][0] or path_params[0][1]
+        
+        # 从请求体提取
+        if request and request.get("body"):
+            body = request["body"]
+            # 表单数据
+            if "=" in body:
+                match = re.match(r'(\w+)=', body)
+                if match:
+                    return match.group(1)
+        
+        return "unknown"
     
     def get_statistics(self) -> Dict[str, Any]:
         """

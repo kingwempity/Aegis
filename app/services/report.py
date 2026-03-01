@@ -101,70 +101,156 @@ class ReportGenerator:
         summary = self._get_summary(task)
         
         lines = []
-        lines.append("# 漏洞检测报告")
+        lines.append("# 🛡️ Aegis 漏洞检测报告")
         lines.append("")
-        lines.append(f"- **任务ID**: {task.id}")
-        lines.append(f"- **目标URL**: {task.target_url}")
-        lines.append(f"- **扫描时间**: {task.updated_at.strftime('%Y-%m-%d %H:%M:%S') if task.updated_at else 'N/A'}")
-        lines.append(f"- **任务状态**: {task.status}")
+        lines.append("---")
+        lines.append("")
+        lines.append("## 📋 扫描信息")
+        lines.append("")
+        lines.append(f"| 项目 | 值 |")
+        lines.append("|------|-----|")
+        lines.append(f"| 任务ID | {task.id} |")
+        lines.append(f"| 目标URL | {task.target_url} |")
+        lines.append(f"| 扫描时间 | {task.updated_at.strftime('%Y-%m-%d %H:%M:%S') if task.updated_at else 'N/A'} |")
+        lines.append(f"| 扫描策略 | {task.scan_strategy or 'default'} |")
+        lines.append(f"| 任务状态 | {task.status} |")
         lines.append("")
         
         # 漏洞统计
-        lines.append("## 漏洞统计")
+        lines.append("## 📊 漏洞统计")
         lines.append("")
-        lines.append(f"| 风险等级 | 数量 |")
-        lines.append("|----------|------|")
-        lines.append(f"| 总计 | {summary['total']} |")
-        lines.append(f"| 严重 | {summary['critical']} |")
-        lines.append(f"| 高危 | {summary['high']} |")
-        lines.append(f"| 中危 | {summary['medium']} |")
-        lines.append(f"| 低危 | {summary['low']} |")
-        lines.append(f"| 信息 | {summary['info']} |")
+        lines.append(f"| 风险等级 | 数量 | 状态 |")
+        lines.append("|----------|------|------|")
+        lines.append(f"| 🔴 严重 | {summary['critical']} | {'⚠️ 需立即修复' if summary['critical'] > 0 else '✅ 无'} |")
+        lines.append(f"| 🟠 高危 | {summary['high']} | {'⚠️ 需优先修复' if summary['high'] > 0 else '✅ 无'} |")
+        lines.append(f"| 🟡 中危 | {summary['medium']} | {'📋 建议修复' if summary['medium'] > 0 else '✅ 无'} |")
+        lines.append(f"| 🟢 低危 | {summary['low']} | {'📝 可选修复' if summary['low'] > 0 else '✅ 无'} |")
+        lines.append(f"| ℹ️ 信息 | {summary['info']} | - |")
+        lines.append(f"| **总计** | **{summary['total']}** | - |")
         lines.append("")
         
         # 漏洞详情
-        lines.append("## 漏洞详情")
+        lines.append("## 🔍 漏洞详情")
         lines.append("")
         
         if not task.vulnerabilities:
-            lines.append("当前报告未发现漏洞。")
+            lines.append("🎉 **太棒了！当前报告未发现漏洞。**")
         else:
             for idx, vuln in enumerate(task.vulnerabilities, start=1):
-                lines.append(f"### {idx}. [{vuln.severity.upper() if vuln.severity else 'N/A'}] {vuln.title or vuln.vuln_type or '未知漏洞'}")
+                severity_emoji = {
+                    'critical': '🔴',
+                    'high': '🟠',
+                    'medium': '🟡',
+                    'low': '🟢',
+                    'info': 'ℹ️'
+                }.get((vuln.severity or 'info').lower(), 'ℹ️')
+                
+                lines.append(f"### {idx}. {severity_emoji} [{vuln.severity.upper() if vuln.severity else 'N/A'}] {vuln.vuln_name or vuln.vuln_type or '未知漏洞'}")
                 lines.append("")
-                lines.append(f"- **漏洞类型**: {vuln.vuln_type or 'N/A'}")
-                lines.append(f"- **风险等级**: {vuln.severity or 'N/A'}")
-                lines.append(f"- **URL**: {vuln.url or 'N/A'}")
-                lines.append(f"- **参数**: {vuln.parameter or 'N/A'}")
+                
+                # 基本信息表格
+                lines.append("| 属性 | 值 |")
+                lines.append("|------|-----|")
+                lines.append(f"| 漏洞类型 | {vuln.vuln_type or 'N/A'} |")
+                lines.append(f"| 风险等级 | {vuln.severity or 'N/A'} |")
+                lines.append(f"| 触发URL | `{vuln.url or 'N/A'}` |")
+                lines.append(f"| 注入参数 | `{vuln.parameter or 'N/A'}` |")
+                lines.append(f"| HTTP方法 | `{vuln.method or 'N/A'}` |")
                 if vuln.cvss_score:
-                    lines.append(f"- **CVSS评分**: {vuln.cvss_score}")
+                    lines.append(f"| CVSS评分 | {vuln.cvss_score}/10 |")
                 lines.append("")
                 
                 if vuln.description:
-                    lines.append("**漏洞描述**")
+                    lines.append("**📝 漏洞描述**")
                     lines.append("")
                     lines.append(vuln.description)
                     lines.append("")
                 
-                if vuln.remediation:
-                    lines.append("**修复建议**")
+                # 攻击路径
+                if vuln.attack_path:
+                    lines.append("**🎯 模拟攻击路径**")
                     lines.append("")
-                    lines.append(vuln.remediation)
+                    if isinstance(vuln.attack_path, dict) and vuln.attack_path.get('steps'):
+                        for step_idx, step in enumerate(vuln.attack_path['steps'], start=1):
+                            method = step.get('method', 'GET')
+                            url = step.get('url', '')
+                            desc = step.get('description', '')
+                            lines.append(f"{step_idx}. **[{method}]** `{url}`")
+                            if desc:
+                                lines.append(f"   - {desc}")
+                    else:
+                        # 简单路径
+                        lines.append(f"1. **[{vuln.method or 'GET'}]** `{vuln.url or 'N/A'}`")
+                        lines.append("   - 直接向目标发送恶意请求")
                     lines.append("")
                 
-                if vuln.evidence:
-                    lines.append("**攻击证据**")
+                # 攻击载荷
+                if vuln.payload:
+                    lines.append("**💉 攻击载荷 (Payload)**")
                     lines.append("")
+                    encoding_info = ""
+                    if vuln.evidence and isinstance(vuln.evidence, dict):
+                        enc = vuln.evidence.get('encoding_used', '')
+                        if enc and enc != 'none':
+                            encoding_info = f" (_编码类型: {enc}_)"
+                    lines.append(f"```http{encoding_info}")
+                    lines.append(vuln.payload)
                     lines.append("```")
-                    lines.append(vuln.evidence)
+                    lines.append("")
+                
+                # HTTP 请求详情
+                if vuln.attack_path and isinstance(vuln.attack_path, dict) and vuln.attack_path.get('request'):
+                    req = vuln.attack_path['request']
+                    lines.append("**📡 HTTP 请求详情**")
+                    lines.append("")
+                    lines.append("```http")
+                    lines.append(f"{req.get('method', 'GET')} {req.get('url', '')}")
+                    if req.get('headers'):
+                        for k, v in req['headers'].items():
+                            lines.append(f"{k}: {v}")
+                    if req.get('body'):
+                        lines.append("")
+                        lines.append(req['body'])
                     lines.append("```")
+                    lines.append("")
+                
+                # 攻击证据
+                if vuln.evidence:
+                    lines.append("**🔎 攻击证据**")
+                    lines.append("")
+                    if isinstance(vuln.evidence, dict):
+                        if vuln.evidence.get('matchers'):
+                            lines.append("**匹配规则:**")
+                            for m in vuln.evidence['matchers']:
+                                lines.append(f"- 类型: {m.get('type', 'unknown')}")
+                        if vuln.evidence.get('response_status'):
+                            lines.append(f"- 响应状态码: {vuln.evidence['response_status']}")
+                        if vuln.evidence.get('body_snippet'):
+                            lines.append("")
+                            lines.append("**响应片段:**")
+                            lines.append("```")
+                            lines.append(vuln.evidence['body_snippet'][:500])
+                            lines.append("```")
+                    else:
+                        lines.append("```")
+                        lines.append(str(vuln.evidence)[:500])
+                        lines.append("```")
+                    lines.append("")
+                
+                # 修复建议
+                if vuln.remediation:
+                    lines.append("**✅ 修复建议**")
+                    lines.append("")
+                    lines.append(f"> {vuln.remediation}")
                     lines.append("")
                 
                 lines.append("---")
                 lines.append("")
         
         lines.append("")
-        lines.append("*报告由漏洞检测系统自动生成（Markdown 格式）*")
+        lines.append("---")
+        lines.append("")
+        lines.append("*本报告由 Aegis Web应用程序漏洞检测系统自动生成*")
         
         output_path = os.path.join(OUTPUT_DIR, filename)
         with open(output_path, "w", encoding="utf-8") as f:
@@ -187,9 +273,32 @@ class ReportGenerator:
         
         vulnerabilities = []
         for vuln in task.vulnerabilities:
-            vulnerabilities.append({
+            # 构建攻击路径信息
+            attack_path_data = None
+            if vuln.attack_path:
+                attack_path_data = vuln.attack_path
+            elif vuln.url:
+                # 如果没有存储的攻击路径，基于基本信息构建
+                attack_path_data = {
+                    "steps": [
+                        {
+                            "step": 1,
+                            "method": vuln.method or "GET",
+                            "url": vuln.url,
+                            "description": "直接向目标发送恶意请求"
+                        }
+                    ],
+                    "request": {
+                        "method": vuln.method or "GET",
+                        "url": vuln.url,
+                        "headers": {},
+                        "body": vuln.payload if vuln.method == "POST" else None
+                    }
+                }
+            
+            vuln_data = {
                 "id": vuln.id,
-                "title": vuln.title,
+                "name": vuln.vuln_name,
                 "type": vuln.vuln_type,
                 "severity": vuln.severity,
                 "cvss_score": vuln.cvss_score,
@@ -198,21 +307,52 @@ class ReportGenerator:
                 "method": vuln.method,
                 "description": vuln.description,
                 "remediation": vuln.remediation,
+                # 攻击路径 - 核心改进
+                "attack_path": attack_path_data,
+                # 攻击载荷 - 核心改进
+                "payload": {
+                    "raw": vuln.payload,
+                    "encoded": vuln.payload,  # 兼容旧数据
+                    "encoding_type": None,
+                    "original_payload": None
+                },
+                # 攻击证据
                 "evidence": vuln.evidence,
-                "payload": vuln.payload,
                 "detected_at": vuln.detected_at.isoformat() if vuln.detected_at else None
-            })
+            }
+            
+            # 从 evidence 中提取编码信息
+            if vuln.evidence and isinstance(vuln.evidence, dict):
+                vuln_data["payload"]["encoding_type"] = vuln.evidence.get("encoding_used")
+                vuln_data["payload"]["mutation_type"] = vuln.evidence.get("mutation_type")
+                # 如果有原始 payload 信息
+                if vuln.evidence.get("request") and isinstance(vuln.evidence["request"], dict):
+                    vuln_data["payload"]["original_payload"] = vuln.evidence["request"].get("payload_original")
+            
+            vulnerabilities.append(vuln_data)
         
         report = {
             "report_info": {
                 "task_id": task.id,
                 "target_url": task.target_url,
+                "scan_strategy": task.scan_strategy,
                 "status": task.status,
                 "scan_time": task.updated_at.isoformat() if task.updated_at else None,
-                "generated_at": datetime.now().isoformat()
+                "generated_at": datetime.now().isoformat(),
+                "generator": "Aegis Web应用程序漏洞检测系统"
             },
             "summary": summary,
-            "vulnerabilities": vulnerabilities
+            "vulnerabilities": vulnerabilities,
+            # 添加攻击模拟摘要
+            "attack_simulation": {
+                "total_payloads": len([v for v in task.vulnerabilities if v.payload]),
+                "total_attack_paths": len([v for v in task.vulnerabilities if v.attack_path]),
+                "encoding_types_used": list(set([
+                    v.evidence.get("encoding_used") 
+                    for v in task.vulnerabilities 
+                    if v.evidence and isinstance(v.evidence, dict) and v.evidence.get("encoding_used")
+                ]))
+            }
         }
         
         output_path = os.path.join(OUTPUT_DIR, filename)
@@ -238,10 +378,6 @@ class ReportGenerator:
         
         wb = Workbook()
         
-        # ========== 概览工作表 ==========
-        ws_overview = wb.active
-        ws_overview.title = "扫描概览"
-        
         # 定义样式
         header_font = Font(bold=True, size=14, color="FFFFFF")
         header_fill = PatternFill(start_color="2d3343", end_color="2d3343", fill_type="solid")
@@ -256,14 +392,18 @@ class ReportGenerator:
         
         summary = self._get_summary(task)
         
+        # ========== 概览工作表 ==========
+        ws_overview = wb.active
+        ws_overview.title = "扫描概览"
+        
         # 标题
         ws_overview.merge_cells('A1:D1')
-        ws_overview['A1'] = "Web应用程序漏洞检测报告"
+        ws_overview['A1'] = "🛡️ Aegis Web应用程序漏洞检测报告"
         ws_overview['A1'].font = Font(bold=True, size=18)
         ws_overview['A1'].alignment = Alignment(horizontal='center')
         
         # 基本信息
-        ws_overview['A3'] = "基本信息"
+        ws_overview['A3'] = "📋 基本信息"
         ws_overview['A3'].font = subheader_font
         ws_overview.merge_cells('A3:D3')
         ws_overview['A3'].fill = subheader_fill
@@ -272,6 +412,7 @@ class ReportGenerator:
             ("任务ID", task.id),
             ("目标URL", task.target_url),
             ("扫描时间", task.updated_at.strftime("%Y-%m-%d %H:%M:%S") if task.updated_at else "N/A"),
+            ("扫描策略", task.scan_strategy or "default"),
             ("任务状态", task.status),
         ]
         
@@ -283,27 +424,27 @@ class ReportGenerator:
         
         # 漏洞统计
         row = len(basic_info) + 5
-        ws_overview[f'A{row}'] = "漏洞统计"
+        ws_overview[f'A{row}'] = "📊 漏洞统计"
         ws_overview[f'A{row}'].font = subheader_font
         ws_overview.merge_cells(f'A{row}:D{row}')
         ws_overview[f'A{row}'].fill = subheader_fill
         
         vuln_stats = [
             ("总漏洞数", summary["total"]),
-            ("严重", summary["critical"]),
-            ("高危", summary["high"]),
-            ("中危", summary["medium"]),
-            ("低危", summary["low"]),
-            ("信息", summary["info"]),
+            ("🔴 严重", summary["critical"]),
+            ("🟠 高危", summary["high"]),
+            ("🟡 中危", summary["medium"]),
+            ("🟢 低危", summary["low"]),
+            ("ℹ️ 信息", summary["info"]),
         ]
         
         # 风险等级颜色
         risk_colors = {
-            "严重": "dc3545",
-            "高危": "fd7e14",
-            "中危": "ffc107",
-            "低危": "28a745",
-            "信息": "17a2b8",
+            "🔴 严重": "dc3545",
+            "🟠 高危": "fd7e14",
+            "🟡 中危": "ffc107",
+            "🟢 低危": "28a745",
+            "ℹ️ 信息": "17a2b8",
         }
         
         for idx, (label, value) in enumerate(vuln_stats, start=row+1):
@@ -323,8 +464,8 @@ class ReportGenerator:
         # ========== 漏洞详情工作表 ==========
         ws_vulns = wb.create_sheet("漏洞详情")
         
-        # 表头
-        headers = ["序号", "漏洞名称", "风险等级", "漏洞类型", "URL", "参数", "CVSS评分", "漏洞描述", "修复建议"]
+        # 表头 - 扩展包含攻击载荷
+        headers = ["序号", "漏洞名称", "风险等级", "漏洞类型", "URL", "参数", "HTTP方法", "CVSS评分", "攻击载荷", "漏洞描述", "修复建议"]
         
         for col, header in enumerate(headers, start=1):
             cell = ws_vulns.cell(row=1, column=col, value=header)
@@ -340,7 +481,7 @@ class ReportGenerator:
             
             ws_vulns.cell(row=row, column=col, value=idx).border = border
             col += 1
-            ws_vulns.cell(row=row, column=col, value=vuln.title or vuln.vuln_type or "未知").border = border
+            ws_vulns.cell(row=row, column=col, value=vuln.vuln_name or vuln.vuln_type or "未知").border = border
             col += 1
             
             # 风险等级单元格
@@ -367,16 +508,94 @@ class ReportGenerator:
             col += 1
             ws_vulns.cell(row=row, column=col, value=vuln.parameter or "N/A").border = border
             col += 1
+            ws_vulns.cell(row=row, column=col, value=vuln.method or "N/A").border = border
+            col += 1
             ws_vulns.cell(row=row, column=col, value=vuln.cvss_score or "N/A").border = border
             col += 1
-            ws_vulns.cell(row=row, column=col, value=vuln.description or "N/A").border = border
+            # 攻击载荷列
+            payload_cell = ws_vulns.cell(row=row, column=col, value=(vuln.payload or "N/A")[:200])
+            payload_cell.border = border
+            payload_cell.font = Font(name='Consolas', size=9)
             col += 1
-            ws_vulns.cell(row=row, column=col, value=vuln.remediation or "N/A").border = border
+            ws_vulns.cell(row=row, column=col, value=(vuln.description or "N/A")[:100]).border = border
+            col += 1
+            ws_vulns.cell(row=row, column=col, value=(vuln.remediation or "N/A")[:100]).border = border
         
         # 设置列宽
-        column_widths = [8, 30, 10, 15, 40, 15, 10, 40, 40]
+        column_widths = [8, 30, 10, 15, 40, 15, 10, 10, 50, 40, 40]
         for col, width in enumerate(column_widths, start=1):
             ws_vulns.column_dimensions[get_column_letter(col)].width = width
+        
+        # ========== 攻击路径详情工作表 ==========
+        ws_attack = wb.create_sheet("攻击路径详情")
+        
+        # 表头
+        attack_headers = ["漏洞ID", "漏洞名称", "攻击步骤", "HTTP方法", "攻击URL", "载荷", "编码类型", "请求详情"]
+        
+        for col, header in enumerate(attack_headers, start=1):
+            cell = ws_attack.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = PatternFill(start_color="dc3545", end_color="dc3545", fill_type="solid")
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+            cell.border = border
+        
+        # 填充攻击路径数据
+        row = 2
+        for vuln in task.vulnerabilities:
+            if vuln.attack_path and isinstance(vuln.attack_path, dict):
+                steps = vuln.attack_path.get('steps', [])
+                if steps:
+                    for step in steps:
+                        ws_attack.cell(row=row, column=1, value=vuln.id).border = border
+                        ws_attack.cell(row=row, column=2, value=vuln.vuln_name or "未知").border = border
+                        ws_attack.cell(row=row, column=3, value=step.get('step', 1)).border = border
+                        ws_attack.cell(row=row, column=4, value=step.get('method', 'GET')).border = border
+                        ws_attack.cell(row=row, column=5, value=step.get('url', vuln.url or 'N/A')).border = border
+                        ws_attack.cell(row=row, column=6, value=(vuln.payload or 'N/A')[:100]).border = border
+                        
+                        # 编码类型
+                        enc_type = "原始"
+                        if vuln.evidence and isinstance(vuln.evidence, dict):
+                            enc = vuln.evidence.get('encoding_used', '')
+                            if enc and enc != 'none':
+                                enc_type = enc
+                        ws_attack.cell(row=row, column=7, value=enc_type).border = border
+                        
+                        # 请求详情
+                        req_detail = ""
+                        if vuln.attack_path.get('request'):
+                            req = vuln.attack_path['request']
+                            req_detail = f"{req.get('method', 'GET')} {req.get('url', '')}"
+                        ws_attack.cell(row=row, column=8, value=req_detail).border = border
+                        
+                        row += 1
+                else:
+                    # 简单路径
+                    ws_attack.cell(row=row, column=1, value=vuln.id).border = border
+                    ws_attack.cell(row=row, column=2, value=vuln.vuln_name or "未知").border = border
+                    ws_attack.cell(row=row, column=3, value=1).border = border
+                    ws_attack.cell(row=row, column=4, value=vuln.method or 'GET').border = border
+                    ws_attack.cell(row=row, column=5, value=vuln.url or 'N/A').border = border
+                    ws_attack.cell(row=row, column=6, value=(vuln.payload or 'N/A')[:100]).border = border
+                    ws_attack.cell(row=row, column=7, value="原始").border = border
+                    ws_attack.cell(row=row, column=8, value=f"{vuln.method or 'GET'} {vuln.url or 'N/A'}").border = border
+                    row += 1
+            elif vuln.url:
+                # 无攻击路径但有URL
+                ws_attack.cell(row=row, column=1, value=vuln.id).border = border
+                ws_attack.cell(row=row, column=2, value=vuln.vuln_name or "未知").border = border
+                ws_attack.cell(row=row, column=3, value=1).border = border
+                ws_attack.cell(row=row, column=4, value=vuln.method or 'GET').border = border
+                ws_attack.cell(row=row, column=5, value=vuln.url).border = border
+                ws_attack.cell(row=row, column=6, value=(vuln.payload or 'N/A')[:100]).border = border
+                ws_attack.cell(row=row, column=7, value="原始").border = border
+                ws_attack.cell(row=row, column=8, value=f"{vuln.method or 'GET'} {vuln.url}").border = border
+                row += 1
+        
+        # 设置列宽
+        attack_widths = [10, 30, 10, 10, 50, 40, 15, 50]
+        for col, width in enumerate(attack_widths, start=1):
+            ws_attack.column_dimensions[get_column_letter(col)].width = width
         
         output_path = os.path.join(OUTPUT_DIR, filename)
         wb.save(output_path)

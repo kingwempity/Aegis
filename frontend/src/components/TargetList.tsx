@@ -37,13 +37,16 @@ const TargetList: React.FC = () => {
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-[#2d3343]">目标管理</h2>
+        <div>
+          <h2 className="text-2xl font-bold text-[#2d3343]">Web 验证目标</h2>
+          <p className="mt-1 text-sm text-gray-400">这里管理会被送入模拟攻击验证流程的 Web 目标，不同于攻击面发现中的网络资产。</p>
+        </div>
         <button 
           onClick={() => setIsModalOpen(true)}
           className="px-6 py-2.5 bg-[#ff6b00] text-white rounded-xl font-bold text-sm hover:bg-[#e66000] transition-all shadow-lg shadow-orange-200 flex items-center gap-2"
         >
           <Plus size={16} strokeWidth={3} />
-          添加目标
+          添加验证目标
         </button>
       </div>
 
@@ -53,7 +56,7 @@ const TargetList: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {targets.length === 0 ? (
             <div className="col-span-full text-center py-12 text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200">
-              暂无扫描目标，请点击上方按钮添加
+              暂无 Web 验证目标，请点击上方按钮添加
             </div>
           ) : (
             targets.map((target) => (
@@ -68,16 +71,16 @@ const TargetList: React.FC = () => {
                   </span>
                 </div>
                 <div className="text-xs text-gray-400">
-                  创建时间: {new Date(target.created_at || target.last_scanned || '').toLocaleString()}
+                  纳入验证时间: {new Date(target.created_at || target.last_scanned || '').toLocaleString()}
                 </div>
                 <div className="flex justify-between items-center text-sm mt-4 pt-4 border-t border-gray-100">
                   <div className="flex flex-col items-center">
                     <span className="font-bold text-red-500">{target.critical_vulns || 0}</span>
-                    <span className="text-xs text-gray-400">高危</span>
+                    <span className="text-xs text-gray-400">严重</span>
                   </div>
                   <div className="flex flex-col items-center">
                     <span className="font-bold text-orange-500">{target.high_vulns || 0}</span>
-                    <span className="text-xs text-gray-400">中危</span>
+                    <span className="text-xs text-gray-400">高危</span>
                   </div>
                   <div className="flex flex-col items-center">
                     <span className="font-bold text-blue-500">{target.low_vulns || 0}</span>

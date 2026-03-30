@@ -163,7 +163,7 @@ const EditModal: React.FC<EditModalProps> = ({ isOpen, onClose, onSuccess, editi
                 className={`w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#ff6b00]/20 focus:border-[#ff6b00] outline-none transition-all ${
                   editingContent ? 'bg-gray-100 cursor-not-allowed' : ''
                 }`}
-                placeholder="如：quick_start, scan_guide"
+                placeholder="如：quick_start, attack_validation_guide"
                 required
               />
               <p className="text-xs text-gray-400 mt-1">唯一标识，创建后不可修改</p>

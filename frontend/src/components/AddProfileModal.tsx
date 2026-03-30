@@ -83,7 +83,7 @@ const AddProfileModal: React.FC<AddProfileModalProps> = ({ isOpen, onClose, onSu
               <Shield size={24} />
             </div>
             <h3 className="text-xl font-bold text-[#2d3343]">
-              {isEditMode ? '编辑扫描配置' : '新建扫描配置'}
+              {isEditMode ? '编辑验证配置' : '新建验证配置'}
             </h3>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
@@ -106,13 +106,13 @@ const AddProfileModal: React.FC<AddProfileModalProps> = ({ isOpen, onClose, onSu
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="例如: 深度 Web 扫描"
+                placeholder="例如: 深度模拟攻击验证"
                 className="w-full px-5 py-3.5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-orange-500/20 transition-all text-[#2d3343] font-medium placeholder:text-gray-400"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-bold text-gray-500 ml-1">扫描速度</label>
+              <label className="text-sm font-bold text-gray-500 ml-1">验证节奏</label>
               <div className="flex p-1 bg-gray-50 rounded-2xl">
                 {['slow', 'standard', 'fast'].map((s) => (
                   <button
@@ -183,7 +183,7 @@ const AddProfileModal: React.FC<AddProfileModalProps> = ({ isOpen, onClose, onSu
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
-                isEditMode ? '保存修改' : '创建扫描配置'
+                isEditMode ? '保存修改' : '创建验证配置'
               )}
             </button>
           </div>

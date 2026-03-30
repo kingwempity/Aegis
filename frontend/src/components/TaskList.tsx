@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api, ScanTask } from '../api';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
 import { Plus, Eye, StopSquare, Search, Trash2 } from './Icons';
+import ValidationWorkflow from './ValidationWorkflow';
 
 interface TaskListProps {
   onCreateTask?: () => void;
@@ -87,6 +88,8 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
 
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto">
+      <ValidationWorkflow currentStep="validation" compact />
+
       {/* Toolbar */}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-4 flex-1">

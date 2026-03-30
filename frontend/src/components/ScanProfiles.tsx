@@ -51,8 +51,8 @@ const ScanProfiles: React.FC = () => {
     <div className="flex flex-col gap-8 max-w-7xl mx-auto p-4 md:p-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-black text-[#2d3343] tracking-tight">扫描配置</h2>
-          <p className="text-gray-400 mt-1 font-medium">管理和自定义您的漏洞扫描策略</p>
+          <h2 className="text-3xl font-black text-[#2d3343] tracking-tight">验证配置</h2>
+          <p className="text-gray-400 mt-1 font-medium">管理和自定义模拟攻击验证策略</p>
         </div>
         <button 
           onClick={() => { setEditingProfile(null); setIsModalOpen(true); }}
@@ -73,7 +73,7 @@ const ScanProfiles: React.FC = () => {
             <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-gray-300 mb-4 shadow-sm">
               <ShieldCheck size={32} />
             </div>
-            <p className="text-gray-400 font-bold">暂无扫描配置</p>
+            <p className="text-gray-400 font-bold">暂无验证配置</p>
             <button 
               onClick={() => { setEditingProfile(null); setIsModalOpen(true); }}
               className="mt-4 text-[#ff6b00] font-bold hover:underline"
@@ -107,7 +107,7 @@ const ScanProfiles: React.FC = () => {
 
               <div className="flex items-center gap-4 pt-2">
                 <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">扫描速度</span>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">验证节奏</span>
                   <span className="text-xs font-bold text-[#2d3343] capitalize">{profile.speed || 'Standard'}</span>
                 </div>
                 <div className="w-px h-8 bg-gray-100" />

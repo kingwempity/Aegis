@@ -40,18 +40,21 @@ const AddTargetModal: React.FC<AddTargetModalProps> = ({ isOpen, onClose, onSucc
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl w-full max-w-md p-8 shadow-2xl animate-in fade-in zoom-in duration-200">
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-bold text-[#2d3343]">添加新目标</h3>
+          <h3 className="text-xl font-bold text-[#2d3343]">添加 Web 验证目标</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
             <X size={24} />
           </button>
         </div>
+        <div className="mb-5 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-[#31536a]">
+          这里添加的是用于 Web 模拟攻击验证的目标 URL 或资产入口，不是网络资产发现的扫描网段。
+        </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">目标 URL / IP</label>
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">目标 URL / 入口 IP</label>
             <input
               type="text"
-              placeholder="例如: https://example.com 或 192.168.1.1"
+              placeholder="例如: https://example.com/login 或 192.168.1.10:8080"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#ff6b00]/20 focus:border-[#ff6b00] transition-all"
@@ -62,7 +65,7 @@ const AddTargetModal: React.FC<AddTargetModalProps> = ({ isOpen, onClose, onSucc
           <div className="flex flex-col gap-2">
             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">描述 (可选)</label>
             <textarea
-              placeholder="输入资产备注信息..."
+              placeholder="输入业务系统、登录入口或验证范围说明..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#ff6b00]/20 focus:border-[#ff6b00] transition-all h-24 resize-none"
@@ -87,7 +90,7 @@ const AddTargetModal: React.FC<AddTargetModalProps> = ({ isOpen, onClose, onSucc
               {loading ? (
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
-                '确认添加'
+                '加入验证目标'
               )}
             </button>
           </div>

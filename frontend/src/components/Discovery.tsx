@@ -212,10 +212,22 @@ const Discovery: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-8 max-w-7xl mx-auto p-4 md:p-8">
+      <div className="rounded-3xl bg-gradient-to-r from-[#1d3557] via-[#224b6b] to-[#2a6f97] px-8 py-7 text-white shadow-xl">
+        <div className="max-w-3xl">
+          <div className="inline-flex rounded-full bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide text-cyan-100">
+            Attack Surface Discovery
+          </div>
+          <h2 className="mt-4 text-3xl font-black tracking-tight">资产发现与攻击面摸排</h2>
+          <p className="mt-3 text-sm leading-6 text-slate-100/90">
+            这里负责发现主机、开放端口与服务，用于构建攻击面视图；真正的 Web 模拟攻击验证请在 Web Targets 和 Attack Validation 中发起。
+          </p>
+        </div>
+      </div>
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-black text-[#2d3343] tracking-tight">资产发现</h2>
-          <p className="text-gray-400 mt-1 font-medium">自动发现网络中的设备和开放服务</p>
+          <h2 className="text-3xl font-black text-[#2d3343] tracking-tight">攻击面发现</h2>
+          <p className="text-gray-400 mt-1 font-medium">自动发现网络中的设备、开放端口和可暴露服务</p>
           <p className="text-amber-600/90 mt-1.5 text-xs font-medium">
             部署在 Docker 且无法使用 VPC 时，使用 172.17.0.0/24 可发现本机网关及同主机上的容器。
           </p>
@@ -235,7 +247,7 @@ const Discovery: React.FC = () => {
               className="flex items-center gap-2 px-5 py-2.5 bg-red-500 text-white rounded-xl font-bold text-sm hover:bg-red-600 transition-all shadow-lg shadow-red-200 active:scale-95"
             >
               <StopCircle size={18} strokeWidth={3} />
-              停止扫描
+              停止发现
             </button>
           ) : (
             <button
@@ -243,7 +255,7 @@ const Discovery: React.FC = () => {
               className="flex items-center gap-2 px-5 py-2.5 bg-[#ff6b00] text-white rounded-xl font-bold text-sm hover:bg-[#e66000] transition-all shadow-lg shadow-orange-200 active:scale-95"
             >
               <Play size={18} strokeWidth={3} />
-              开始扫描
+              开始发现
             </button>
           )}
           <button
@@ -270,8 +282,8 @@ const Discovery: React.FC = () => {
               <Wifi size={24} />
             </div>
             <div className="flex-1">
-              <h3 className="text-lg font-bold text-[#2d3343]">网络扫描进行中...</h3>
-              <p className="text-sm text-gray-500">{scanStatus.message || '正在发现网络设备...'}</p>
+              <h3 className="text-lg font-bold text-[#2d3343]">攻击面发现进行中...</h3>
+              <p className="text-sm text-gray-500">{scanStatus.message || '正在识别网络设备与暴露服务...'}</p>
             </div>
             <span className="text-2xl font-bold text-[#ff6b00]">{scanStatus.progress}%</span>
           </div>
@@ -293,7 +305,7 @@ const Discovery: React.FC = () => {
               <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">MAC 地址</th>
               <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">开放端口</th>
               <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">操作系统</th>
-              <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">服务</th>
+              <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">暴露服务</th>
               <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">最后在线</th>
             </tr>
           </thead>
@@ -315,8 +327,8 @@ const Discovery: React.FC = () => {
                 <td colSpan={7} className="px-8 py-12 text-center text-gray-400">
                   <div className="flex flex-col items-center justify-center">
                     <Wifi size={48} className="text-gray-200 mb-4" />
-                    <p className="font-bold">暂未发现任何资产</p>
-                    <p className="text-sm mt-1">点击 "开始扫描" 按钮来发现网络中的设备</p>
+                    <p className="font-bold">暂未发现任何攻击面资产</p>
+                    <p className="text-sm mt-1">点击“开始发现”来识别网络中的设备与开放服务</p>
                   </div>
                 </td>
               </tr>

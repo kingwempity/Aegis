@@ -40,8 +40,8 @@ const iconMap: Record<string, React.FC<any>> = {
 const fallbackNavItems: NavItemData[] = [
   { label: 'Dashboard', href: '/', icon: LayoutDashboard },
   { label: 'Targets', href: '/targets', icon: Target },
-  { label: 'Scans', href: '/scans', icon: Shield },
-  { label: 'Reports', href: '/reports', icon: FileText },
+  { label: 'Attack Validation', href: '/scans', icon: Shield },
+  { label: 'Attack Reports', href: '/reports', icon: FileText },
   { label: 'Settings', href: '/settings', icon: Settings },
 ];
 
@@ -324,7 +324,7 @@ const AppShell: React.FC<AppShellProps> = ({
               className="bg-[#ff6b00] text-white px-5 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-[#e66000] transition-all shadow-lg shadow-orange-500/20"
             >
               <Plus size={16} strokeWidth={3} />
-              新扫描
+              新建验证
             </button>
 
             <div className="h-6 w-px bg-gray-200 mx-2"></div>
@@ -632,7 +632,7 @@ const AppShell: React.FC<AppShellProps> = ({
                     <h3 className="font-semibold text-gray-800 mb-3">快捷键</h3>
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-500">新建扫描</span>
+                        <span className="text-gray-500">新建验证</span>
                         <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">Ctrl + N</kbd>
                       </div>
                       <div className="flex items-center justify-between">

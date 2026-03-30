@@ -17,8 +17,10 @@ import logging
 from typing import Optional, Tuple
 import smtplib
 import ssl
+from email.header import Header
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import formataddr, parseaddr
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -52,6 +54,18 @@ def _get_env_bool(name: str, default: bool) -> bool:
         return default
 
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _format_address(display_name: str, email_address: str) -> str:
+    """
+    使用 RFC 兼容的方式格式化邮箱地址头。
+    """
+    _, parsed_email = parseaddr(email_address)
+    if not parsed_email:
+        raise ValueError("发件邮箱格式无效")
+
+    encoded_name = str(Header(display_name, "utf-8")) if display_name else ""
+    return formataddr((encoded_name, parsed_email))
 
 
 @dataclass
@@ -181,9 +195,9 @@ class EmailService:
             - HTML格式提供更好的视觉体验
         """
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"【Aegis】登录验证码"
-        msg["From"] = f"{self.config.from_name} <{self.config.from_email}>"
-        msg["To"] = to_email
+        msg["Subject"] = str(Header("【Aegis】登录验证码", "utf-8"))
+        msg["From"] = _format_address(self.config.from_name, self.config.from_email)
+        msg["To"] = parseaddr(to_email)[1] or to_email
         
         # 纯文本内容（备选）
         text_content = f"""

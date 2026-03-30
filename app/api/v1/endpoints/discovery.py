@@ -8,12 +8,13 @@ Created: 2026-01-21
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status
-from typing import List, Optional
+from typing import Dict, List, Optional
 from datetime import datetime
 import asyncio
 import logging
 import ipaddress
 import os
+import zlib
 
 from app.services.network_scanner import NetworkScanner
 from app.db.database import get_db, SessionLocal
@@ -45,6 +46,39 @@ DISCOVERY_DEFAULT_NETWORK_RANGE = os.getenv("DISCOVERY_DEFAULT_NETWORK_RANGE", "
 _mock_targets = [
     {"id": 1, "url": "192.168.10.156", "description": "内网测试服务器", "status": "active", "created_at": datetime.now()}
 ]
+
+
+def _build_target_id(url: str) -> int:
+    """
+    为目标 URL 生成稳定的数值型 ID，便于前端列表渲染和删除操作。
+    """
+    return (zlib.crc32(url.encode("utf-8")) & 0x7FFFFFFF) or 1
+
+
+def _build_target_response(
+    url: str,
+    manual_target: Optional[dict] = None,
+    last_scanned: Optional[datetime] = None,
+    scan_count: int = 0,
+    critical_vulns: int = 0,
+    high_vulns: int = 0,
+    low_vulns: int = 0,
+) -> TargetResponse:
+    """
+    统一构造前端目标卡片所需的数据结构。
+    """
+    manual_description = (manual_target or {}).get("description")
+    return TargetResponse(
+        id=_build_target_id(url),
+        url=url,
+        description=manual_description or (f"已扫描 {scan_count} 次" if scan_count else None),
+        status=(manual_target or {}).get("status", "active"),
+        created_at=(manual_target or {}).get("created_at") or last_scanned or datetime.now(),
+        last_scanned=last_scanned,
+        critical_vulns=critical_vulns,
+        high_vulns=high_vulns,
+        low_vulns=low_vulns,
+    )
 
 
 @router.get("/suggested-range")
@@ -270,10 +304,9 @@ async def get_targets(db: Session = Depends(get_db)):
         func.max(ScanTask.created_at).label('last_scanned'),
         func.count(ScanTask.id).label('scan_count')
     ).group_by(ScanTask.target_url).all()
-    
-    # 构建目标列表
-    targets = []
-    for idx, (url, last_scanned, scan_count) in enumerate(targets_query, 1):
+
+    scanned_targets_by_url: Dict[str, dict] = {}
+    for url, last_scanned, scan_count in targets_query:
         # 查询该目标的漏洞统计
         # 使用 URL 匹配或包含关系来关联漏洞
         vuln_query = db.query(Vulnerability).filter(
@@ -297,47 +330,106 @@ async def get_targets(db: Session = Depends(get_db)):
                     medium_count += 1
                 elif sev in ["low", "info"]:
                     low_count += 1
-        
-        target = TargetResponse(
-            id=idx,
-            url=url,
-            description=f"已扫描 {scan_count} 次",
-            status="active",
-            created_at=last_scanned or datetime.now(),
-            last_scanned=last_scanned,
-            critical_vulns=critical_count,
-            high_vulns=high_count,
-            low_vulns=low_count + medium_count  # 前端显示 low 包含 medium
+
+        scanned_targets_by_url[url] = {
+            "last_scanned": last_scanned,
+            "scan_count": scan_count,
+            "critical_vulns": critical_count,
+            "high_vulns": high_count,
+            "low_vulns": low_count + medium_count,  # 前端显示 low 包含 medium
+        }
+
+    manual_targets_by_url = {target["url"]: target for target in _mock_targets}
+    all_urls = set(scanned_targets_by_url) | set(manual_targets_by_url)
+
+    def sort_key(target_url: str) -> datetime:
+        manual_target = manual_targets_by_url.get(target_url)
+        scanned_target = scanned_targets_by_url.get(target_url, {})
+        return (
+            scanned_target.get("last_scanned")
+            or (manual_target or {}).get("created_at")
+            or datetime.min
         )
-        targets.append(target)
+
+    targets = [
+        _build_target_response(
+            url=target_url,
+            manual_target=manual_targets_by_url.get(target_url),
+            last_scanned=scanned_targets_by_url.get(target_url, {}).get("last_scanned"),
+            scan_count=scanned_targets_by_url.get(target_url, {}).get("scan_count", 0),
+            critical_vulns=scanned_targets_by_url.get(target_url, {}).get("critical_vulns", 0),
+            high_vulns=scanned_targets_by_url.get(target_url, {}).get("high_vulns", 0),
+            low_vulns=scanned_targets_by_url.get(target_url, {}).get("low_vulns", 0),
+        )
+        for target_url in sorted(all_urls, key=sort_key, reverse=True)
+    ]
     
     logger.info(f"返回 {len(targets)} 个目标")
     return targets
 
 @router.post("/targets", response_model=TargetResponse)
-async def create_target(target_in: TargetCreate):
+async def create_target(target_in: TargetCreate, db: Session = Depends(get_db)):
     """
     添加新目标（兼容旧接口）。
     """
-    new_target = {
-        "id": len(_mock_targets) + 1,
-        "url": target_in.url,
-        "description": target_in.description,
-        "status": "active",
-        "created_at": datetime.now()
-    }
-    _mock_targets.append(new_target)
-    logger.info(f"添加新目标: {new_target['url']}")
-    return new_target
+    normalized_url = target_in.url.strip()
+    if not normalized_url:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="目标 URL 不能为空")
+
+    existing_manual_target = next((target for target in _mock_targets if target["url"] == normalized_url), None)
+    if existing_manual_target:
+        existing_manual_target["description"] = target_in.description or existing_manual_target.get("description")
+        logger.info(f"更新已存在的手动目标: {normalized_url}")
+    else:
+        existing_manual_target = {
+            "id": _build_target_id(normalized_url),
+            "url": normalized_url,
+            "description": target_in.description,
+            "status": "active",
+            "created_at": datetime.now(),
+        }
+        _mock_targets.append(existing_manual_target)
+        logger.info(f"添加新目标: {normalized_url}")
+
+    scan_count = db.query(func.count(ScanTask.id)).filter(ScanTask.target_url == normalized_url).scalar() or 0
+    last_scanned = db.query(func.max(ScanTask.created_at)).filter(ScanTask.target_url == normalized_url).scalar()
+    vuln_query = db.query(Vulnerability).filter(Vulnerability.url.like(f"%{normalized_url}%")).all()
+
+    critical_count = sum(1 for vuln in vuln_query if (vuln.severity or "").lower() == "critical")
+    high_count = sum(1 for vuln in vuln_query if (vuln.severity or "").lower() == "high")
+    low_count = sum(1 for vuln in vuln_query if (vuln.severity or "").lower() in ["medium", "low", "info"])
+
+    return _build_target_response(
+        url=normalized_url,
+        manual_target=existing_manual_target,
+        last_scanned=last_scanned,
+        scan_count=scan_count,
+        critical_vulns=critical_count,
+        high_vulns=high_count,
+        low_vulns=low_count,
+    )
 
 
 @router.delete("/targets/{target_id}")
-async def delete_target(target_id: int):
+async def delete_target(target_id: int, db: Session = Depends(get_db)):
     """删除指定目标。"""
     global _mock_targets
-    for i, t in enumerate(_mock_targets):
-        if t["id"] == target_id:
-            _mock_targets = _mock_targets[:i] + _mock_targets[i + 1:]
-            logger.info(f"已删除目标 id={target_id}")
-            return {"message": "目标已删除"}
+
+    manual_target = next((target for target in _mock_targets if _build_target_id(target["url"]) == target_id), None)
+    scanned_targets = db.query(ScanTask.target_url).group_by(ScanTask.target_url).all()
+    scanned_target_url = next((url for (url,) in scanned_targets if _build_target_id(url) == target_id), None)
+    target_url = manual_target["url"] if manual_target else scanned_target_url
+
+    if target_url:
+        _mock_targets = [target for target in _mock_targets if target["url"] != target_url]
+
+        tasks = db.query(ScanTask).filter(ScanTask.target_url == target_url).all()
+        deleted_task_count = len(tasks)
+        for task in tasks:
+            db.delete(task)
+        db.commit()
+
+        logger.info(f"已删除目标: url={target_url}, deleted_tasks={deleted_task_count}")
+        return {"message": "目标已删除"}
+
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="目标不存在")

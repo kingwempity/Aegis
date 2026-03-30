@@ -51,7 +51,8 @@ export interface ScanTask {
   id: number;
   target_url: string;
   status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
-  progress: number;
+  scan_strategy: string;
+  progress?: number;
   created_at: string;
 }
 
@@ -61,6 +62,11 @@ export interface Vulnerability {
   severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
   target_url: string;
   description?: string;
+  vuln_type?: string;
+  parameter?: string;
+  payload_present: boolean;
+  attack_path_present: boolean;
+  evidence_present: boolean;
   created_at: string;
 }
 
@@ -96,7 +102,47 @@ export interface Report {
   target_url: string;
   risk_score: number;
   vuln_count: number;
+  validated_findings: number;
+  payload_count: number;
+  attack_path_count: number;
   created_at: string;
+}
+
+export interface ReportPreviewVulnerability {
+  id: number;
+  title: string;
+  type?: string;
+  severity?: string;
+  cvss_score?: number;
+  url?: string;
+  parameter?: string;
+  description?: string;
+  remediation?: string;
+  payload_present: boolean;
+  attack_path_present: boolean;
+  evidence_present: boolean;
+}
+
+export interface ReportPreview {
+  task_id: number;
+  target_url: string;
+  status: string;
+  scan_strategy?: string;
+  scan_time?: string | null;
+  summary: {
+    total: number;
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+    info: number;
+  };
+  attack_simulation_summary?: {
+    validated_findings: number;
+    payload_count: number;
+    attack_path_count: number;
+  };
+  vulnerabilities: ReportPreviewVulnerability[];
 }
 
 export interface User {
@@ -215,11 +261,11 @@ export const api = {
     return response.json();
   },
 
-  async createTask(url: string): Promise<ScanTask> {
+  async createTask(data: { target_url: string; scan_strategy: string }): Promise<ScanTask> {
     const response = await fetch(joinApiPath('/tasks'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target_url: url }),
+      body: JSON.stringify(data),
     });
     if (!response.ok) throw new Error('Failed to create task');
     return response.json();
@@ -330,6 +376,12 @@ export const api = {
   async getReports(): Promise<Report[]> {
     const response = await fetch(joinApiPath('/reports'));
     if (!response.ok) throw new Error('Failed to fetch reports');
+    return response.json();
+  },
+
+  async getReportPreview(taskId: number): Promise<ReportPreview> {
+    const response = await fetch(joinApiPath(`/reports/${taskId}/preview`));
+    if (!response.ok) throw new Error('Failed to fetch report preview');
     return response.json();
   },
 

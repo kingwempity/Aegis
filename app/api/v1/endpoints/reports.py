@@ -28,6 +28,9 @@ class ReportResponse(BaseModel):
     target_url: str
     risk_score: float
     vuln_count: int
+    validated_findings: int
+    payload_count: int
+    attack_path_count: int
     created_at: datetime
 
 
@@ -95,13 +98,20 @@ def get_reports(db: Session = Depends(get_db)):
                 score += 10
             else:
                 score += 5
-        
+
+        payload_count = len([v for v in task.vulnerabilities if getattr(v, "payload", None)])
+        attack_path_count = len([v for v in task.vulnerabilities if getattr(v, "attack_path", None)])
+        evidence_count = len([v for v in task.vulnerabilities if getattr(v, "evidence", None)])
+
         reports.append({
             "id": task.id,
             "task_id": task.id,
             "target_url": task.target_url,
             "risk_score": min(score, 100),
             "vuln_count": vuln_count,
+            "validated_findings": evidence_count,
+            "payload_count": payload_count,
+            "attack_path_count": attack_path_count,
             "created_at": task.updated_at or task.created_at
         })
     
@@ -258,15 +268,28 @@ def preview_report(task_id: int, db: Session = Depends(get_db)):
             "url": vuln.url,
             "parameter": parameter,
             "description": description,
-            "remediation": remediation
+            "remediation": remediation,
+            "payload_present": bool(getattr(vuln, "payload", None)),
+            "attack_path_present": bool(getattr(vuln, "attack_path", None)),
+            "evidence_present": bool(getattr(vuln, "evidence", None)),
         })
+
+    payload_count = len([v for v in task.vulnerabilities if getattr(v, "payload", None)])
+    attack_path_count = len([v for v in task.vulnerabilities if getattr(v, "attack_path", None)])
+    validated_findings = len([v for v in task.vulnerabilities if getattr(v, "evidence", None)])
     
     report_data = {
         "task_id": task.id,
         "target_url": task.target_url,
         "status": task.status,
+        "scan_strategy": task.scan_strategy,
         "scan_time": task.updated_at.isoformat() if task.updated_at else None,
         "summary": summary,
+        "attack_simulation_summary": {
+            "validated_findings": validated_findings,
+            "payload_count": payload_count,
+            "attack_path_count": attack_path_count,
+        },
         "vulnerabilities": vulnerabilities
     }
     

@@ -53,13 +53,30 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'RUNNING':
-        return <span className="px-2 py-1 bg-blue-100 text-blue-600 rounded text-[10px] font-bold">RUNNING</span>;
+        return <span className="px-2 py-1 bg-blue-100 text-blue-600 rounded text-[10px] font-bold">验证中</span>;
       case 'COMPLETED':
-        return <span className="px-2 py-1 bg-green-100 text-green-600 rounded text-[10px] font-bold">COMPLETED</span>;
+        return <span className="px-2 py-1 bg-green-100 text-green-600 rounded text-[10px] font-bold">已验证</span>;
       case 'FAILED':
-        return <span className="px-2 py-1 bg-red-100 text-red-600 rounded text-[10px] font-bold">FAILED</span>;
+        return <span className="px-2 py-1 bg-red-100 text-red-600 rounded text-[10px] font-bold">验证失败</span>;
       default:
-        return <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-[10px] font-bold">PENDING</span>;
+        return <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-[10px] font-bold">等待验证</span>;
+    }
+  };
+
+  const getStrategyLabel = (strategy?: string) => {
+    switch (strategy) {
+      case 'attack_validation':
+        return '模拟攻击验证';
+      case 'full_audit':
+        return '全量攻击验证';
+      case 'focused_probe':
+        return '定向漏洞验证';
+      case 'default':
+      case 'full':
+      case 'fast':
+        return '基础验证式扫描';
+      default:
+        return strategy || '基础验证式扫描';
     }
   };
 
@@ -73,7 +90,10 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
       {/* Toolbar */}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-4 flex-1">
-          <h2 className="text-2xl font-bold text-[#2d3343]">扫描任务</h2>
+          <div>
+            <h2 className="text-2xl font-bold text-[#2d3343]">模拟攻击验证任务</h2>
+            <p className="mt-1 text-sm text-gray-400">跟踪攻击载荷验证、证据链留存与可利用性证明。</p>
+          </div>
           <div className="relative flex-1 max-w-md">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <Search className="h-4 w-4 text-gray-400" />
@@ -92,7 +112,7 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
           className="px-6 py-2.5 bg-[#ff6b00] text-white rounded-xl font-bold text-sm hover:bg-[#e66000] transition-all shadow-lg shadow-orange-200 flex items-center gap-2"
         >
           <Plus size={16} strokeWidth={3} />
-          新建扫描
+          新建验证
         </button>
       </div>
 
@@ -103,6 +123,7 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
             <tr className="bg-gray-50 border-b border-gray-100">
               <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">ID</th>
               <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">目标 URL</th>
+              <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">验证模式</th>
               <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">状态</th>
               <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">进度</th>
               <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">创建时间</th>
@@ -111,14 +132,19 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {loading && tasks.length === 0 ? (
-              <tr><td colSpan={6} className="px-8 py-12 text-center text-gray-400">加载中...</td></tr>
+              <tr><td colSpan={7} className="px-8 py-12 text-center text-gray-400">加载中...</td></tr>
             ) : filteredTasks.length === 0 ? (
-              <tr><td colSpan={6} className="px-8 py-12 text-center text-gray-400">暂无匹配的扫描任务</td></tr>
+              <tr><td colSpan={7} className="px-8 py-12 text-center text-gray-400">暂无匹配的验证任务</td></tr>
             ) : (
               filteredTasks.map((task) => (
                 <tr key={task.id} className="hover:bg-gray-50/50 transition-colors">
                   <td className="px-8 py-5 text-xs font-bold text-gray-400">#{task.id}</td>
                   <td className="px-8 py-5 font-bold text-[#2d3343]">{task.target_url}</td>
+                  <td className="px-8 py-5">
+                    <span className="inline-flex rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-[#c25b00]">
+                      {getStrategyLabel(task.scan_strategy)}
+                    </span>
+                  </td>
                   <td className="px-8 py-5">{getStatusBadge(task.status)}</td>
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-3 w-48">

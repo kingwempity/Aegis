@@ -26,6 +26,11 @@ class VulnerabilityResponse(BaseModel):
     severity: str
     target_url: str
     description: Optional[str] = None
+    vuln_type: Optional[str] = None
+    parameter: Optional[str] = None
+    payload_present: bool
+    attack_path_present: bool
+    evidence_present: bool
     created_at: datetime
     
     class Config:
@@ -76,7 +81,12 @@ async def get_vulnerabilities(
             title=v.vuln_name,
             severity=_normalize_severity(v.severity),
             target_url=v.url or "",
-            description=_get_description(v.evidence),
+            description=_get_description(v),
+            vuln_type=getattr(v, "vuln_type", None),
+            parameter=getattr(v, "parameter", None),
+            payload_present=bool(getattr(v, "payload", None)),
+            attack_path_present=bool(getattr(v, "attack_path", None)),
+            evidence_present=bool(getattr(v, "evidence", None)),
             created_at=v.created_at or datetime.now()
         )
         for v in vulns
@@ -106,31 +116,40 @@ def _normalize_severity(severity: Optional[str]) -> str:
     return mapping.get(severity, severity.lower())
 
 
-def _get_description(evidence: Optional[dict]) -> Optional[str]:
+def _get_description(vuln: VulnerabilityModel) -> Optional[str]:
     """
-    从证据中提取描述信息。
+    从漏洞对象中提取轻量验证摘要。
     
     Args:
-        evidence: 漏洞证据字典
+        vuln: 漏洞对象
         
     Returns:
         描述文本
     """
-    if not evidence:
-        return None
-    
-    # 尝试从证据中提取有用信息
+    evidence = getattr(vuln, "evidence", None)
     parts = []
-    
+
+    if getattr(vuln, "payload", None):
+        parts.append("已命中攻击载荷")
+
+    if getattr(vuln, "attack_path", None):
+        parts.append("已记录攻击路径")
+
+    if evidence:
+        parts.append("已保留证据链")
+
+    if not evidence:
+        return "，".join(parts) if parts else None
+
     if "matchers" in evidence:
         matchers = evidence["matchers"]
         if isinstance(matchers, list) and matchers:
-            parts.append(f"匹配规则: {len(matchers)} 个")
-    
-    if "encoding_used" in evidence:
-        parts.append(f"编码类型: {evidence['encoding_used']}")
-    
+            parts.append(f"命中 {len(matchers)} 条验证规则")
+
+    if "encoding_used" in evidence and evidence["encoding_used"]:
+        parts.append(f"载荷编码: {evidence['encoding_used']}")
+
     if parts:
-        return " | ".join(parts)
-    
+        return "，".join(parts)
+
     return None

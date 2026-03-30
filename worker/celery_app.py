@@ -8,10 +8,10 @@ from scanner.engine.core import ScannerEngine
 REDIS_URL = os.getenv("REDIS_URL", "redis://aegis-redis:6379/0")
 celery_app = Celery("aegis_worker", broker=REDIS_URL, backend=REDIS_URL)
 
-@celery_app.task(bind=True)
-def run_scan_task(self, task_id: int, target_url: str, scan_strategy: str = "default"):
+def execute_scan_task(task_id: int, target_url: str, scan_strategy: str = "default"):
     db = SessionLocal()
     print(f"🚀 [Worker] 启动扫描引擎: ID={task_id}, Target={target_url}")
+    task = None
     
     try:
         # 更新状态 -> RUNNING
@@ -50,3 +50,8 @@ def run_scan_task(self, task_id: int, target_url: str, scan_strategy: str = "def
         db.commit()
     finally:
         db.close()
+
+
+@celery_app.task(bind=True)
+def run_scan_task(self, task_id: int, target_url: str, scan_strategy: str = "default"):
+    execute_scan_task(task_id, target_url, scan_strategy)

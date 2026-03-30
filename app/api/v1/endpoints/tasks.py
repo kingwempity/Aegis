@@ -1,13 +1,25 @@
+import logging
+import threading
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
 from app.models.task import ScanTask
 from app.schemas.task import TaskCreate, TaskOut
-from worker.celery_app import run_scan_task
+from worker.celery_app import run_scan_task, execute_scan_task
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
+def _run_scan_in_background(task_id: int, target_url: str, scan_strategy: str) -> None:
+    background_thread = threading.Thread(
+        target=execute_scan_task,
+        args=(task_id, target_url, scan_strategy),
+        daemon=True,
+    )
+    background_thread.start()
+
+@router.post("/create", response_model=TaskOut, status_code=202)
 @router.post("", response_model=TaskOut, status_code=202)
 def create_scan_task(task_in: TaskCreate, db: Session = Depends(get_db)):
     db_task = ScanTask(
@@ -18,10 +30,17 @@ def create_scan_task(task_in: TaskCreate, db: Session = Depends(get_db)):
     db.add(db_task)
     db.commit()
     db.refresh(db_task)
-    run_scan_task.delay(db_task.id, str(task_in.target_url), task_in.scan_strategy)
+
+    try:
+        run_scan_task.delay(db_task.id, str(task_in.target_url), task_in.scan_strategy)
+    except Exception as exc:
+        logger.exception("Celery dispatch failed, falling back to in-process background scan: %s", exc)
+        _run_scan_in_background(db_task.id, str(task_in.target_url), task_in.scan_strategy)
+
     return db_task
 
 # 新增：获取任务列表接口
+@router.get("/list", response_model=List[TaskOut])
 @router.get("", response_model=List[TaskOut])
 def read_tasks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     """获取所有任务列表"""

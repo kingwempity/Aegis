@@ -231,15 +231,21 @@ Aegis 安全扫描系统
         """
         if self.config.use_ssl:
             # 使用SSL加密连接（端口465）
-            with smtplib.SMTP_SSL(self.config.smtp_host, self.config.smtp_port) as server:
+            server = smtplib.SMTP_SSL(self.config.smtp_host, self.config.smtp_port, timeout=30)
+            try:
                 server.login(self.config.smtp_user, self.config.smtp_password)
                 server.sendmail(self.config.from_email, to_email, msg.as_string())
+            finally:
+                server.quit()
         else:
             # 使用STARTTLS（端口587）
-            with smtplib.SMTP(self.config.smtp_host, self.config.smtp_port) as server:
+            server = smtplib.SMTP(self.config.smtp_host, self.config.smtp_port, timeout=30)
+            try:
                 server.starttls()
                 server.login(self.config.smtp_user, self.config.smtp_password)
                 server.sendmail(self.config.from_email, to_email, msg.as_string())
+            finally:
+                server.quit()
 
 
 # 全局单例实例

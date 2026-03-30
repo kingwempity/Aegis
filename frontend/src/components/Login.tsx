@@ -133,13 +133,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
       if (data.success) {
         setCountdown(60);
-        // 开发模式下显示验证码
-        if (data.code) {
-          console.log(`📧 验证码: ${data.code}`);
-          setError(`验证码已发送（开发模式: ${data.code}）`);
-        } else {
-          setError('验证码已发送到您的邮箱');
-        }
+        setError('验证码已发送到您的邮箱，请查收');
       } else {
         setError(data.message || '发送验证码失败');
       }

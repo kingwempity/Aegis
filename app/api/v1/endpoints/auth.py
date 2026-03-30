@@ -94,8 +94,6 @@ class SendCodeResponse(BaseModel):
     """发送验证码响应"""
     success: bool
     message: str
-    # 开发模式下返回验证码（生产环境应移除）
-    code: Optional[str] = None
 
 
 class EmailLoginRequest(BaseModel):
@@ -433,14 +431,13 @@ async def send_verification_code(request: SendCodeRequest, http_request: Request
         
         # 发送验证码
         code_service = get_verification_code_service()
-        success, message, code = code_service.send_code(email)
+        success, message = code_service.send_code(email)
         
         if success:
             logger.info(f"Verification code sent to {email} from IP: {client_ip}")
             return SendCodeResponse(
                 success=True,
-                message=message,
-                code=code  # 开发模式返回验证码，生产环境应为 None
+                message=message
             )
         else:
             logger.warning(f"Failed to send verification code to {email}: {message}")

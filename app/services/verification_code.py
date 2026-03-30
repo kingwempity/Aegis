@@ -364,7 +364,7 @@ class VerificationCodeService:
         """
         return ''.join(random.choices(string.digits, k=self.config.code_length))
     
-    def send_code(self, email: str) -> Tuple[bool, str, Optional[str]]:
+    def send_code(self, email: str) -> Tuple[bool, str]:
         """
         发送验证码
         
@@ -372,19 +372,19 @@ class VerificationCodeService:
             email: 目标邮箱
             
         Returns:
-            Tuple[bool, str, Optional[str]]: (是否成功, 消息, 验证码-仅开发模式返回)
+            Tuple[bool, str]: (是否成功, 消息)
         """
         # 检查是否可以重发
         can_send, wait_seconds = self.storage.can_resend(email, self.config)
         if not can_send:
-            return False, f"请等待 {wait_seconds} 秒后再试", None
+            return False, f"请等待 {wait_seconds} 秒后再试"
         
         # 生成验证码
         code = self.generate_code()
         
         # 存储验证码
         if not self.storage.store(email, code, self.config):
-            return False, "验证码存储失败，请稍后重试", None
+            return False, "验证码存储失败，请稍后重试"
         
         # 发送验证码（调用邮件服务）
         from app.services.email_service import email_service
@@ -392,11 +392,11 @@ class VerificationCodeService:
         success, message = email_service.send_verification_code(email, code)
         
         if success:
-            return True, "验证码已发送到您的邮箱", code  # 开发模式返回验证码
+            return True, "验证码已发送到您的邮箱，请查收"
         else:
             # 发送失败，清理存储
             self.storage.delete(email)
-            return False, message, None
+            return False, message
     
     def verify_code(self, email: str, code: str) -> Tuple[bool, str]:
         """

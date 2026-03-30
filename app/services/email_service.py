@@ -16,11 +16,42 @@ import os
 import logging
 from typing import Optional, Tuple
 import smtplib
+import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
+
+
+def _get_env_value(name: str, default: str) -> str:
+    """
+    获取环境变量值，并将空字符串视为未配置。
+
+    Args:
+        name: 环境变量名
+        default: 默认值
+
+    Returns:
+        str: 清理后的配置值
+    """
+    value = os.getenv(name)
+    if value is None:
+        return default
+
+    value = value.strip()
+    return value if value else default
+
+
+def _get_env_bool(name: str, default: bool) -> bool:
+    """
+    解析布尔型环境变量，兼容 true/false/1/0/yes/no。
+    """
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 @dataclass
@@ -60,14 +91,22 @@ def get_email_config() -> EmailConfig:
         - SMTP_USER: SMTP用户名
         - SMTP_PASSWORD: SMTP密码/授权码
     """
+    smtp_host = _get_env_value("SMTP_HOST", "smtp.qq.com")
+    smtp_port = int(_get_env_value("SMTP_PORT", "465"))
+    smtp_user = _get_env_value("SMTP_USER", "aegismail@foxmail.com")
+    smtp_password = _get_env_value("SMTP_PASSWORD", "gxobwuqcpiiucjbh")
+    from_email = _get_env_value("SMTP_FROM_EMAIL", smtp_user)
+    from_name = _get_env_value("SMTP_FROM_NAME", "Aegis 安全扫描系统")
+    use_ssl = _get_env_bool("SMTP_USE_SSL", smtp_port == 465)
+
     return EmailConfig(
-        smtp_host=os.getenv("SMTP_HOST", "smtp.qq.com"),
-        smtp_port=int(os.getenv("SMTP_PORT", "465")),
-        smtp_user=os.getenv("SMTP_USER", "aegismail@foxmail.com"),
-        smtp_password=os.getenv("SMTP_PASSWORD", "gxobwuqcpiiucjbh"),
-        from_email=os.getenv("SMTP_FROM_EMAIL", "aegismail@foxmail.com"),
-        from_name=os.getenv("SMTP_FROM_NAME", "Aegis 安全扫描系统"),
-        use_ssl=os.getenv("SMTP_USE_SSL", "true").lower() == "true",
+        smtp_host=smtp_host,
+        smtp_port=smtp_port,
+        smtp_user=smtp_user,
+        smtp_password=smtp_password,
+        from_email=from_email,
+        from_name=from_name,
+        use_ssl=use_ssl,
     )
 
 
@@ -229,23 +268,53 @@ Aegis 安全扫描系统
             - 使用SMTP_SSL建立加密连接
             - QQ邮箱要求使用授权码而非邮箱密码
         """
+        if not self.config.smtp_host:
+            raise ValueError("SMTP_HOST 未配置")
+        if not self.config.smtp_user:
+            raise ValueError("SMTP_USER 未配置")
+        if not self.config.smtp_password:
+            raise ValueError("SMTP_PASSWORD 未配置")
+
+        logger.info(
+            "Connecting to SMTP server %s:%s (ssl=%s) for %s",
+            self.config.smtp_host,
+            self.config.smtp_port,
+            self.config.use_ssl,
+            to_email,
+        )
+
         if self.config.use_ssl:
             # 使用SSL加密连接（端口465）
-            server = smtplib.SMTP_SSL(self.config.smtp_host, self.config.smtp_port, timeout=30)
+            context = ssl.create_default_context()
+            server = smtplib.SMTP_SSL(
+                self.config.smtp_host,
+                self.config.smtp_port,
+                timeout=30,
+                context=context,
+            )
             try:
+                server.ehlo()
                 server.login(self.config.smtp_user, self.config.smtp_password)
                 server.sendmail(self.config.from_email, to_email, msg.as_string())
             finally:
-                server.quit()
+                try:
+                    server.quit()
+                except smtplib.SMTPServerDisconnected:
+                    pass
         else:
             # 使用STARTTLS（端口587）
             server = smtplib.SMTP(self.config.smtp_host, self.config.smtp_port, timeout=30)
             try:
+                server.ehlo()
                 server.starttls()
+                server.ehlo()
                 server.login(self.config.smtp_user, self.config.smtp_password)
                 server.sendmail(self.config.from_email, to_email, msg.as_string())
             finally:
-                server.quit()
+                try:
+                    server.quit()
+                except smtplib.SMTPServerDisconnected:
+                    pass
 
 
 # 全局单例实例

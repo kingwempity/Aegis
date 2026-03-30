@@ -101,10 +101,13 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-aegis-secret-key-change-in-production}
       - JWT_EXPIRE_HOURS=${JWT_EXPIRE_HOURS:-3}
       # 邮件配置
-      - SMTP_HOST=${SMTP_HOST:-}
-      - SMTP_PORT=${SMTP_PORT:-587}
-      - SMTP_USER=${SMTP_USER:-}
-      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_HOST=${SMTP_HOST:-smtp.qq.com}
+      - SMTP_PORT=${SMTP_PORT:-465}
+      - SMTP_USER=${SMTP_USER:-aegismail@foxmail.com}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-gxobwuqcpiiucjbh}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-aegismail@foxmail.com}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Aegis 安全扫描系统}
+      - SMTP_USE_SSL=${SMTP_USE_SSL:-true}
       - EMAIL_DEBUG=${EMAIL_DEBUG:-true}
     depends_on:
       aegis-db:

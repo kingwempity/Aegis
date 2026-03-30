@@ -1,4 +1,12 @@
+/**
+ * Aegis 主应用组件
+ * 
+ * 管理应用的整体布局和认证状态。
+ */
+
 import React, { useState } from 'react';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import Login from './components/Login';
 import AppShell from './components/AppShell';
 import Dashboard from './components/Dashboard';
 import TaskList from './components/TaskList';
@@ -9,11 +17,35 @@ import Reports from './components/Reports';
 import Users from './components/Users';
 import ScanProfiles from './components/ScanProfiles';
 import NewScanModal from './components/NewScanModal';
+import HelpContentManage from './components/HelpContentManage';
+import LabHome from './components/LabHome';
 
-const App: React.FC = () => {
-  const [currentPage, setCurrentPage] = useState<'overview' | 'discovery' | 'targets' | 'scans' | 'vulnerabilities' | 'reports' | 'users' | 'settings'>('overview');
+/**
+ * 主应用内容组件（在 AuthProvider 内部）
+ */
+const AppContent: React.FC = () => {
+  const { isAuthenticated, isLoading, logout } = useAuth();
+  const [currentPage, setCurrentPage] = useState<'overview' | 'discovery' | 'targets' | 'scans' | 'vulnerabilities' | 'reports' | 'lab' | 'users' | 'settings' | 'help'>('overview');
   const [isNewScanModalOpen, setIsNewScanModalOpen] = useState(false);
 
+  // 加载中状态
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#1a1d2e] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-[#ff6b00]/30 border-t-[#ff6b00] rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400">加载中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 未登录状态，显示登录页面
+  if (!isAuthenticated) {
+    return <Login onLoginSuccess={() => {}} />;
+  }
+
+  // 已登录状态，显示主应用
   const navItems = [
     {
       icon: 'overview',
@@ -51,6 +83,12 @@ const App: React.FC = () => {
       active: currentPage === 'reports',
       onClick: () => setCurrentPage('reports'),
     },
+    {
+      icon: 'lab',
+      label: 'Vuln Lab',
+      active: currentPage === 'lab',
+      onClick: () => setCurrentPage('lab'),
+    },
     
     // SETTINGS 分组
     {
@@ -68,6 +106,12 @@ const App: React.FC = () => {
       label: 'Scan Profiles',
       active: currentPage === 'settings',
       onClick: () => setCurrentPage('settings'),
+    },
+    {
+      icon: 'settings',
+      label: 'Help Content',
+      active: currentPage === 'help',
+      onClick: () => setCurrentPage('help'),
     },
   ];
 
@@ -99,10 +143,14 @@ const App: React.FC = () => {
         return <VulnerabilityList />;
       case 'reports':
         return <Reports />;
+      case 'lab':
+        return <LabHome />;
       case 'users':
         return <Users />;
       case 'settings':
         return <ScanProfiles />;
+      case 'help':
+        return <HelpContentManage />;
       default:
         return <Dashboard />;
     }
@@ -113,6 +161,7 @@ const App: React.FC = () => {
       <AppShell
         navItems={navItems}
         onNewScan={() => setIsNewScanModalOpen(true)}
+        onLogout={logout}
       >
         {renderContent()}
       </AppShell>
@@ -123,6 +172,19 @@ const App: React.FC = () => {
         onSuccess={handleNewScanSuccess}
       />
     </>
+  );
+};
+
+/**
+ * App 根组件
+ * 
+ * 包裹 AuthProvider 提供认证上下文
+ */
+const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 };
 

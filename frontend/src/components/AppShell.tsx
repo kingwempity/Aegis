@@ -1,6 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
-import { LayoutDashboard, Target, Shield, FileText, Settings, Bot, Plus, Search, LogOut, HelpCircle, Bell, Compass, Users } from './Icons';
+import { LayoutDashboard, Target, Shield, FileText, Settings, Bot, Plus, Search, LogOut, HelpCircle, Bell, Compass, Users, X, ExternalLink, BookOpen, MessageCircle, CheckCircle, AlertCircle, KeyRound, FlaskConical } from './Icons';
+import ChangePasswordModal from './ChangePasswordModal';
+import { api } from '../api';
+import type { HelpContent, Notification } from '../api';
 
 interface NavItemData {
   icon?: React.FC<any> | string;
@@ -19,6 +22,7 @@ interface AppShellProps {
   breadcrumb?: string;
   userName?: string;
   onNewScan?: () => void;
+  onLogout?: () => void;
 }
 
 const iconMap: Record<string, React.FC<any>> = {
@@ -30,6 +34,7 @@ const iconMap: Record<string, React.FC<any>> = {
   reports: FileText,
   users: Users,
   settings: Settings,
+  lab: FlaskConical,
 };
 
 const fallbackNavItems: NavItemData[] = [
@@ -40,12 +45,115 @@ const fallbackNavItems: NavItemData[] = [
   { label: 'Settings', href: '/settings', icon: Settings },
 ];
 
+/** 通知已读状态存储 Key */
+const NOTIFICATION_READ_KEY = 'aegis_notification_read_ids';
+
 const AppShell: React.FC<AppShellProps> = ({
   children,
   navItems: propNavItems = [],
   onNewScan,
+  onLogout,
 }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showAllNotifications, setShowAllNotifications] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const notificationRef = useRef<HTMLDivElement>(null);
+  
+  // 帮助内容相关状态
+  const [helpContents, setHelpContents] = useState<HelpContent[]>([]);
+  const [helpLoading, setHelpLoading] = useState(false);
+  const [selectedHelpContent, setSelectedHelpContent] = useState<HelpContent | null>(null);
+
+  // 获取帮助内容
+  const fetchHelpContents = async () => {
+    try {
+      setHelpLoading(true);
+      const data = await api.getHelpContents(true); // 只获取启用的内容
+      console.log('[AppShell] Fetched help contents:', data);
+      setHelpContents(data);
+    } catch (error) {
+      console.error('[AppShell] Failed to fetch help contents:', error);
+      // 如果获取失败，尝试初始化默认内容
+      try {
+        await api.initDefaultHelpContents();
+        // 重新获取
+        const data = await api.getHelpContents(true);
+        setHelpContents(data);
+      } catch (initError) {
+        console.error('[AppShell] Failed to init default help contents:', initError);
+      }
+    } finally {
+      setHelpLoading(false);
+    }
+  };
+
+  // 当帮助模态框打开时获取数据
+  useEffect(() => {
+    if (showHelpModal) {
+      fetchHelpContents();
+    }
+  }, [showHelpModal]);
+
+  // ==================== 通知相关状态 ====================
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // 获取通知列表
+  const fetchNotifications = useCallback(async () => {
+    try {
+      setNotificationsLoading(true);
+      const response = await api.getNotifications();
+      setNotifications(response.notifications);
+      setUnreadCount(response.unread_count);
+    } catch (error) {
+      console.error('[AppShell] Failed to fetch notifications:', error);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  }, []);
+
+  // 初始加载通知
+  useEffect(() => {
+    fetchNotifications();
+    // 每30秒刷新一次通知
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
+
+  // 标记单条通知为已读
+  const markAsRead = async (id: string) => {
+    try {
+      await api.markNotificationAsRead(id);
+      // 更新本地状态
+      setNotifications(prev => 
+        prev.map(n => n.id === id ? { ...n, read: true } : n)
+      );
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('[AppShell] Failed to mark notification as read:', error);
+    }
+  };
+
+  // 标记所有通知为已读
+  const markAllAsRead = async () => {
+    try {
+      await api.markAllNotificationsAsRead();
+      // 更新本地状态
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch (error) {
+      console.error('[AppShell] Failed to mark all notifications as read:', error);
+    }
+  };
+
+  // 查看全部通知
+  const handleViewAllNotifications = () => {
+    setShowNotifications(false);
+    setShowAllNotifications(true);
+  };
 
   // 监听窗口大小以自动处理移动端适配
   useEffect(() => {
@@ -59,7 +167,39 @@ const AppShell: React.FC<AppShellProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // 点击外部关闭通知面板
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // ESC键关闭模态框
+  useEffect(() => {
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowHelpModal(false);
+        setShowNotifications(false);
+        setShowAllNotifications(false);
+      }
+    };
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
+  }, []);
+
   const resolvedNavItems = propNavItems.length > 0 ? propNavItems : fallbackNavItems;
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'success': return <CheckCircle size={16} className="text-green-500" />;
+      case 'warning': return <AlertCircle size={16} className="text-yellow-500" />;
+      default: return <AlertCircle size={16} className="text-blue-500" />;
+    }
+  };
 
   return (
     <div className="flex h-screen bg-[#f8f9fa] overflow-hidden">
@@ -73,8 +213,14 @@ const AppShell: React.FC<AppShellProps> = ({
       >
         {/* Logo 区域 */}
         <div className="px-6 py-8 flex items-center gap-3 overflow-hidden">
-          <div className="w-8 h-8 bg-[#ff6b00] rounded-lg flex items-center justify-center text-white flex-shrink-0 shadow-lg shadow-orange-500/20">
-            <Bot size={20} />
+          <div className="w-10 h-10 rounded-xl flex-shrink-0 bg-gradient-to-br from-[#ff6b00] to-[#ff8c00] p-0.5 shadow-lg shadow-orange-500/30">
+            <div className="w-full h-full rounded-[10px] bg-[#2a2d3a] flex items-center justify-center overflow-hidden">
+              <img 
+                src="/logo.png" 
+                alt="Aegis Logo" 
+                className="w-full h-full rounded-[10px] object-cover"
+              />
+            </div>
           </div>
           <span className={`text-white text-xl font-bold tracking-tight transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>
             Aegis
@@ -112,15 +258,32 @@ const AppShell: React.FC<AppShellProps> = ({
         </div>
 
         {/* 侧边栏底部 */}
-        <div className="p-6 border-t border-gray-800/50">
-          <div className="flex items-center gap-3 text-[#8a92a6] hover:text-white cursor-pointer transition-colors overflow-hidden">
+        <div className="p-6 border-t border-gray-800/50 space-y-2">
+          {/* 修改密码按钮 */}
+          <button 
+            onClick={() => setShowChangePassword(true)}
+            className="w-full flex items-center gap-3 text-[#8a92a6] hover:text-white cursor-pointer transition-colors overflow-hidden"
+          >
+            <div className="flex-shrink-0">
+              <KeyRound size={20} />
+            </div>
+            <span className={`text-sm font-medium transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>
+              修改密码
+            </span>
+          </button>
+          
+          {/* 退出登录按钮 */}
+          <button 
+            onClick={onLogout}
+            className="w-full flex items-center gap-3 text-[#8a92a6] hover:text-white cursor-pointer transition-colors overflow-hidden"
+          >
             <div className="flex-shrink-0">
               <LogOut size={20} />
             </div>
             <span className={`text-sm font-medium transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>
               退出登录
             </span>
-          </div>
+          </button>
         </div>
       </aside>
 
@@ -168,14 +331,82 @@ const AppShell: React.FC<AppShellProps> = ({
 
             {/* 图标按钮组 */}
             <div className="flex items-center gap-4 text-gray-500">
-              <button className="text-sm font-medium hover:text-[#ff6b00] transition-colors hidden sm:block">查看帮助</button>
-              <button className="p-2 hover:bg-gray-50 rounded-lg transition-colors">
+              <button 
+                onClick={() => setShowHelpModal(true)}
+                className="text-sm font-medium hover:text-[#ff6b00] transition-colors hidden sm:block"
+              >
+                查看帮助
+              </button>
+              <button 
+                onClick={() => setShowHelpModal(true)}
+                className="p-2 hover:bg-gray-50 rounded-lg transition-colors"
+              >
                 <HelpCircle size={20} />
               </button>
-              <button className="relative p-2 hover:bg-gray-50 rounded-lg transition-colors">
-                <Bell size={20} />
-                <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-              </button>
+              <div className="relative" ref={notificationRef}>
+                <button 
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="relative p-2 hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                  <Bell size={20} />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white text-white text-xs flex items-center justify-center">
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
+                
+                {/* 通知下拉面板 */}
+                {showNotifications && (
+                  <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50">
+                    <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                      <h3 className="font-semibold text-gray-800">通知</h3>
+                      {unreadCount > 0 && (
+                        <span className="text-xs text-[#ff6b00] font-medium">{unreadCount} 条未读</span>
+                      )}
+                    </div>
+                    <div className="max-h-80 overflow-y-auto">
+                      {notifications.map((notification) => (
+                        <div 
+                          key={notification.id}
+                          onClick={() => markAsRead(notification.id)}
+                          className={`px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer ${
+                            !notification.read ? 'bg-orange-50/50' : ''
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="mt-0.5">{getNotificationIcon(notification.type)}</div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-800">{notification.title}</p>
+                              <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{notification.message}</p>
+                              <p className="text-xs text-gray-400 mt-1">{notification.time}</p>
+                            </div>
+                            {!notification.read && (
+                              <div className="w-2 h-2 bg-[#ff6b00] rounded-full mt-1.5"></div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="px-4 py-3 border-t border-gray-100 flex gap-2">
+                      {unreadCount > 0 && (
+                        <button 
+                          onClick={markAllAsRead}
+                          className="flex-1 text-center text-sm text-gray-500 font-medium hover:text-gray-700 transition-colors"
+                        >
+                          全部已读
+                        </button>
+                      )}
+                      <button 
+                        onClick={handleViewAllNotifications}
+                        className="flex-1 text-center text-sm text-[#ff6b00] font-medium hover:text-[#e66000] transition-colors"
+                      >
+                        查看全部
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </header>
@@ -185,6 +416,269 @@ const AppShell: React.FC<AppShellProps> = ({
           {children}
         </main>
       </div>
+
+      {/* ==================== 全部通知模态框 ==================== */}
+      {showAllNotifications && (
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setShowAllNotifications(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 模态框头部 */}
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-[#ff6b00]/10 rounded-lg flex items-center justify-center">
+                  <Bell size={24} className="text-[#ff6b00]" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800">全部通知</h2>
+                  <p className="text-sm text-gray-500">共 {notifications.length} 条通知</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {unreadCount > 0 && (
+                  <button 
+                    onClick={markAllAsRead}
+                    className="px-3 py-1.5 text-sm text-[#ff6b00] font-medium hover:bg-[#ff6b00]/10 rounded-lg transition-colors"
+                  >
+                    全部标记已读
+                  </button>
+                )}
+                <button 
+                  onClick={() => setShowAllNotifications(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X size={20} className="text-gray-500" />
+                </button>
+              </div>
+            </div>
+            
+            {/* 模态框内容 */}
+            <div className="max-h-[60vh] overflow-y-auto">
+              {notifications.length === 0 ? (
+                <div className="py-12 text-center text-gray-500">
+                  <Bell size={48} className="mx-auto mb-4 text-gray-300" />
+                  <p>暂无通知</p>
+                </div>
+              ) : (
+                notifications.map((notification) => (
+                  <div 
+                    key={notification.id}
+                    onClick={() => markAsRead(notification.id)}
+                    className={`px-6 py-4 border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer ${
+                      !notification.read ? 'bg-orange-50/50' : ''
+                    }`}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="mt-1">{getNotificationIcon(notification.type)}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-base font-semibold text-gray-800">{notification.title}</p>
+                          {!notification.read && (
+                            <span className="px-2 py-0.5 text-xs bg-[#ff6b00]/10 text-[#ff6b00] rounded-full font-medium">未读</span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600 mt-1">{notification.message}</p>
+                        <p className="text-xs text-gray-400 mt-2">{notification.time}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            
+            {/* 模态框底部 */}
+            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50">
+              <button 
+                onClick={() => setShowAllNotifications(false)}
+                className="w-full px-4 py-2 bg-[#ff6b00] text-white rounded-lg text-sm font-medium hover:bg-[#e66000] transition-colors"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== 帮助模态框 ==================== */}
+      {showHelpModal && (
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => { setShowHelpModal(false); setSelectedHelpContent(null); }}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 模态框头部 */}
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-[#ff6b00] to-[#ff8c00]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                  <HelpCircle size={24} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">Aegis 帮助中心</h2>
+                  <p className="text-sm text-white/80">快速了解系统功能</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => { setShowHelpModal(false); setSelectedHelpContent(null); }}
+                className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+              >
+                <X size={20} className="text-white" />
+              </button>
+            </div>
+            
+            {/* 模态框内容 */}
+            <div className="p-6 max-h-[60vh] overflow-y-auto">
+              {selectedHelpContent ? (
+                // 显示详细内容
+                <div>
+                  <button
+                    onClick={() => setSelectedHelpContent(null)}
+                    className="text-sm text-gray-500 hover:text-gray-700 mb-4 flex items-center gap-1"
+                  >
+                    ← 返回列表
+                  </button>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div 
+                      className="w-10 h-10 rounded-lg flex items-center justify-center"
+                      style={{ backgroundColor: `${selectedHelpContent.icon_color}20` }}
+                    >
+                      {selectedHelpContent.icon === 'Shield' ? (
+                        <Shield size={24} style={{ color: selectedHelpContent.icon_color }} />
+                      ) : selectedHelpContent.icon === 'FileText' ? (
+                        <FileText size={24} style={{ color: selectedHelpContent.icon_color }} />
+                      ) : selectedHelpContent.icon === 'MessageCircle' ? (
+                        <MessageCircle size={24} style={{ color: selectedHelpContent.icon_color }} />
+                      ) : (
+                        <BookOpen size={24} style={{ color: selectedHelpContent.icon_color }} />
+                      )}
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-800">{selectedHelpContent.title}</h3>
+                  </div>
+                  {selectedHelpContent.description && (
+                    <p className="text-gray-600 mb-4">{selectedHelpContent.description}</p>
+                  )}
+                  {selectedHelpContent.content && (
+                    <div className="prose prose-sm max-w-none bg-gray-50 rounded-lg p-4 whitespace-pre-wrap font-mono text-sm">
+                      {selectedHelpContent.content}
+                    </div>
+                  )}
+                  {selectedHelpContent.link && (
+                    <div className="mt-4">
+                      <a 
+                        href={selectedHelpContent.link} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-[#ff6b00] hover:underline flex items-center gap-1"
+                      >
+                        了解更多
+                        <ExternalLink size={14} />
+                      </a>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                // 显示卡片列表
+                <>
+                  {helpLoading ? (
+                    <div className="py-12 text-center text-gray-400">
+                      <div className="w-8 h-8 border-2 border-[#ff6b00]/30 border-t-[#ff6b00] rounded-full animate-spin mx-auto mb-4"></div>
+                      加载中...
+                    </div>
+                  ) : helpContents.length === 0 ? (
+                    <div className="py-12 text-center text-gray-400">
+                      <BookOpen size={48} className="mx-auto mb-4 text-gray-300" />
+                      <p>暂无帮助内容</p>
+                      <p className="text-sm mt-2">请联系管理员添加帮助内容</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {helpContents.map((content) => (
+                        <div 
+                          key={content.id}
+                          onClick={() => setSelectedHelpContent(content)}
+                          className="p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer"
+                        >
+                          <div className="flex items-center gap-3 mb-2">
+                            <div 
+                              className="w-8 h-8 rounded-lg flex items-center justify-center"
+                              style={{ backgroundColor: `${content.icon_color}20` }}
+                            >
+                              {content.icon === 'Shield' ? (
+                                <Shield size={18} style={{ color: content.icon_color }} />
+                              ) : content.icon === 'FileText' ? (
+                                <FileText size={18} style={{ color: content.icon_color }} />
+                              ) : content.icon === 'MessageCircle' ? (
+                                <MessageCircle size={18} style={{ color: content.icon_color }} />
+                              ) : (
+                                <BookOpen size={18} style={{ color: content.icon_color }} />
+                              )}
+                            </div>
+                            <h3 className="font-semibold text-gray-800">{content.title}</h3>
+                          </div>
+                          <p className="text-sm text-gray-500">{content.description || '点击查看详情'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* 常用快捷键 */}
+                  <div className="mt-6 pt-6 border-t border-gray-100">
+                    <h3 className="font-semibold text-gray-800 mb-3">快捷键</h3>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500">新建扫描</span>
+                        <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">Ctrl + N</kbd>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500">搜索</span>
+                        <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">Ctrl + K</kbd>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500">帮助</span>
+                        <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">?</kbd>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500">关闭弹窗</span>
+                        <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">Esc</kbd>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+            
+            {/* 模态框底部 */}
+            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
+              <span className="text-sm text-gray-400">管理员可在设置中编辑帮助内容</span>
+              <button 
+                onClick={() => { setShowHelpModal(false); setSelectedHelpContent(null); }}
+                className="px-4 py-2 bg-[#ff6b00] text-white rounded-lg text-sm font-medium hover:bg-[#e66000] transition-colors"
+              >
+                知道了
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== 修改密码模态框 ==================== */}
+      <ChangePasswordModal 
+        isOpen={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+        onSuccess={() => {
+          setShowChangePassword(false);
+          // 密码修改成功后执行登出
+          if (onLogout) {
+            onLogout();
+          }
+        }}
+      />
     </div>
   );
 };

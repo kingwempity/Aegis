@@ -1,287 +1,216 @@
 """
-aegis.app.services.email_service
---------------------------------
-邮箱验证码服务模块，负责发送验证码邮件。
+邮件发送服务
 
-Author: Aegis Architect
-Created: 2026-03-30
+功能：
+- 发送验证码邮件
+- 支持 SMTP 配置
+- 开发环境下支持控制台输出验证码
+
+Notes:
+    - 生产环境需要配置 SMTP 服务器
+    - 开发环境可设置 EMAIL_DEBUG=True 在控制台查看验证码
 """
 
+import os
+import logging
+from typing import Optional, Tuple
 import smtplib
-import random
-import string
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime, timedelta
-from typing import Optional, Tuple
-import logging
-from sqlalchemy.orm import Session
+from dataclasses import dataclass
 
-from app.models.user import EmailVerificationCode
-
-# 配置日志
 logger = logging.getLogger(__name__)
 
-# ==================== 邮箱SMTP配置 ====================
-# 邮箱SMTP服务配置（QQ邮箱）
-SMTP_SERVER = "smtp.qq.com"
-SMTP_PORT = 465  # SSL加密端口
-SMTP_USERNAME = "aegismail@foxmail.com"  # 发件邮箱
-SMTP_PASSWORD = "gxobwuqcpiiucjbh"  # 授权码
-SENDER_NAME = "Aegis安全扫描平台"  # 发件人名称
 
-# 验证码配置
-CODE_LENGTH = 6  # 验证码长度
-CODE_EXPIRE_MINUTES = 10  # 验证码有效期（分钟）
-CODE_RESEND_INTERVAL = 60  # 重发间隔（秒）
-
-
-def generate_verification_code(length: int = CODE_LENGTH) -> str:
+@dataclass
+class EmailConfig:
     """
-    生成指定位数的数字验证码。
+    邮件配置类
     
-    Args:
-        length: 验证码长度，默认6位
-        
-    Returns:
-        str: 生成的验证码字符串
-        
-    Notes:
-        - 时间复杂度：O(n)，n为验证码长度
-        - 使用随机数生成，确保安全性
+    Attributes:
+        smtp_host: SMTP 服务器地址
+        smtp_port: SMTP 服务器端口
+        smtp_user: SMTP 用户名
+        smtp_password: SMTP 密码
+        from_email: 发件人邮箱
+        from_name: 发件人名称
+        use_tls: 是否使用 TLS
+        debug: 是否为调试模式
     """
-    return ''.join(random.choices(string.digits, k=length))
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    from_email: str = "noreply@aegis.io"
+    from_name: str = "Aegis 安全扫描系统"
+    use_tls: bool = True
+    debug: bool = True
 
 
-def send_verification_email(to_email: str, code: str, purpose: str = "login") -> Tuple[bool, str]:
+def get_email_config() -> EmailConfig:
     """
-    发送验证码邮件。
+    从环境变量获取邮件配置
     
-    Args:
-        to_email: 收件人邮箱地址
-        code: 验证码
-        purpose: 邮件用途 (login, register, reset_password)
-        
     Returns:
-        Tuple[bool, str]: (是否成功, 错误消息)
-        
-    Raises:
-        无直接抛出异常，所有异常都被捕获并返回错误消息
-        
-    Notes:
-        - 使用SSL加密连接SMTP服务器
-        - 支持HTML格式邮件，提升用户体验
+        EmailConfig: 邮件配置对象
     """
-    try:
-        # 根据用途确定邮件标题和内容
-        purpose_map = {
-            "login": ("登录验证码", "您正在登录Aegis安全扫描平台"),
-            "register": ("注册验证码", "您正在注册Aegis安全扫描平台账号"),
-            "reset_password": ("重置密码验证码", "您正在重置Aegis安全扫描平台密码")
-        }
-        
-        title_prefix, content_prefix = purpose_map.get(purpose, ("验证码", "您的验证码"))
-        
-        # 构建邮件内容
-        subject = f"【Aegis】{title_prefix}"
-        
-        # HTML邮件正文
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-        </head>
-        <body style="font-family: 'Microsoft YaHei', Arial, sans-serif; background-color: #f5f5f5; padding: 20px;">
-            <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden;">
-                <!-- 头部 -->
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px 20px; text-align: center;">
-                    <h1 style="color: #ffffff; margin: 0; font-size: 24px;">🛡️ Aegis 安全扫描平台</h1>
-                </div>
-                
-                <!-- 内容区 -->
-                <div style="padding: 40px 30px;">
-                    <p style="color: #333; font-size: 16px; line-height: 1.6;">您好，</p>
-                    <p style="color: #666; font-size: 14px; line-height: 1.6;">{content_prefix}，请使用以下验证码完成操作：</p>
-                    
-                    <!-- 验证码展示 -->
-                    <div style="background-color: #f8f9fa; border: 2px dashed #667eea; border-radius: 8px; padding: 20px; margin: 30px 0; text-align: center;">
-                        <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #667eea;">{code}</span>
-                    </div>
-                    
-                    <p style="color: #999; font-size: 13px; line-height: 1.6;">
-                        ⏰ 验证码有效期为 <strong>{CODE_EXPIRE_MINUTES}分钟</strong>，请尽快使用。<br>
-                        🔒 如非本人操作，请忽略此邮件，您的账户安全不会受到影响。
-                    </p>
-                </div>
-                
-                <!-- 底部 -->
-                <div style="background-color: #f8f9fa; padding: 20px 30px; border-top: 1px solid #eee;">
-                    <p style="color: #999; font-size: 12px; margin: 0; text-align: center;">
-                        此邮件由系统自动发送，请勿直接回复。<br>
-                        © 2026 Aegis 安全扫描平台 - 您的网络安全守护者
-                    </p>
-                </div>
-            </div>
-        </body>
-        </html>
+    return EmailConfig(
+        smtp_host=os.getenv("SMTP_HOST", ""),
+        smtp_port=int(os.getenv("SMTP_PORT", "587")),
+        smtp_user=os.getenv("SMTP_USER", ""),
+        smtp_password=os.getenv("SMTP_PASSWORD", ""),
+        from_email=os.getenv("SMTP_FROM_EMAIL", "noreply@aegis.io"),
+        from_name=os.getenv("SMTP_FROM_NAME", "Aegis 安全扫描系统"),
+        use_tls=os.getenv("SMTP_USE_TLS", "true").lower() == "true",
+        debug=os.getenv("EMAIL_DEBUG", "true").lower() == "true",
+    )
+
+
+class EmailService:
+    """
+    邮件服务类
+    
+    提供发送验证码邮件的功能，支持开发模式和生产模式。
+    
+    Attributes:
+        config: 邮件配置
+    """
+    
+    def __init__(self, config: Optional[EmailConfig] = None):
         """
+        初始化邮件服务
         
-        # 纯文本备选内容
-        text_content = f"""
-【Aegis 安全扫描平台】
-
-{content_prefix}，您的验证码是：{code}
-
-验证码有效期为{CODE_EXPIRE_MINUTES}分钟，请尽快使用。
-如非本人操作，请忽略此邮件。
-
-此邮件由系统自动发送，请勿直接回复。
-© 2026 Aegis 安全扫描平台
+        Args:
+            config: 邮件配置，默认从环境变量读取
         """
-        
-        # 创建邮件对象
-        message = MIMEMultipart("alternative")
-        message["Subject"] = subject
-        message["From"] = f"{SENDER_NAME} <{SMTP_USERNAME}>"
-        message["To"] = to_email
-        
-        # 添加文本和HTML内容
-        message.attach(MIMEText(text_content, "plain", "utf-8"))
-        message.attach(MIMEText(html_content, "html", "utf-8"))
-        
-        # 发送邮件（使用SSL加密连接）
-        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.sendmail(SMTP_USERNAME, to_email, message.as_string())
-        
-        logger.info(f"验证码邮件发送成功: {to_email}, 用途: {purpose}")
-        return True, "验证码发送成功"
-        
-    except smtplib.SMTPAuthenticationError as e:
-        error_msg = f"SMTP认证失败，请检查邮箱配置: {e}"
-        logger.error(error_msg)
-        return False, "邮件服务配置错误"
-    except smtplib.SMTPException as e:
-        error_msg = f"SMTP发送失败: {e}"
-        logger.error(error_msg)
-        return False, "邮件发送失败，请稍后重试"
-    except Exception as e:
-        error_msg = f"发送邮件时发生未知错误: {e}"
-        logger.error(error_msg, exc_info=True)
-        return False, "发送验证码失败，请稍后重试"
-
-
-def create_verification_code(db: Session, email: str, purpose: str = "login") -> Tuple[bool, str, Optional[str]]:
-    """
-    创建并发送验证码。
+        self.config = config or get_email_config()
     
-    Args:
-        db: 数据库会话
-        email: 目标邮箱地址
-        purpose: 用途 (login, register, reset_password)
+    def send_verification_code(self, to_email: str, code: str) -> Tuple[bool, str]:
+        """
+        发送验证码邮件
         
-    Returns:
-        Tuple[bool, str, Optional[str]]: (是否成功, 消息, 验证码)
-        
-    Notes:
-        - 会检查是否在重发间隔时间内
-        - 自动使失效之前的未使用验证码
-    """
-    try:
-        now = datetime.now()
-        
-        # 检查是否在重发间隔时间内
-        recent_code = db.query(EmailVerificationCode).filter(
-            EmailVerificationCode.email == email,
-            EmailVerificationCode.purpose == purpose,
-            EmailVerificationCode.created_at > now - timedelta(seconds=CODE_RESEND_INTERVAL)
-        ).first()
-        
-        if recent_code:
-            remaining = CODE_RESEND_INTERVAL - int((now - recent_code.created_at).total_seconds())
-            return False, f"请等待{remaining}秒后再重新获取验证码", None
-        
-        # 使失效该邮箱之前未使用的验证码
-        db.query(EmailVerificationCode).filter(
-            EmailVerificationCode.email == email,
-            EmailVerificationCode.purpose == purpose,
-            EmailVerificationCode.is_used == False
-        ).update({"is_used": True})
-        
-        # 生成新验证码
-        code = generate_verification_code()
-        expires_at = now + timedelta(minutes=CODE_EXPIRE_MINUTES)
-        
-        # 保存到数据库
-        verification_code = EmailVerificationCode(
-            email=email,
-            code=code,
-            purpose=purpose,
-            expires_at=expires_at
-        )
-        db.add(verification_code)
-        db.commit()
-        
-        # 发送邮件
-        success, message = send_verification_email(email, code, purpose)
-        
-        if success:
-            return True, "验证码已发送到您的邮箱", code
-        else:
-            # 发送失败，回滚数据库
-            db.delete(verification_code)
-            db.commit()
-            return False, message, None
+        Args:
+            to_email: 收件人邮箱
+            code: 验证码
             
-    except Exception as e:
-        db.rollback()
-        logger.error(f"创建验证码失败: {e}", exc_info=True)
-        return False, "创建验证码失败，请稍后重试", None
-
-
-def verify_code(db: Session, email: str, code: str, purpose: str = "login") -> Tuple[bool, str]:
-    """
-    验证验证码是否正确。
+        Returns:
+            Tuple[bool, str]: (是否成功, 消息)
+        """
+        # 开发模式：直接输出到控制台
+        if self.config.debug or not self.config.smtp_host:
+            logger.info(f"\n{'='*50}")
+            logger.info(f"[验证码] 收件人: {to_email}")
+            logger.info(f"[验证码] 验证码: {code}")
+            logger.info(f"[验证码] 有效期: 5分钟")
+            logger.info(f"{'='*50}\n")
+            print(f"\n📧 验证码已发送到 {to_email}: {code} (有效期5分钟)\n")
+            return True, f"验证码已发送（开发模式：{code}）"
+        
+        # 生产模式：通过 SMTP 发送
+        try:
+            msg = self._create_verification_email(to_email, code)
+            self._send_email_via_smtp(to_email, msg)
+            logger.info(f"Verification code email sent to {to_email}")
+            return True, "验证码已发送到您的邮箱"
+        except smtplib.SMTPException as e:
+            logger.error(f"Failed to send email to {to_email}: {e}")
+            return False, f"邮件发送失败: {str(e)}"
+        except Exception as e:
+            logger.error(f"Unexpected error sending email to {to_email}: {e}")
+            return False, f"邮件发送失败，请稍后重试"
     
-    Args:
-        db: 数据库会话
-        email: 邮箱地址
-        code: 用户输入的验证码
-        purpose: 用途 (login, register, reset_password)
+    def _create_verification_email(self, to_email: str, code: str) -> MIMEMultipart:
+        """
+        创建验证码邮件内容
         
-    Returns:
-        Tuple[bool, str]: (是否验证成功, 消息)
+        Args:
+            to_email: 收件人邮箱
+            code: 验证码
+            
+        Returns:
+            MIMEMultipart: 邮件对象
+        """
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"【{self.config.from_name}】登录验证码"
+        msg["From"] = f"{self.config.from_name} <{self.config.from_email}>"
+        msg["To"] = to_email
         
-    Notes:
-        - 验证成功后会自动标记验证码为已使用
-        - 支持验证码过期检测
-    """
-    try:
-        now = datetime.now()
+        # 纯文本内容
+        text_content = f"""
+您好！
+
+您正在登录 {self.config.from_name}，您的验证码是：
+
+{code}
+
+验证码有效期为 5 分钟，请尽快使用。
+
+如果这不是您的操作，请忽略此邮件。
+
+---
+{self.config.from_name}
+"""
         
-        # 查找有效的验证码
-        verification_code = db.query(EmailVerificationCode).filter(
-            EmailVerificationCode.email == email,
-            EmailVerificationCode.code == code,
-            EmailVerificationCode.purpose == purpose,
-            EmailVerificationCode.is_used == False
-        ).first()
+        # HTML 内容
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 40px 20px; }}
+        .code-box {{ 
+            background: linear-gradient(135deg, #ff6b00 0%, #ff8c00 100%);
+            color: white; 
+            font-size: 32px; 
+            font-weight: bold; 
+            letter-spacing: 8px;
+            padding: 20px 40px; 
+            border-radius: 12px; 
+            text-align: center;
+            margin: 30px 0;
+        }}
+        .footer {{ color: #666; font-size: 14px; margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>您好！</h2>
+        <p>您正在登录 <strong>{self.config.from_name}</strong>，您的验证码是：</p>
+        <div class="code-box">{code}</div>
+        <p>验证码有效期为 <strong>5 分钟</strong>，请尽快使用。</p>
+        <p style="color: #888;">如果这不是您的操作，请忽略此邮件。</p>
+        <div class="footer">
+            <p>{self.config.from_name}</p>
+        </div>
+    </div>
+</body>
+</html>
+"""
         
-        if not verification_code:
-            return False, "验证码错误或已失效"
+        msg.attach(MIMEText(text_content, "plain", "utf-8"))
+        msg.attach(MIMEText(html_content, "html", "utf-8"))
         
-        # 检查是否过期
-        if verification_code.expires_at < now:
-            return False, "验证码已过期，请重新获取"
+        return msg
+    
+    def _send_email_via_smtp(self, to_email: str, msg: MIMEMultipart) -> None:
+        """
+        通过 SMTP 发送邮件
         
-        # 标记为已使用
-        verification_code.is_used = True
-        db.commit()
-        
-        return True, "验证成功"
-        
-    except Exception as e:
-        db.rollback()
-        logger.error(f"验证验证码失败: {e}", exc_info=True)
-        return False, "验证失败，请稍后重试"
+        Args:
+            to_email: 收件人邮箱
+            msg: 邮件对象
+        """
+        with smtplib.SMTP(self.config.smtp_host, self.config.smtp_port) as server:
+            if self.config.use_tls:
+                server.starttls()
+            server.login(self.config.smtp_user, self.config.smtp_password)
+            server.sendmail(self.config.from_email, to_email, msg.as_string())
+
+
+# 导入 Tuple 类型
+from typing import Tuple
+
+# 全局单例实例
+email_service = EmailService()

@@ -3,76 +3,19 @@
  * 负责 with FastAPI 后端进行通信
  */
 
-// 动态获取 API 基础地址
-// 如果在浏览器中运行，自动将 localhost 替换为当前访问的服务器 IP
-const normalizeApiUrl = (rawUrl: string, isHttpsPage: boolean, origin?: string) => {
-  const trimmedUrl = rawUrl.trim().replace(/^['"]|['"]$/g, '');
-
-  if (!trimmedUrl) {
-    return '';
-  }
-
-  // 支持协议省略写法：//host/api/v1
-  if (trimmedUrl.startsWith('//')) {
-    const protocol = isHttpsPage ? 'https:' : 'http:';
-    return `${protocol}${trimmedUrl}`.replace(/\/$/, '');
-  }
-
-  // 支持仅填写 host/path（如 47.114.88.90/api/v1）
-  if (!/^[a-z][a-z\d+.-]*:/i.test(trimmedUrl) && !trimmedUrl.startsWith('/')) {
-    const protocol = isHttpsPage ? 'https://' : 'http://';
-    return `${protocol}${trimmedUrl}`.replace(/\/$/, '');
-  }
-
-  try {
-    const normalizedUrl = new URL(trimmedUrl, origin);
-
-    if (isHttpsPage && normalizedUrl.protocol === 'http:') {
-      normalizedUrl.protocol = 'https:';
-    }
-
-    return normalizedUrl.toString().replace(/\/$/, '');
-  } catch {
-    return isHttpsPage ? trimmedUrl.replace(/^http:\/\//i, 'https://') : trimmedUrl;
-  }
+const getApiBaseUrl = (): string => {
+  // 始终使用相对路径，让浏览器根据当前页面的协议（HTTP 或 HTTPS）和域名自动匹配
+  // 这可以完美解决 Mixed Content 问题，并支持各种反向代理场景
+  return '/api/v1';
 };
 
-export const getApiBaseUrl = () => {
-  const apiUrlFromEnv = import.meta.env.VITE_API_URL;
-
-  // 如果是浏览器环境
-  if (typeof window !== 'undefined') {
-    const isHttpsPage = window.location.protocol === 'https:';
-    const { hostname, origin } = window.location;
-
-    if (apiUrlFromEnv) {
-      const normalizedFromEnv = normalizeApiUrl(apiUrlFromEnv, isHttpsPage, origin);
-
-      // HTTPS 页面强制优先同源 API，避免任何构建期 http:// 配置导致 Mixed Content
-      if (isHttpsPage && /^http:\/\//i.test(normalizedFromEnv)) {
-        return `${origin}/api/v1`;
-      }
-
-      return normalizedFromEnv;
-    }
-
-    // 本地开发默认直连 FastAPI 的 8000 端口
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'http://localhost:8000/api/v1';
-    }
-
-    // 生产环境优先走同源地址，避免 HTTPS 页面触发 Mixed Content
-    return `${origin}/api/v1`;
-  }
-
-  if (apiUrlFromEnv) {
-    return normalizeApiUrl(apiUrlFromEnv, false);
-  }
-
-  return 'http://localhost:8000/api/v1';
+const joinApiPath = (path: string): string => {
+  const base = getApiBaseUrl().replace(/\/$/, '');
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${normalizedPath}`;
 };
 
-export const API_BASE_URL = getApiBaseUrl();
+export const getApiResourceUrl = (path: string) => joinApiPath(path);
 
 export class ApiError extends Error {
   status: number;
@@ -127,7 +70,6 @@ export interface Target {
   description?: string;
   status: string;
   created_at: string;
-  // 兼容旧版 UI 字段
   is_active?: boolean;
   last_scanned?: string;
   critical_vulns?: number;
@@ -174,6 +116,69 @@ export interface ScanProfile {
   vulnerability_types?: string[];
 }
 
+export interface HelpContent {
+  id: number;
+  key: string;
+  title: string;
+  description: string | null;
+  content: string | null;
+  icon: string;
+  icon_color: string;
+  link: string | null;
+  order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HelpContentCreate {
+  key: string;
+  title: string;
+  description?: string;
+  content?: string;
+  icon?: string;
+  icon_color?: string;
+  link?: string;
+  order?: number;
+  is_active?: boolean;
+}
+
+export interface HelpContentUpdate {
+  title?: string;
+  description?: string;
+  content?: string;
+  icon?: string;
+  icon_color?: string;
+  link?: string;
+  order?: number;
+  is_active?: boolean;
+}
+
+// 通知相关类型
+export interface Notification {
+  id: string;
+  type: 'success' | 'warning' | 'info' | 'error';
+  category: 'user_management' | 'scan' | 'system' | 'security';
+  title: string;
+  message: string;
+  time: string;
+  read: boolean;
+  extra_data?: Record<string, any>;
+}
+
+export interface NotificationListResponse {
+  total: number;
+  unread_count: number;
+  notifications: Notification[];
+}
+
+export interface TopThreat {
+  id: number;
+  title: string;
+  severity: string;
+  target_url: string;
+}
+
 export interface DashboardStats {
   running_scans: number;
   pending_scans: number;
@@ -186,6 +191,7 @@ export interface DashboardStats {
     medium: number;
     low: number;
   };
+  top_threats: TopThreat[];
 }
 
 export interface DiscoveryScanStatus {
@@ -197,23 +203,20 @@ export interface DiscoveryScanStatus {
 }
 
 export const api = {
-  // 获取仪表盘统计数据
   async getStats(): Promise<DashboardStats> {
-    const response = await fetch(`${API_BASE_URL}/stats/dashboard`);
+    const response = await fetch(joinApiPath('/stats/dashboard'));
     if (!response.ok) throw new Error('Failed to fetch stats');
     return response.json();
   },
 
-  // 获取任务列表
   async getTasks(): Promise<ScanTask[]> {
-    const response = await fetch(`${API_BASE_URL}/tasks`);
+    const response = await fetch(joinApiPath('/tasks'));
     if (!response.ok) throw new Error('Failed to fetch tasks');
     return response.json();
   },
 
-  // 创建新扫描任务
   async createTask(url: string): Promise<ScanTask> {
-    const response = await fetch(`${API_BASE_URL}/tasks`, {
+    const response = await fetch(joinApiPath('/tasks'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ target_url: url }),
@@ -222,53 +225,46 @@ export const api = {
     return response.json();
   },
 
-  // 停止扫描任务
   async stopTask(taskId: number): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/stop`, {
+    const response = await fetch(joinApiPath(`/tasks/${taskId}/stop`), {
       method: 'POST',
     });
     if (!response.ok) throw new Error('Failed to stop task');
   },
 
-  // 删除扫描任务（同时会从报告列表中移除）
   async deleteTask(taskId: number): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, { method: 'DELETE' });
+    const response = await fetch(joinApiPath(`/tasks/${taskId}`), { method: 'DELETE' });
     if (!response.ok) return parseErrorResponse(response, '删除任务失败');
   },
 
-  // 删除报告（删除对应任务及漏洞记录）
   async deleteReport(taskId: number): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/reports/${taskId}`, { method: 'DELETE' });
+    const response = await fetch(joinApiPath(`/reports/${taskId}`), { method: 'DELETE' });
     if (!response.ok) return parseErrorResponse(response, '删除报告失败');
   },
 
-  // 删除目标
   async deleteTarget(targetId: number): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/discovery/targets/${targetId}`, { method: 'DELETE' });
+    const response = await fetch(joinApiPath(`/discovery/targets/${targetId}`), { method: 'DELETE' });
     if (!response.ok) return parseErrorResponse(response, '删除目标失败');
   },
 
-  // 获取漏洞列表
   async getVulnerabilities(severity?: string): Promise<Vulnerability[]> {
     const url =
       severity
-        ? `${API_BASE_URL}/vulnerabilities?severity=${severity}`
-        : `${API_BASE_URL}/vulnerabilities`;
+        ? joinApiPath(`/vulnerabilities?severity=${encodeURIComponent(severity)}`)
+        : joinApiPath('/vulnerabilities');
     const response = await fetch(url);
     if (!response.ok) throw new Error('Failed to fetch vulnerabilities');
     return response.json();
   },
 
-  // 获取目标列表 (Discovery 模块)
   async getTargets(): Promise<Target[]> {
-    const response = await fetch(`${API_BASE_URL}/discovery/targets`);
+    const response = await fetch(joinApiPath('/discovery/targets'));
     if (!response.ok) throw new Error('Failed to fetch targets');
     return response.json();
   },
 
-  // 添加新目标 (Discovery 模块)
   async addTarget(url: string, description?: string): Promise<Target> {
-    const response = await fetch(`${API_BASE_URL}/discovery/targets`, {
+    const response = await fetch(joinApiPath('/discovery/targets'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url, description }),
@@ -277,27 +273,24 @@ export const api = {
     return response.json();
   },
 
-  // 获取建议的扫描网段（云/Docker 部署时可从环境变量配置 VPC 网段）
   async getDiscoverySuggestedRange(): Promise<{ network_range: string }> {
-    const response = await fetch(`${API_BASE_URL}/discovery/suggested-range`);
+    const response = await fetch(joinApiPath('/discovery/suggested-range'));
     if (!response.ok) return { network_range: '192.168.1.0/24' };
     return response.json();
   },
 
-  // 获取资产发现列表 (Discovery 模块)
   async getAssets(): Promise<Asset[]> {
-    const response = await fetch(`${API_BASE_URL}/discovery/assets`);
+    const response = await fetch(joinApiPath('/discovery/assets'));
     if (!response.ok) throw new Error('Failed to fetch assets');
     return response.json();
   },
 
-  // 触发网络发现扫描 (Discovery 模块)
   async startDiscoveryScan(networkRange: string = "192.168.1.0/24", force: boolean = false): Promise<{ status: string; message: string; task_id: string }> {
     const query = new URLSearchParams({
       network_range: networkRange,
       force: String(force),
     });
-    const response = await fetch(`${API_BASE_URL}/discovery/scan/start?${query.toString()}`, {
+    const response = await fetch(joinApiPath(`/discovery/scan/start?${query.toString()}`), {
       method: 'POST',
     });
     if (!response.ok) {
@@ -306,18 +299,16 @@ export const api = {
     return response.json();
   },
 
-  // 获取网络扫描状态 (Discovery 模块)
   async getDiscoveryScanStatus(): Promise<DiscoveryScanStatus> {
-    const response = await fetch(`${API_BASE_URL}/discovery/scan/status`);
+    const response = await fetch(joinApiPath('/discovery/scan/status'));
     if (!response.ok) {
       return parseErrorResponse(response, '获取扫描状态失败');
     }
     return response.json();
   },
 
-  // 停止网络扫描 (Discovery 模块)
   async stopDiscoveryScan(): Promise<{ status: string; message: string }> {
-    const response = await fetch(`${API_BASE_URL}/discovery/scan/stop`, {
+    const response = await fetch(joinApiPath('/discovery/scan/stop'), {
       method: 'POST',
     });
     if (!response.ok) {
@@ -326,9 +317,8 @@ export const api = {
     return response.json();
   },
 
-  // 清除网络发现结果 (Discovery 模块)
   async clearDiscoveryResults(): Promise<{ deleted: number; message: string }> {
-    const response = await fetch(`${API_BASE_URL}/discovery/results`, {
+    const response = await fetch(joinApiPath('/discovery/results'), {
       method: 'DELETE',
     });
     if (!response.ok) {
@@ -337,23 +327,20 @@ export const api = {
     return response.json();
   },
 
-  // 获取报告列表
   async getReports(): Promise<Report[]> {
-    const response = await fetch(`${API_BASE_URL}/reports`);
+    const response = await fetch(joinApiPath('/reports'));
     if (!response.ok) throw new Error('Failed to fetch reports');
     return response.json();
   },
 
-  // 获取用户列表
   async getUsers(): Promise<User[]> {
-    const response = await fetch(`${API_BASE_URL}/users`);
+    const response = await fetch(joinApiPath('/users'));
     if (!response.ok) throw new Error('Failed to fetch users');
     return response.json();
   },
 
-  // 添加新用户
   async addUser(username: string, email: string, role: string, status: string = 'Active'): Promise<User> {
-    const response = await fetch(`${API_BASE_URL}/users`, {
+    const response = await fetch(joinApiPath('/users'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, email, role, status }),
@@ -365,16 +352,14 @@ export const api = {
     return response.json();
   },
 
-  // 获取扫描配置列表
   async getProfiles(): Promise<ScanProfile[]> {
-    const response = await fetch(`${API_BASE_URL}/profiles`);
+    const response = await fetch(joinApiPath('/profiles'));
     if (!response.ok) throw new Error('Failed to fetch profiles');
     return response.json();
   },
 
-  // 添加新扫描配置
   async addProfile(name: string, description: string, speed: string, vulnerability_types: string[]): Promise<ScanProfile> {
-    const response = await fetch(`${API_BASE_URL}/profiles`, {
+    const response = await fetch(joinApiPath('/profiles'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, description, speed, vulnerability_types }),
@@ -382,4 +367,213 @@ export const api = {
     if (!response.ok) throw new Error('Failed to add profile');
     return response.json();
   },
+
+  async updateProfile(id: number, name: string, description: string, speed: string, vulnerability_types: string[]): Promise<ScanProfile> {
+    const response = await fetch(joinApiPath(`/profiles/${id}`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description, speed, vulnerability_types }),
+    });
+    if (!response.ok) throw new Error('Failed to update profile');
+    return response.json();
+  },
+
+  async deleteProfile(id: number): Promise<void> {
+    const response = await fetch(joinApiPath(`/profiles/${id}`), { method: 'DELETE' });
+    if (!response.ok) throw new Error('Failed to delete profile');
+  },
+
+  // ==================== 帮助内容管理 API ====================
+
+  async getHelpContents(activeOnly: boolean = false): Promise<HelpContent[]> {
+    const response = await fetch(joinApiPath(`/help?active_only=${activeOnly}`));
+    if (!response.ok) throw new Error('Failed to fetch help contents');
+    return response.json();
+  },
+
+  async getHelpContent(id: number): Promise<HelpContent> {
+    const response = await fetch(joinApiPath(`/help/${id}`));
+    if (!response.ok) throw new Error('Failed to fetch help content');
+    return response.json();
+  },
+
+  async getHelpContentByKey(key: string): Promise<HelpContent> {
+    const response = await fetch(joinApiPath(`/help/key/${key}`));
+    if (!response.ok) throw new Error('Failed to fetch help content');
+    return response.json();
+  },
+
+  async createHelpContent(data: HelpContentCreate): Promise<HelpContent> {
+    const response = await fetch(joinApiPath('/help'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to create help content');
+    }
+    return response.json();
+  },
+
+  async updateHelpContent(id: number, data: HelpContentUpdate): Promise<HelpContent> {
+    const response = await fetch(joinApiPath(`/help/${id}`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) throw new Error('Failed to update help content');
+    return response.json();
+  },
+
+  async deleteHelpContent(id: number): Promise<void> {
+    const response = await fetch(joinApiPath(`/help/${id}`), { method: 'DELETE' });
+    if (!response.ok) throw new Error('Failed to delete help content');
+  },
+
+  async initDefaultHelpContents(): Promise<{ status: string; message: string }> {
+    const response = await fetch(joinApiPath('/help/init-default'), { method: 'POST' });
+    if (!response.ok) throw new Error('Failed to init default help contents');
+    return response.json();
+  },
+
+  // ==================== 通知管理 API ====================
+
+  async getNotifications(category?: string, unreadOnly: boolean = false, limit: number = 50): Promise<NotificationListResponse> {
+    const params = new URLSearchParams();
+    if (category) params.append('category', category);
+    params.append('unread_only', String(unreadOnly));
+    params.append('limit', String(limit));
+    
+    const response = await fetch(joinApiPath(`/notifications?${params.toString()}`));
+    if (!response.ok) throw new Error('Failed to fetch notifications');
+    return response.json();
+  },
+
+  async getUnreadNotificationCount(): Promise<{ unread_count: number }> {
+    const response = await fetch(joinApiPath('/notifications/unread-count'));
+    if (!response.ok) throw new Error('Failed to fetch unread count');
+    return response.json();
+  },
+
+  async markNotificationAsRead(notificationId: string): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(joinApiPath(`/notifications/${notificationId}/mark-read`), {
+      method: 'POST',
+    });
+    if (!response.ok) throw new Error('Failed to mark notification as read');
+    return response.json();
+  },
+
+  async markAllNotificationsAsRead(notificationIds?: string[]): Promise<{ success: boolean; marked_count: number }> {
+    const response = await fetch(joinApiPath('/notifications/mark-read'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notification_ids: notificationIds || null }),
+    });
+    if (!response.ok) throw new Error('Failed to mark all notifications as read');
+    return response.json();
+  },
+
+  async deleteNotification(notificationId: string): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(joinApiPath(`/notifications/${notificationId}`), {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error('Failed to delete notification');
+    return response.json();
+  },
+
+  async clearAllNotifications(): Promise<{ success: boolean; message: string; cleared_count: number }> {
+    const response = await fetch(joinApiPath('/notifications/clear-all'), {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error('Failed to clear all notifications');
+    return response.json();
+  },
+
+  // ==================== 漏洞实验室 API ====================
+
+  async getLabScenarios(params?: {
+    vuln_type?: string;
+    difficulty?: string;
+    search?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<{ items: LabScenario[]; total: number }> {
+    const searchParams = new URLSearchParams();
+    if (params?.vuln_type) searchParams.append('vuln_type', params.vuln_type);
+    if (params?.difficulty) searchParams.append('difficulty', params.difficulty);
+    if (params?.search) searchParams.append('search', params.search);
+    if (params?.page) searchParams.append('page', String(params.page));
+    if (params?.page_size) searchParams.append('page_size', String(params.page_size));
+    
+    const response = await fetch(joinApiPath(`/lab/scenarios?${searchParams.toString()}`));
+    if (!response.ok) throw new Error('Failed to fetch lab scenarios');
+    return response.json();
+  },
+
+  async getLabScenario(id: number): Promise<LabScenario> {
+    const response = await fetch(joinApiPath(`/lab/scenarios/${id}`));
+    if (!response.ok) throw new Error('Failed to fetch lab scenario');
+    return response.json();
+  },
+
+  async getLabVulnTypes(): Promise<VulnTypeInfo[]> {
+    const response = await fetch(joinApiPath('/lab/vuln-types'));
+    if (!response.ok) throw new Error('Failed to fetch vuln types');
+    return response.json();
+  },
+
+  async getLabDifficultyLevels(): Promise<Record<string, string>> {
+    const response = await fetch(joinApiPath('/lab/difficulty-levels'));
+    if (!response.ok) throw new Error('Failed to fetch difficulty levels');
+    return response.json();
+  },
 };
+
+// 漏洞实验室相关类型
+export interface LabScenario {
+  id: number;
+  name: string;
+  vuln_type: string;
+  difficulty: string;
+  description?: string;
+  attack_steps: AttackStep[];
+  remediation: Remediation[];
+  learning: Learning;
+  tags: string[];
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AttackStep {
+  step: number;
+  title: string;
+  description?: string;
+  request?: Record<string, unknown>;
+  response?: Record<string, unknown>;
+  payload?: string;
+  payload_explanation?: string;
+  result?: string;
+}
+
+export interface Remediation {
+  title: string;
+  description?: string;
+  code?: string;
+  language?: string;
+}
+
+export interface Learning {
+  principle?: string;
+  cwe?: string;
+  owasp?: string;
+  impact?: string;
+  references?: string[];
+}
+
+export interface VulnTypeInfo {
+  code: string;
+  name: string;
+  count: number;
+}

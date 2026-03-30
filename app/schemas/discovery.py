@@ -33,11 +33,29 @@ class TargetCreate(BaseModel):
     description: Optional[str] = None
 
 class TargetResponse(BaseModel):
+    """
+    目标响应模型，包含漏洞统计信息。
+    
+    Attributes:
+        id: 目标ID
+        url: 目标URL
+        description: 描述信息
+        status: 目标状态
+        created_at: 创建时间
+        last_scanned: 最后扫描时间
+        critical_vulns: 高危漏洞数量
+        high_vulns: 中危漏洞数量
+        low_vulns: 低危漏洞数量
+    """
     id: int
     url: str
     description: Optional[str] = None
     status: str
     created_at: datetime
+    last_scanned: Optional[datetime] = None
+    critical_vulns: Optional[int] = 0
+    high_vulns: Optional[int] = 0
+    low_vulns: Optional[int] = 0
 
     class Config:
         from_attributes = True

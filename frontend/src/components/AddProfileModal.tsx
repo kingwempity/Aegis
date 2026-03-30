@@ -1,17 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
 import { X, Shield, Zap, Info } from './Icons';
 import { api } from '../api';
+import type { ScanProfile } from '../api';
 
 interface AddProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  editingProfile?: ScanProfile | null;
 }
 
 const VULN_TYPES = ['SQLi', 'XSS', 'CSRF', 'LFI', 'RCE', 'SSRF', 'Headers', 'SSL/TLS'];
 
-const AddProfileModal: React.FC<AddProfileModalProps> = ({ isOpen, onClose, onSuccess }) => {
+const AddProfileModal: React.FC<AddProfileModalProps> = ({ isOpen, onClose, onSuccess, editingProfile }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [speed, setSpeed] = useState('standard');
@@ -19,7 +21,26 @@ const AddProfileModal: React.FC<AddProfileModalProps> = ({ isOpen, onClose, onSu
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // 当编辑的 profile 变化时，更新表单数据
+  useEffect(() => {
+    if (editingProfile) {
+      setName(editingProfile.name || '');
+      setDescription(editingProfile.description || '');
+      setSpeed(editingProfile.speed || 'standard');
+      setSelectedVulns(editingProfile.vulnerability_types || ['SQLi', 'XSS']);
+    } else {
+      // 重置为默认值
+      setName('');
+      setDescription('');
+      setSpeed('standard');
+      setSelectedVulns(['SQLi', 'XSS']);
+    }
+    setError('');
+  }, [editingProfile, isOpen]);
+
   if (!isOpen) return null;
+
+  const isEditMode = !!editingProfile;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,16 +52,17 @@ const AddProfileModal: React.FC<AddProfileModalProps> = ({ isOpen, onClose, onSu
     setLoading(true);
     setError('');
     try {
-      await api.addProfile(name, description, speed, selectedVulns);
+      if (isEditMode && editingProfile) {
+        // 编辑模式：调用更新 API
+        await api.updateProfile(editingProfile.id, name, description, speed, selectedVulns);
+      } else {
+        // 新建模式：调用创建 API
+        await api.addProfile(name, description, speed, selectedVulns);
+      }
       onSuccess();
       onClose();
-      // 重置表单
-      setName('');
-      setDescription('');
-      setSpeed('standard');
-      setSelectedVulns(['SQLi', 'XSS']);
-    } catch (err) {
-      setError('创建配置失败，请稍后再试');
+    } catch (err: any) {
+      setError(err?.message || (isEditMode ? '更新配置失败，请稍后再试' : '创建配置失败，请稍后再试'));
     } finally {
       setLoading(false);
     }
@@ -60,7 +82,9 @@ const AddProfileModal: React.FC<AddProfileModalProps> = ({ isOpen, onClose, onSu
             <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center text-[#ff6b00]">
               <Shield size={24} />
             </div>
-            <h3 className="text-xl font-bold text-[#2d3343]">新建扫描配置</h3>
+            <h3 className="text-xl font-bold text-[#2d3343]">
+              {isEditMode ? '编辑扫描配置' : '新建扫描配置'}
+            </h3>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
             <X size={24} />
@@ -159,7 +183,7 @@ const AddProfileModal: React.FC<AddProfileModalProps> = ({ isOpen, onClose, onSu
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
-                '创建扫描配置'
+                isEditMode ? '保存修改' : '创建扫描配置'
               )}
             </button>
           </div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { api, DashboardStats } from '../api';
+import { api } from '../api';
+import type { DashboardStats } from '../api';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
 import { ShieldCheck, Info } from './Icons';
 
@@ -160,26 +161,28 @@ const Dashboard: React.FC = () => {
         <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 flex flex-col gap-6">
           <h3 className="text-[#2d3343] text-lg font-bold">主要威胁</h3>
           <div className="flex flex-col gap-4">
-            {/* 威胁项 1 */}
-            <div className="flex items-start gap-4">
-              <div className="mt-1 w-8 h-8 bg-orange-100 text-orange-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                <Info size={20} />
+            {stats?.top_threats && stats.top_threats.length > 0 ? (
+              stats.top_threats.map((threat) => (
+                <div key={threat.id} className="flex items-start gap-4">
+                  <div className={`mt-1 w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    threat.severity === 'critical' ? 'bg-red-100 text-red-600' :
+                    threat.severity === 'high' ? 'bg-orange-100 text-orange-600' :
+                    threat.severity === 'medium' ? 'bg-yellow-100 text-yellow-600' :
+                    'bg-blue-100 text-blue-600'
+                  }`}>
+                    <Info size={20} />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-gray-800 font-bold text-sm">{threat.title}</span>
+                    <span className="text-gray-400 text-xs">{threat.target_url || '全部'}</span>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="flex items-center justify-center py-8 text-gray-400">
+                <span>暂无威胁数据</span>
               </div>
-              <div className="flex flex-col">
-                <span className="text-gray-800 font-bold text-sm">组件 PHP allow_url_fopen</span>
-                <span className="text-gray-400 text-xs">全部</span>
-              </div>
-            </div>
-            {/* 威胁项 2 */}
-            <div className="flex items-start gap-4">
-              <div className="mt-1 w-8 h-8 bg-orange-100 text-orange-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                <Info size={20} />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-gray-800 font-bold text-sm">组件 PHP allow_url_include</span>
-                <span className="text-gray-400 text-xs">全部</span>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

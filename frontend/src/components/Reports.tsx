@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { api, getApiResourceUrl, type Report, type ReportPreview } from '../api';
 import { Trash2, Download, ChevronDown, X } from './Icons';
+import ValidationWorkflow from './ValidationWorkflow';
 
 // 导出格式类型
 type ExportFormat = 'html' | 'pdf' | 'markdown' | 'excel' | 'json';
@@ -100,6 +101,8 @@ const Reports: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto">
+      <ValidationWorkflow currentStep="reports" compact />
+
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-[#2d3343]">攻击验证报告</h2>

@@ -212,13 +212,13 @@ const Discovery: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-8 max-w-7xl mx-auto p-4 md:p-8">
-      <div className="rounded-3xl bg-gradient-to-r from-[#1d3557] via-[#224b6b] to-[#2a6f97] px-8 py-7 text-white shadow-xl">
+      <div className="rounded-3xl border border-[#d9e6ee] bg-gradient-to-r from-[#eef5f7] via-[#f5f8fa] to-[#edf4f7] px-8 py-7 text-[#334155] shadow-[0_16px_40px_rgba(148,163,184,0.16)]">
         <div className="max-w-3xl">
-          <div className="inline-flex rounded-full bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide text-cyan-100">
+          <div className="inline-flex rounded-full border border-[#d7e6ec] bg-[#e7f0f4] px-3 py-1 text-xs font-semibold tracking-wide text-[#567487]">
             Attack Surface Discovery
           </div>
-          <h2 className="mt-4 text-3xl font-black tracking-tight">资产发现与攻击面摸排</h2>
-          <p className="mt-3 text-sm leading-6 text-slate-100/90">
+          <h2 className="mt-4 text-3xl font-black tracking-tight text-[#243b53]">资产发现与攻击面摸排</h2>
+          <p className="mt-3 text-sm leading-6 text-[#5b7083]">
             这里负责发现主机、开放端口与服务，用于构建攻击面视图；真正的 Web 模拟攻击验证请在 Web Targets 和 Attack Validation 中发起。
           </p>
         </div>

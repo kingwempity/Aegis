@@ -9,10 +9,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api.v1.endpoints import (
     tasks, reports, stats, vulnerabilities, ws, 
     discovery as discovery_router, 
-    users, profiles
+    users, profiles, auth
 )
 from app.db.database import engine, Base
 from app.models import discovery as discovery_model
+from app.models import user as user_model  # 导入用户模型以创建数据库表
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("uvicorn")
@@ -86,6 +87,7 @@ app.include_router(vulnerabilities.router, prefix="/api/v1/vulnerabilities", tag
 app.include_router(discovery_router.router, prefix="/api/v1/discovery", tags=["Discovery"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
 app.include_router(profiles.router, prefix="/api/v1/profiles", tags=["Profiles"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(ws.router, tags=["WebSocket"])
 
 @app.get("/")

@@ -3,6 +3,7 @@ import { api, Target } from '../api';
 import AddTargetModal from './AddTargetModal';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
 import { Plus, Trash2 } from './Icons';
+import ValidationWorkflow from './ValidationWorkflow';
 
 const TargetList: React.FC = () => {
   const [targets, setTargets] = useState<Target[]>([]);
@@ -36,6 +37,8 @@ const TargetList: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto">
+      <ValidationWorkflow currentStep="targets" compact />
+
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-[#2d3343]">Web 验证目标</h2>

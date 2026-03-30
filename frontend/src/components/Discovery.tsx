@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { api, ApiError, Asset, DiscoveryScanStatus } from '../api';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
 import { Play, StopCircle, Wifi, Info, Trash2 } from './Icons';
+import ValidationWorkflow from './ValidationWorkflow';
 
 
 const isValidIPv4 = (value: string): boolean => {
@@ -212,6 +213,8 @@ const Discovery: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-8 max-w-7xl mx-auto p-4 md:p-8">
+      <ValidationWorkflow currentStep="surface" compact />
+
       <div className="rounded-3xl border border-[#d9e6ee] bg-gradient-to-r from-[#eef5f7] via-[#f5f8fa] to-[#edf4f7] px-8 py-7 text-[#334155] shadow-[0_16px_40px_rgba(148,163,184,0.16)]">
         <div className="max-w-3xl">
           <div className="inline-flex rounded-full border border-[#d7e6ec] bg-[#e7f0f4] px-3 py-1 text-xs font-semibold tracking-wide text-[#567487]">

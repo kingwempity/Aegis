@@ -3,7 +3,6 @@ import { api } from '../api';
 import type { DashboardStats } from '../api';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
 import { ShieldCheck, Info } from './Icons';
-import ValidationWorkflow from './ValidationWorkflow';
 
 /**
  * Figma 风格的大型环形图表
@@ -106,31 +105,29 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-8 max-w-7xl mx-auto">
-      <ValidationWorkflow />
-
-      <div className="rounded-3xl bg-gradient-to-r from-[#2d3343] via-[#23364a] to-[#1f4a57] px-10 py-8 text-white shadow-xl">
+      <div className="rounded-3xl border border-[#e7ebf0] bg-gradient-to-r from-[#f8fbfd] via-[#fdfefe] to-[#f4f8fb] px-10 py-8 shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
-            <div className="inline-flex rounded-full bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide text-orange-100">
+            <div className="inline-flex rounded-full border border-[#e5ecf3] bg-[#eef4f8] px-3 py-1 text-xs font-semibold tracking-wide text-[#6b85a0]">
               BAS-Inspired Web Validation
             </div>
-            <h1 className="mt-4 text-3xl font-bold leading-tight">基于模拟攻击的 Web 应用验证总览</h1>
-            <p className="mt-3 text-sm leading-6 text-slate-200">
+            <h1 className="mt-4 text-3xl font-bold leading-tight text-[#1f4260]">基于模拟攻击的 Web 应用验证总览</h1>
+            <p className="mt-3 text-sm leading-6 text-[#698299]">
               通过无害化攻击载荷、攻击路径验证和证据链留存，对目标系统进行验证式扫描，帮助你快速判断漏洞是否真正可利用。
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl bg-white/10 px-4 py-4 backdrop-blur-sm">
-              <div className="text-xs text-slate-200">验证中任务</div>
-              <div className="mt-2 text-2xl font-bold">{stats?.running_scans || 0}</div>
+            <div className="rounded-2xl border border-[#edf2f7] bg-white px-4 py-4">
+              <div className="text-xs text-[#8ba0b3]">验证中任务</div>
+              <div className="mt-2 text-2xl font-bold text-[#1f4260]">{stats?.running_scans || 0}</div>
             </div>
-            <div className="rounded-2xl bg-white/10 px-4 py-4 backdrop-blur-sm">
-              <div className="text-xs text-slate-200">已验证发现</div>
-              <div className="mt-2 text-2xl font-bold">{validatedFindings}</div>
+            <div className="rounded-2xl border border-[#edf2f7] bg-white px-4 py-4">
+              <div className="text-xs text-[#8ba0b3]">已验证发现</div>
+              <div className="mt-2 text-2xl font-bold text-[#1f4260]">{validatedFindings}</div>
             </div>
-            <div className="rounded-2xl bg-white/10 px-4 py-4 backdrop-blur-sm col-span-2 sm:col-span-1">
-              <div className="text-xs text-slate-200">验证覆盖感知</div>
-              <div className="mt-2 text-2xl font-bold">{attackCoverage}%</div>
+            <div className="rounded-2xl border border-[#edf2f7] bg-white px-4 py-4 col-span-2 sm:col-span-1">
+              <div className="text-xs text-[#8ba0b3]">验证覆盖感知</div>
+              <div className="mt-2 text-2xl font-bold text-[#1f4260]">{attackCoverage}%</div>
             </div>
           </div>
         </div>

@@ -52,8 +52,6 @@ const ValidationWorkflow: React.FC<ValidationWorkflowProps> = ({ currentStep, co
         {workflowSteps.map((step, index) => {
           const isActive = currentStep === step.key;
           const isPast = currentIndex > index;
-          const isFuture = currentIndex >= 0 && index > currentIndex;
-
           const cardClassName = isActive
             ? 'border-[#fed7aa] bg-[#fff7ed] shadow-[0_8px_18px_rgba(249,115,22,0.12)]'
             : isPast
@@ -66,7 +64,7 @@ const ValidationWorkflow: React.FC<ValidationWorkflowProps> = ({ currentStep, co
               ? 'bg-[#10b981] text-white'
               : 'bg-white text-[#94a3b8] border border-[#eef2f7]';
 
-          const statusLabel = isActive ? '当前环节' : isPast ? '已完成' : '后续环节';
+          const statusLabel = currentIndex < 0 ? '流程环节' : isActive ? '当前环节' : isPast ? '已完成' : '后续环节';
           const statusClassName = isActive
             ? 'text-[#f97316]'
             : isPast

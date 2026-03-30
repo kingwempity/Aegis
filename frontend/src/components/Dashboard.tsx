@@ -106,7 +106,7 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-8 max-w-7xl mx-auto">
-      <ValidationWorkflow currentStep="surface" />
+      <ValidationWorkflow />
 
       <div className="rounded-3xl bg-gradient-to-r from-[#2d3343] via-[#23364a] to-[#1f4a57] px-10 py-8 text-white shadow-xl">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">

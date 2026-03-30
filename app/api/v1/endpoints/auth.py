@@ -431,7 +431,15 @@ async def send_verification_code(request: SendCodeRequest, http_request: Request
         
         # 发送验证码
         code_service = get_verification_code_service()
-        success, message = code_service.send_code(email)
+        if not code_service:
+            logger.error("Verification code service not available")
+            raise HTTPException(status_code=503, detail="验证码服务不可用，请联系管理员")
+        
+        try:
+            success, message = code_service.send_code(email)
+        except Exception as e:
+            logger.error(f"Exception in send_code: {e}", exc_info=True)
+            raise HTTPException(status_code=503, detail=f"邮件发送失败: {str(e)}")
         
         if success:
             logger.info(f"Verification code sent to {email} from IP: {client_ip}")

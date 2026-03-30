@@ -112,13 +112,19 @@ class EmailService:
             return True, "验证码已发送到您的邮箱"
         except smtplib.SMTPAuthenticationError as e:
             logger.error(f"SMTP认证失败: {e}")
-            return False, "邮件服务认证失败，请联系管理员"
+            return False, "邮件服务认证失败，请检查邮箱授权码配置"
+        except smtplib.SMTPConnectError as e:
+            logger.error(f"SMTP连接失败: {e}")
+            return False, "无法连接到邮件服务器，请检查网络或防火墙设置"
+        except smtplib.SMTPTimeoutError as e:
+            logger.error(f"SMTP连接超时: {e}")
+            return False, "邮件服务器连接超时，请稍后重试"
         except smtplib.SMTPException as e:
             logger.error(f"SMTP发送失败 to {to_email}: {e}")
             return False, f"邮件发送失败: {str(e)}"
         except Exception as e:
             logger.error(f"发送邮件时发生错误 to {to_email}: {e}", exc_info=True)
-            return False, "邮件发送失败，请稍后重试"
+            return False, f"邮件发送失败: {str(e)}"
     
     def _create_verification_email(self, to_email: str, code: str) -> MIMEMultipart:
         """

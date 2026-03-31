@@ -81,9 +81,10 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
     }
   };
 
-  const filteredTasks = tasks.filter(task => 
+  const normalizedQuery = searchQuery.trim().replace(/^#/, '');
+  const filteredTasks = tasks.filter(task =>
     task.target_url.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    task.display_id.toString().includes(searchQuery)
+    task.display_id.toString().includes(normalizedQuery)
   );
 
   return (
@@ -103,7 +104,7 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
             </div>
             <input
               type="text"
-              placeholder="搜索目标 URL 或 任务 ID..."
+              placeholder="搜索目标 URL 或 显示ID（如 #12）..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-xl text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#ff6b00]/20 focus:border-[#ff6b00] transition-all"

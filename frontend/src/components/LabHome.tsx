@@ -442,7 +442,7 @@ const LabHome: React.FC = () => {
     <div className="p-6">
       {/* 标题 */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+        <h1 className="text-2xl font-bold text-black flex items-center gap-3">
           <span className="text-3xl">🧪</span>
           漏洞实验室
         </h1>

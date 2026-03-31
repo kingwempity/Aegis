@@ -397,6 +397,7 @@ const HelpContentManage: React.FC = () => {
   const [editingContent, setEditingContent] = useState<HelpContent | null>(null);
   const [viewingContent, setViewingContent] = useState<HelpContent | null>(null);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [menuDirection, setMenuDirection] = useState<'up' | 'down'>('down');
   const menuRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
 
   // 点击外部关闭下拉菜单
@@ -464,6 +465,41 @@ const HelpContentManage: React.FC = () => {
     setOpenMenuId(null);
   };
 
+  const updateMenuDirection = (contentId: number) => {
+    const triggerEl = menuRefs.current[contentId];
+    if (!triggerEl) {
+      setMenuDirection('down');
+      return;
+    }
+
+    const rect = triggerEl.getBoundingClientRect();
+    const estimatedMenuHeight = 132;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    setMenuDirection(spaceBelow < estimatedMenuHeight ? 'up' : 'down');
+  };
+
+  const toggleMenu = (contentId: number) => {
+    if (openMenuId === contentId) {
+      setOpenMenuId(null);
+      return;
+    }
+    updateMenuDirection(contentId);
+    setOpenMenuId(contentId);
+  };
+
+  useEffect(() => {
+    if (openMenuId === null) return;
+
+    const handleViewportChange = () => updateMenuDirection(openMenuId);
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('scroll', handleViewportChange, true);
+
+    return () => {
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('scroll', handleViewportChange, true);
+    };
+  }, [openMenuId]);
+
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto">
       <div className="flex justify-between items-center">
@@ -490,7 +526,7 @@ const HelpContentManage: React.FC = () => {
       </div>
 
       {/* 内容列表 */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-100">
@@ -563,7 +599,7 @@ const HelpContentManage: React.FC = () => {
                         ref={el => { menuRefs.current[content.id] = el; }}
                       >
                         <button 
-                          onClick={() => setOpenMenuId(openMenuId === content.id ? null : content.id)}
+                          onClick={() => toggleMenu(content.id)}
                           className="text-gray-400 hover:text-[#ff6b00] transition-colors p-1 rounded hover:bg-gray-100"
                           type="button"
                         >
@@ -572,7 +608,9 @@ const HelpContentManage: React.FC = () => {
                         
                         {/* 下拉菜单 */}
                         {isOpen && (
-                          <div className="absolute right-0 top-full mt-1 w-36 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-50">
+                          <div className={`absolute right-0 w-36 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-50 ${
+                            menuDirection === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'
+                          }`}>
                             <button
                               type="button"
                               onClick={() => handleView(content)}

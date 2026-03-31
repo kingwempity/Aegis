@@ -42,7 +42,7 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
   };
 
   const handleDeleteTask = async (task: ScanTask) => {
-    if (!window.confirm(`确定要删除任务 #${task.id}（${task.target_url}）吗？关联的漏洞记录将一并删除。`)) return;
+    if (!window.confirm(`确定要删除任务 #${task.display_id}（${task.target_url}）吗？关联的漏洞记录将一并删除。`)) return;
     try {
       await api.deleteTask(task.id);
       fetchTasks();
@@ -83,7 +83,7 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
 
   const filteredTasks = tasks.filter(task => 
     task.target_url.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    task.id.toString().includes(searchQuery)
+    task.display_id.toString().includes(searchQuery)
   );
 
   return (
@@ -141,7 +141,7 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
             ) : (
               filteredTasks.map((task) => (
                 <tr key={task.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-8 py-5 text-xs font-bold text-gray-400">#{task.id}</td>
+                  <td className="px-8 py-5 text-xs font-bold text-gray-400">#{task.display_id}</td>
                   <td className="px-8 py-5 font-bold text-[#2d3343]">{task.target_url}</td>
                   <td className="px-8 py-5">
                     <span className="inline-flex rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-[#c25b00]">

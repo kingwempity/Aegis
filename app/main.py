@@ -83,6 +83,55 @@ def migrate_vulnerabilities_table():
         logger.warning(f"数据库迁移检查失败: {e}")
 
 
+def migrate_scan_tasks_display_id():
+    """
+    为 scan_tasks 表添加 display_id 字段并回填连续展示编号。
+
+    注意：仅维护 display_id 的连续性，不修改主键 id。
+    """
+    try:
+        inspector = inspect(engine)
+
+        if 'scan_tasks' not in inspector.get_table_names():
+            logger.info("scan_tasks 表不存在，将由 create_all 创建")
+            return
+
+        existing_columns = {col['name'] for col in inspector.get_columns('scan_tasks')}
+        with engine.connect() as conn:
+            if 'display_id' not in existing_columns:
+                if engine.dialect.name == "sqlite":
+                    conn.execute(text("ALTER TABLE scan_tasks ADD COLUMN display_id INTEGER"))
+                else:
+                    conn.execute(text("ALTER TABLE scan_tasks ADD COLUMN display_id INT NULL"))
+                conn.commit()
+                logger.info("✅ 已添加字段: scan_tasks.display_id")
+
+            # 按创建顺序重建连续 display_id（1..N）
+            task_ids = conn.execute(
+                text("SELECT id FROM scan_tasks ORDER BY created_at ASC, id ASC")
+            ).fetchall()
+            for index, row in enumerate(task_ids, start=1):
+                conn.execute(
+                    text("UPDATE scan_tasks SET display_id = :display_id WHERE id = :task_id"),
+                    {"display_id": index, "task_id": row[0]}
+                )
+            conn.commit()
+            logger.info(f"✅ 已回填 display_id，共处理 {len(task_ids)} 条任务记录")
+
+            # 创建唯一索引（如果不存在）
+            index_names = {idx["name"] for idx in inspector.get_indexes("scan_tasks")}
+            unique_index_name = "idx_scan_tasks_display_id_unique"
+            if unique_index_name not in index_names:
+                conn.execute(
+                    text(f"CREATE UNIQUE INDEX {unique_index_name} ON scan_tasks(display_id)")
+                )
+                conn.commit()
+                logger.info("✅ 已创建唯一索引: scan_tasks.display_id")
+
+    except Exception as e:
+        logger.warning(f"display_id 迁移检查失败: {e}")
+
+
 # 创建数据库表 (带重试逻辑)
 max_retries = 5
 retry_interval = 5
@@ -94,6 +143,7 @@ for i in range(max_retries):
         
         # 执行增量迁移
         migrate_vulnerabilities_table()
+        migrate_scan_tasks_display_id()
         
         break
     except Exception as e:
@@ -102,6 +152,7 @@ for i in range(max_retries):
             # 即使表已存在，也尝试迁移
             try:
                 migrate_vulnerabilities_table()
+                migrate_scan_tasks_display_id()
             except Exception as migrate_err:
                 logger.warning(f"Migration failed: {migrate_err}")
             break

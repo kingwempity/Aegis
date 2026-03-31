@@ -26,6 +26,7 @@ class VulnerabilityOut(BaseModel):
 class TaskOut(BaseModel):
     """响应中的任务信息"""
     id: int
+    display_id: int
     target_url: str
     status: str
     scan_strategy: str

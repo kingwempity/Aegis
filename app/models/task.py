@@ -27,6 +27,7 @@ class ScanTask(Base):
     __tablename__ = "scan_tasks"
 
     id = Column(Integer, primary_key=True, index=True)
+    display_id = Column(Integer, nullable=False, unique=True, index=True)
     target_url = Column(String(255), nullable=False)
     status = Column(String(50), default="PENDING")
     scan_strategy = Column(String(50), default="default")

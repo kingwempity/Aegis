@@ -25,6 +25,7 @@ class ReportResponse(BaseModel):
     """报告响应模型"""
     id: int
     task_id: int
+    display_id: int
     target_url: str
     risk_score: float
     vuln_count: int
@@ -106,6 +107,7 @@ def get_reports(db: Session = Depends(get_db)):
         reports.append({
             "id": task.id,
             "task_id": task.id,
+            "display_id": task.display_id,
             "target_url": task.target_url,
             "risk_score": min(score, 100),
             "vuln_count": vuln_count,
@@ -307,10 +309,21 @@ def delete_report(task_id: int, db: Session = Depends(get_db)):
     Returns:
         dict: 删除结果
     """
-    task = db.query(ScanTask).filter(ScanTask.id == task_id).first()
+    task = db.query(ScanTask).filter(ScanTask.id == task_id).with_for_update().first()
     if not task:
         return {"message": "报告已删除或不存在"}
-    
+
     db.delete(task)
+    db.flush()
+    tasks = (
+        db.query(ScanTask)
+        .order_by(ScanTask.created_at.asc(), ScanTask.id.asc())
+        .with_for_update()
+        .all()
+    )
+    for index, current_task in enumerate(tasks, start=1):
+        if current_task.display_id != index:
+            current_task.display_id = index
+    db.flush()
     db.commit()
     return {"message": "报告已删除"}

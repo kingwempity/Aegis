@@ -49,6 +49,7 @@ const parseErrorResponse = async (response: Response, fallback: string): Promise
 
 export interface ScanTask {
   id: number;
+  display_id: number;
   target_url: string;
   status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
   scan_strategy: string;
@@ -99,6 +100,7 @@ export interface Asset {
 export interface Report {
   id: number;
   task_id: number;
+  display_id: number;
   target_url: string;
   risk_score: number;
   vuln_count: number;

@@ -26,6 +26,16 @@ interface LoginProps {
   onLoginSuccess?: () => void;
 }
 
+const parseJsonSafely = async (response: Response): Promise<any> => {
+  const raw = await response.text();
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error('接口返回了非 JSON 数据，请检查前端代理和后端服务状态');
+  }
+};
+
 /**
  * 登录页面组件
  */
@@ -82,7 +92,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         body: JSON.stringify({ username, password }),
       });
 
-      const data = await response.json();
+      const data = await parseJsonSafely(response);
 
       if (!response.ok) {
         throw new Error(data.detail || '登录失败');
@@ -125,7 +135,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         body: JSON.stringify({ email }),
       });
 
-      const data = await response.json();
+      const data = await parseJsonSafely(response);
 
       if (!response.ok) {
         throw new Error(data.detail || '发送验证码失败');
@@ -173,7 +183,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         body: JSON.stringify({ email, code }),
       });
 
-      const data = await response.json();
+      const data = await parseJsonSafely(response);
 
       if (!response.ok) {
         throw new Error(data.detail || '登录失败');

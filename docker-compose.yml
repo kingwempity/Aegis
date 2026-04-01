@@ -49,7 +49,8 @@ services:
 
   # 缓存 - 仅允许内部服务访问
   aegis-redis:
-    image: redis:alpine
+    # 固定稳定版本，避免 latest/alpine 漂移导致 Redis 进程异常崩溃
+    image: redis:7.2.5-alpine
     container_name: aegis-redis
     restart: always
     # Redis 安全配置：禁用危险命令，内存限制

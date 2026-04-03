@@ -167,6 +167,7 @@ services:
     networks:
       - frontend-network
       - backend-network
+      - shared-network  # 加入共享网络
 
 # ==================== 网络分区配置 ====================
 

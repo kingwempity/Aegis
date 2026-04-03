@@ -160,9 +160,14 @@ class ScannerEngine:
         if not os.path.exists(resolved_plugin_dir):
             resolved_plugin_dir = os.path.join(os.getcwd(), "scanner", "plugins")
         
+        logger.info(f"📂 插件目录: {resolved_plugin_dir}")
+        
         # 延迟导入避免循环依赖
         from scanner.engine.parser import TemplateParser
         self.plugins = TemplateParser.load_plugins(resolved_plugin_dir)
+        
+        plugin_ids = [p.get('id', 'unknown') for p in self.plugins]
+        logger.info(f"📋 已加载 {len(self.plugins)} 个插件: {plugin_ids}")
         
         # 初始化组件
         self.script_generator = AttackScriptGenerator(strategy=strategy)
@@ -274,7 +279,11 @@ class ScannerEngine:
         
         # 并发执行所有任务
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            # 检查并记录异常
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.error(f"❌ 扫描任务 {i} 异常: {type(result).__name__}: {result}")
     
     async def _scan_with_plugin(
         self,
@@ -330,6 +339,8 @@ class ScannerEngine:
         url = self.script_generator.render_path(path.url, self.target, payload_variant.encoded)
         method = request_def.get("method", "GET").upper()
         
+        logger.debug(f"🔍 发送请求: {method} {url}")
+        
         # 构建请求头和请求体
         headers = dict(request_def.get("headers", {}))
         body = None
@@ -350,7 +361,12 @@ class ScannerEngine:
             
             # 记录结果用于学习
             matchers = request_def.get("matchers", [])
-            is_vulnerable = self._check_matchers(resp, matchers)
+            matchers_condition = request_def.get("matchers-condition", "or")
+            is_vulnerable = self._check_matchers(resp, matchers, matchers_condition)
+            
+            logger.debug(f"📊 响应状态: {resp.status_code}, 匹配结果: {is_vulnerable}")
+            if resp.status_code != 200:
+                logger.debug(f"📄 响应内容片段: {resp.text[:500]}")
             
             self.path_explorer.record_result(path.url, is_vulnerable)
             
@@ -401,11 +417,11 @@ class ScannerEngine:
             
         except httpx.TimeoutException:
             self._stats.failed_requests += 1
-            logger.debug(f" 请求超时: {url}")
+            logger.warning(f"⏱️ 请求超时: {url}")
             
         except Exception as e:
             self._stats.failed_requests += 1
-            logger.debug(f" 请求失败 {url}: {e}")
+            logger.warning(f"❌ 请求失败 {url}: {type(e).__name__}: {e}")
         
         return False
     
@@ -585,7 +601,7 @@ class ScannerEngine:
         
         return True
     
-    def _check_matchers(self, resp: httpx.Response, matchers: List[Dict[str, Any]]) -> bool:
+    def _check_matchers(self, resp: httpx.Response, matchers: List[Dict[str, Any]], matchers_condition: str = "or") -> bool:
         """
         检查响应是否命中规则。
         
@@ -599,15 +615,13 @@ class ScannerEngine:
         Args:
             resp: HTTP响应
             matchers: 匹配器列表
+            matchers_condition: 匹配器条件（and/or），默认or
             
         Returns:
             是否命中
         """
         if not matchers:
             return False
-        
-        # 匹配器条件（AND/OR）
-        matchers_condition = "or"  # 默认OR条件
         
         for m in matchers:
             if not isinstance(m, dict):

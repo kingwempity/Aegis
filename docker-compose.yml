@@ -163,8 +163,9 @@ services:
           memory: 512M
         reservations:
           memory: 256M
-    # Worker 不需要对外暴露，仅后端网络
+    # Worker需要访问外部网络进行扫描，连接frontend-network
     networks:
+      - frontend-network
       - backend-network
 
 # ==================== 网络分区配置 ====================

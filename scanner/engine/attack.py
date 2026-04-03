@@ -786,22 +786,9 @@ class AttackScriptGenerator:
             if var in result:
                 result = result.replace(var, getter(self._context))
         
-        # 对URL查询字符串中的特殊字符进行编码
-        # 分离URL的基础部分和查询字符串
-        try:
-            if "?" in result:
-                base_part, query_part = result.split("?", 1)
-                # 编码查询字符串中的特殊字符
-                # 保留URL安全字符和SQL注入常用的特殊字符
-                # safe字符: =&(参数分隔符) ,()(SQL语法) '(字符串) "(字符串) :(函数) %(已编码字符)
-                encoded_query = urllib.parse.quote(query_part, safe="=&,()'\":%")
-                result = f"{base_part}?{encoded_query}"
-        except (ValueError, TypeError) as e:
-            # URL分割或编码失败时，记录警告并返回原始URL
-            logger.warning(f"URL编码失败，使用原始URL: {raw_path}, 错误: {type(e).__name__}: {e}")
-        except Exception as e:
-            # 捕获其他未预期的异常
-            logger.error(f"URL处理异常: {raw_path}, 错误: {type(e).__name__}: {e}")
+        # 警告：不要对已经渲染好的 payload 进行二次编码，否则会破坏复杂的 SQL 注入格式（如 ThinkPHP 的数组参数）
+        # 仅在必要时对 BaseURL 之外的部分进行基础处理，但要保持 payload 原样
+        pass
         
         return result
     

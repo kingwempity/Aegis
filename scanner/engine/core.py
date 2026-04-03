@@ -204,9 +204,19 @@ class ScannerEngine:
         
         async with httpx.AsyncClient(
             verify=False,
-            timeout=self.timeout,
-            follow_redirects=False,
-            limits=httpx.Limits(max_connections=self.max_concurrent * 2),
+            timeout=httpx.Timeout(
+                connect=10.0,
+                read=30.0,
+                write=10.0,
+                pool=10.0
+            ),
+            follow_redirects=True,
+            limits=httpx.Limits(max_connections=self.max_concurrent * 2, max_keepalive_connections=20),
+            headers={
+                "User-Agent": "Aegis-Security-Scanner/2.0",
+                "Accept": "*/*",
+                "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7"
+            }
         ) as client:
             # 阶段1: 初始探测，获取上下文
             await self._initial_probe(client)
@@ -233,10 +243,12 @@ class ScannerEngine:
         Args:
             client: HTTP客户端
         """
-        logger.debug("🔍 执行初始探测...")
+        logger.info(f"🔍 执行初始探测: {self.target}")
         
         try:
             resp = await self._request_in_scope(client, "GET", self.target)
+            logger.info(f"📡 初始探测成功 - 状态码: {resp.status_code}, 内容长度: {len(resp.text)}")
+            
             self._context = ContextAwareEngine.build_context(
                 target_url=self.target,
                 response_status=resp.status_code,
@@ -251,12 +263,19 @@ class ScannerEngine:
             if self.enable_discovery:
                 discovered = self.path_explorer.discover_paths(resp.text, self.target)
                 self._stats.paths_discovered += len(discovered)
-                logger.debug(f"📂 发现 {len(discovered)} 个新路径")
+                logger.info(f"📂 发现 {len(discovered)} 个新路径")
             
-            logger.info(f"🔬 检测到技术栈: {', '.join(self._context.detected_tech) or '未知'}")
+            detected_tech = ', '.join(self._context.detected_tech) or '未知'
+            logger.info(f"🔬 检测到技术栈: {detected_tech}")
             
+        except httpx.ConnectError as e:
+            logger.error(f"❌ 无法连接到目标 {self.target}: {e}")
+            raise
+        except httpx.TimeoutException as e:
+            logger.error(f"⏱️ 连接目标超时 {self.target}: {e}")
+            raise
         except Exception as e:
-            logger.warning(f"⚠️ 初始探测失败: {e}")
+            logger.warning(f"⚠️ 初始探测失败: {type(e).__name__}: {e}")
             self._context = AttackContext(target_url=self.target)
     
     async def _execute_plugins(self, client: httpx.AsyncClient) -> None:
@@ -268,22 +287,41 @@ class ScannerEngine:
         """
         tasks = []
         
+        logger.info(f"🔧 开始执行插件扫描 - 共 {len(self.plugins)} 个插件")
+        
         for plugin in self.plugins:
-            for req in plugin.get("requests", []):
+            plugin_id = plugin.get("id", "unknown")
+            plugin_name = plugin.get("info", {}).get("name", "unknown")
+            requests_list = plugin.get("requests", [])
+            
+            logger.info(f"  📦 插件: {plugin_id} ({plugin_name}) - {len(requests_list)} 个请求")
+            
+            for req_idx, req in enumerate(requests_list):
                 if not self._check_preconditions(req):
+                    logger.debug(f"    ⏭️ 跳过请求 {req_idx}: 不满足前置条件")
                     continue
                 
                 # 创建扫描任务
                 task = self._scan_with_plugin(client, plugin, req)
                 tasks.append(task)
         
+        logger.info(f"🎯 共创建 {len(tasks)} 个扫描任务")
+        
         # 并发执行所有任务
         if tasks:
             results = await asyncio.gather(*tasks, return_exceptions=True)
             # 检查并记录异常
+            success_count = 0
+            error_count = 0
+            
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
+                    error_count += 1
                     logger.error(f"❌ 扫描任务 {i} 异常: {type(result).__name__}: {result}")
+                else:
+                    success_count += 1
+            
+            logger.info(f"📊 任务执行结果: 成功={success_count}, 失败={error_count}")
     
     async def _scan_with_plugin(
         self,
@@ -339,7 +377,7 @@ class ScannerEngine:
         url = self.script_generator.render_path(path.url, self.target, payload_variant.encoded)
         method = request_def.get("method", "GET").upper()
         
-        logger.debug(f"🔍 发送请求: {method} {url}")
+        logger.info(f"🔍 发送请求: {method} {url}")
         
         # 构建请求头和请求体
         headers = dict(request_def.get("headers", {}))
@@ -355,18 +393,25 @@ class ScannerEngine:
         self._stats.total_requests += 1
         
         try:
+            start_time = time.time()
             resp = await self._request_in_scope(client, method, url, headers, body)
+            response_time = (time.time() - start_time) * 1000
+            
             self.path_explorer.mark_visited(path.url)
             self._stats.paths_visited += 1
             
             # 记录结果用于学习
             matchers = request_def.get("matchers", [])
             matchers_condition = request_def.get("matchers-condition", "or")
+            
+            logger.info(f"  📊 响应状态: {resp.status_code}, 大小: {len(resp.content)} bytes, 时间: {response_time:.0f}ms")
+            
             is_vulnerable = self._check_matchers(resp, matchers, matchers_condition)
             
-            logger.debug(f"📊 响应状态: {resp.status_code}, 匹配结果: {is_vulnerable}")
-            if resp.status_code != 200:
-                logger.debug(f"📄 响应内容片段: {resp.text[:500]}")
+            if resp.status_code != 200 or is_vulnerable:
+                # 只在非正常响应或发现漏洞时记录内容片段（避免日志过大）
+                content_preview = resp.text[:300] + "..." if len(resp.text) > 300 else resp.text
+                logger.info(f"  📄 响应内容预览: {content_preview}")
             
             self.path_explorer.record_result(path.url, is_vulnerable)
             
@@ -384,6 +429,7 @@ class ScannerEngine:
                         "matchers": matchers,
                         "encoding_used": payload_variant.encoding_type.value,
                         "mutation_type": payload_variant.mutation_type,
+                        "response_time_ms": response_time,
                     },
                     request={
                         "method": method,
@@ -404,7 +450,7 @@ class ScannerEngine:
                 )
                 
                 self._vulnerabilities.append(result)
-                logger.info(f" 发现漏洞: {result.vuln_name} @ {url}")
+                logger.info(f"  ✅ 发现漏洞: {result.vuln_name} @ {url}")
                 
                 return True
             
@@ -415,13 +461,21 @@ class ScannerEngine:
             
             self._stats.successful_requests += 1
             
-        except httpx.TimeoutException:
+        except httpx.ConnectError as e:
             self._stats.failed_requests += 1
-            logger.warning(f"⏱️ 请求超时: {url}")
+            logger.error(f"❌ 连接失败 {url}: {e}")
+            
+        except httpx.TimeoutException as e:
+            self._stats.failed_requests += 1
+            logger.warning(f"⏱️ 请求超时: {url} ({self.timeout}s)")
+            
+        except httpx.HTTPStatusError as e:
+            self._stats.failed_requests += 1
+            logger.warning(f"⚠️ HTTP错误 {url}: {e.response.status_code}")
             
         except Exception as e:
             self._stats.failed_requests += 1
-            logger.warning(f"❌ 请求失败 {url}: {type(e).__name__}: {e}")
+            logger.error(f"❌ 请求异常 {url}: {type(e).__name__}: {e}")
         
         return False
     

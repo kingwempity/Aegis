@@ -1,20 +1,7 @@
-# ============================================================
-# Aegis 安全增强配置
-# 
-# 网络分区架构：
-# - frontend-network: 对外暴露，仅API服务可访问
-# - backend-network: 内部通信，数据库和缓存隔离
-# 
-# 安全特性：
-# - 数据库不暴露到外部网络
-# - Redis 仅允许内部服务访问
-# - API 作为唯一入口点
-# ============================================================
-
 services:
-  # ==================== 数据层（内部网络隔离）====================
+  # ==================== 数据层 ====================
   
-  # 数据库 - 仅允许内部服务访问
+  # 数据库
   aegis-db:
     image: mysql:8.0
     container_name: aegis-db
@@ -22,19 +9,14 @@ services:
     environment:
       MYSQL_DATABASE: aegis
       MYSQL_ROOT_PASSWORD: aegis_password
-      # MySQL 内存优化配置
       MYSQL_INNODB_BUFFER_POOL_SIZE: 128M
       MYSQL_INNODB_LOG_BUFFER_SIZE: 8M
-    # 安全增强：移除端口映射，仅内部网络访问
-    # ports:
-    #   - "3307:3306"  # 已禁用外部访问
     expose:
-      - "3306"  # 仅容器间访问
+      - "3306"
     volumes:
       - ./data/mysql:/var/lib/mysql
     networks:
       - backend-network
-    # 资源限制
     deploy:
       resources:
         limits:
@@ -47,13 +29,11 @@ services:
       timeout: 10s
       retries: 10
 
-  # 缓存 - 仅允许内部服务访问
+  # 缓存
   aegis-redis:
-    # 固定稳定版本，避免 latest/alpine 漂移导致 Redis 进程异常崩溃
     image: redis:7.2.5-alpine
     container_name: aegis-redis
     restart: always
-    # Redis 安全配置：禁用危险命令，内存限制
     command: >
       redis-server 
       --maxmemory 64m 
@@ -63,7 +43,7 @@ services:
       --rename-command KEYS ""
       --rename-command CONFIG ""
     expose:
-      - "6379"  # 仅容器间访问
+      - "6379"
     deploy:
       resources:
         limits:
@@ -72,16 +52,15 @@ services:
           memory: 64M
     networks:
       - backend-network
-    # 健康检查
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # ==================== 应用层（对外入口）====================
+  # ==================== 应用层 ====================
   
-  # API 服务 - 唯一对外入口
+  # API 服务
   aegis-api:
     build: .
     container_name: aegis-api
@@ -96,37 +75,22 @@ services:
       - DB_HOST=aegis-db
       - DB_NAME=aegis
       - REDIS_URL=redis://aegis-redis:6379/0
-      # 资产发现默认扫描网段
-      - DISCOVERY_DEFAULT_NETWORK_RANGE=172.17.34.0/24
-      # 安全配置
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-aegis-secret-key-change-in-production}
       - JWT_EXPIRE_HOURS=${JWT_EXPIRE_HOURS:-3}
-      # 邮件配置
-      - SMTP_HOST=${SMTP_HOST:-smtp.qq.com}
-      - SMTP_PORT=${SMTP_PORT:-465}
-      - SMTP_USER=${SMTP_USER:-aegismail@foxmail.com}
-      - SMTP_PASSWORD=${SMTP_PASSWORD:-gxobwuqcpiiucjbh}
-      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-aegismail@foxmail.com}
-      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Aegis 安全扫描系统}
-      - SMTP_USE_SSL=${SMTP_USE_SSL:-true}
-      - EMAIL_DEBUG=${EMAIL_DEBUG:-true}
     depends_on:
       aegis-db:
         condition: service_healthy
       aegis-redis:
         condition: service_started
-    # 资源限制 - API 服务
     deploy:
       resources:
         limits:
           memory: 512M
         reservations:
           memory: 256M
-    # 网络配置：连接前端和后端网络
     networks:
       - frontend-network
       - backend-network
-    # 健康检查
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/auth/verify-token"]
       interval: 30s
@@ -134,12 +98,11 @@ services:
       retries: 3
       start_period: 40s
 
-  # Worker 服务 - 后台任务处理
+  # Worker 服务
   aegis-worker:
     build: .
     container_name: aegis-worker
     restart: always
-    # Celery 限制并发数，减少内存占用
     command: celery -A worker.celery_app worker --loglevel=info --concurrency=1 --max-tasks-per-child=10
     volumes:
       - .:/app
@@ -149,30 +112,26 @@ services:
       - DB_HOST=aegis-db
       - DB_NAME=aegis
       - REDIS_URL=redis://aegis-redis:6379/0
-      # 安全配置
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-aegis-secret-key-change-in-production}
     depends_on:
       aegis-db:
         condition: service_healthy
       aegis-redis:
         condition: service_started
-    # 资源限制 - Worker 服务
     deploy:
       resources:
         limits:
           memory: 512M
         reservations:
           memory: 256M
-    # Worker需要访问外部网络进行扫描，连接frontend-network
     networks:
       - frontend-network
       - backend-network
-      - shared-network  # 加入共享网络
+      - aegis-shared-net  # 关键：加入共享网络以访问 Vulhub
 
 # ==================== 网络分区配置 ====================
 
 networks:
-  # 前端网络：对外暴露，仅API服务使用
   frontend-network:
     driver: bridge
     driver_opts:
@@ -182,55 +141,256 @@ networks:
       config:
         - subnet: 172.28.0.0/16
 
-  # 后端网络：内部通信，数据库和缓存隔离
   backend-network:
     driver: bridge
-    internal: true  # 禁止外部访问，实现网络隔离
+    internal: false  # 关键：修改为 false ，允许 Worker 访问外部
     ipam:
       driver: default
       config:
         - subnet: 172.29.0.0/16
 
-  # 共享网络：用于Worker与API服务通信
-  shared-network:
-    external: true
-    name: aegis-shared-net
+  aegis-shared-net:
+    external: true  # 关键：声明外部共享网络
 
-# ==================== 安全说明 ====================
-# 
-# 网络架构：
-# ┌─────────────────────────────────────────────────────┐
-# │                    外部访问                          │
-# │                        │                             │
-# │                        ▼                             │
-# │              ┌─────────────────┐                     │
-# │              │  宝塔 Nginx     │                     │
-# │              │  (HTTPS 终止)   │                     │
-# │              └────────┬────────┘                     │
-# │                       │                              │
-# │        ┌──────────────┼──────────────┐              │
-# │        │   frontend-network          │              │
-# │        │         │                   │              │
-# │        │    ┌────┴────┐              │              │
-# │        │    │ API     │              │              │
-# │        │    │ :8000   │              │              │
-# │        │    └────┬────┘              │              │
-# │        └─────────┼───────────────────┘              │
-# │                  │                                  │
-# │        ┌─────────┼───────────────────┐              │
-# │        │   backend-network (内部)    │              │
-# │        │         │                   │              │
-# │        │    ┌────┴────┐   ┌───────┐ │              │
-# │        │    │ Worker  │   │ MySQL │ │              │
-# │        │    │         │   │ Redis │ │              │
-# │        │    └─────────┘   └───────┘ │              │
-# │        └─────────────────────────────┘              │
-# │                                                     │
-# └─────────────────────────────────────────────────────┘
-#
-# 安全特性：
-# 1. 数据库和缓存不暴露到外部网络
-# 2. API 是唯一的入口点
-# 3. Worker 仅能访问内部服务
-# 4. Redis 禁用危险命令 (FLUSHALL, KEYS, CONFIG 等)
-#
+
+
+    
+
+
+
+# # ============================================================
+# # Aegis 安全增强配置
+# # 
+# # 网络分区架构：
+# # - frontend-network: 对外暴露，仅API服务可访问
+# # - backend-network: 内部通信，数据库和缓存隔离
+# # 
+# # 安全特性：
+# # - 数据库不暴露到外部网络
+# # - Redis 仅允许内部服务访问
+# # - API 作为唯一入口点
+# # ============================================================
+
+# services:
+#   # ==================== 数据层（内部网络隔离）====================
+  
+#   # 数据库 - 仅允许内部服务访问
+#   aegis-db:
+#     image: mysql:8.0
+#     container_name: aegis-db
+#     restart: always
+#     environment:
+#       MYSQL_DATABASE: aegis
+#       MYSQL_ROOT_PASSWORD: aegis_password
+#       # MySQL 内存优化配置
+#       MYSQL_INNODB_BUFFER_POOL_SIZE: 128M
+#       MYSQL_INNODB_LOG_BUFFER_SIZE: 8M
+#     # 安全增强：移除端口映射，仅内部网络访问
+#     # ports:
+#     #   - "3307:3306"  # 已禁用外部访问
+#     expose:
+#       - "3306"  # 仅容器间访问
+#     volumes:
+#       - ./data/mysql:/var/lib/mysql
+#     networks:
+#       - backend-network
+#     # 资源限制
+#     deploy:
+#       resources:
+#         limits:
+#           memory: 512M
+#         reservations:
+#           memory: 256M
+#     healthcheck:
+#       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$${MYSQL_ROOT_PASSWORD}"]
+#       interval: 10s
+#       timeout: 10s
+#       retries: 10
+
+#   # 缓存 - 仅允许内部服务访问
+#   aegis-redis:
+#     # 固定稳定版本，避免 latest/alpine 漂移导致 Redis 进程异常崩溃
+#     image: redis:7.2.5-alpine
+#     container_name: aegis-redis
+#     restart: always
+#     # Redis 安全配置：禁用危险命令，内存限制
+#     command: >
+#       redis-server 
+#       --maxmemory 64m 
+#       --maxmemory-policy allkeys-lru
+#       --rename-command FLUSHALL ""
+#       --rename-command FLUSHDB ""
+#       --rename-command KEYS ""
+#       --rename-command CONFIG ""
+#     expose:
+#       - "6379"  # 仅容器间访问
+#     deploy:
+#       resources:
+#         limits:
+#           memory: 128M
+#         reservations:
+#           memory: 64M
+#     networks:
+#       - backend-network
+#     # 健康检查
+#     healthcheck:
+#       test: ["CMD", "redis-cli", "ping"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+
+#   # ==================== 应用层（对外入口）====================
+  
+#   # API 服务 - 唯一对外入口
+#   aegis-api:
+#     build: .
+#     container_name: aegis-api
+#     restart: always
+#     ports:
+#       - "8000:8000"
+#     volumes:
+#       - .:/app
+#     environment:
+#       - DB_USER=root
+#       - DB_PASSWORD=aegis_password
+#       - DB_HOST=aegis-db
+#       - DB_NAME=aegis
+#       - REDIS_URL=redis://aegis-redis:6379/0
+#       # 资产发现默认扫描网段
+#       - DISCOVERY_DEFAULT_NETWORK_RANGE=172.17.34.0/24
+#       # 安全配置
+#       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-aegis-secret-key-change-in-production}
+#       - JWT_EXPIRE_HOURS=${JWT_EXPIRE_HOURS:-3}
+#       # 邮件配置
+#       - SMTP_HOST=${SMTP_HOST:-smtp.qq.com}
+#       - SMTP_PORT=${SMTP_PORT:-465}
+#       - SMTP_USER=${SMTP_USER:-aegismail@foxmail.com}
+#       - SMTP_PASSWORD=${SMTP_PASSWORD:-gxobwuqcpiiucjbh}
+#       - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-aegismail@foxmail.com}
+#       - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Aegis 安全扫描系统}
+#       - SMTP_USE_SSL=${SMTP_USE_SSL:-true}
+#       - EMAIL_DEBUG=${EMAIL_DEBUG:-true}
+#     depends_on:
+#       aegis-db:
+#         condition: service_healthy
+#       aegis-redis:
+#         condition: service_started
+#     # 资源限制 - API 服务
+#     deploy:
+#       resources:
+#         limits:
+#           memory: 512M
+#         reservations:
+#           memory: 256M
+#     # 网络配置：连接前端和后端网络
+#     networks:
+#       - frontend-network
+#       - backend-network
+#     # 健康检查
+#     healthcheck:
+#       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/auth/verify-token"]
+#       interval: 30s
+#       timeout: 10s
+#       retries: 3
+#       start_period: 40s
+
+#   # Worker 服务 - 后台任务处理
+#   aegis-worker:
+#     build: .
+#     container_name: aegis-worker
+#     restart: always
+#     # Celery 限制并发数，减少内存占用
+#     command: celery -A worker.celery_app worker --loglevel=info --concurrency=1 --max-tasks-per-child=10
+#     volumes:
+#       - .:/app
+#     environment:
+#       - DB_USER=root
+#       - DB_PASSWORD=aegis_password
+#       - DB_HOST=aegis-db
+#       - DB_NAME=aegis
+#       - REDIS_URL=redis://aegis-redis:6379/0
+#       # 安全配置
+#       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-aegis-secret-key-change-in-production}
+#     depends_on:
+#       aegis-db:
+#         condition: service_healthy
+#       aegis-redis:
+#         condition: service_started
+#     # 资源限制 - Worker 服务
+#     deploy:
+#       resources:
+#         limits:
+#           memory: 512M
+#         reservations:
+#           memory: 256M
+#     # Worker需要访问外部网络进行扫描，连接frontend-network
+#     networks:
+#       - frontend-network
+#       - backend-network
+#       - shared-network  # 加入共享网络
+
+# # ==================== 网络分区配置 ====================
+
+# networks:
+#   # 前端网络：对外暴露，仅API服务使用
+#   frontend-network:
+#     driver: bridge
+#     driver_opts:
+#       com.docker.network.bridge.enable_icc: "true"
+#     ipam:
+#       driver: default
+#       config:
+#         - subnet: 172.28.0.0/16
+
+#   # 后端网络：内部通信，数据库和缓存隔离
+#   backend-network:
+#     driver: bridge
+#     internal: false  # 禁止外部访问，实现网络隔离
+#     ipam:
+#       driver: default
+#       config:
+#         - subnet: 172.29.0.0/16
+
+#   # 共享网络：用于Worker与API服务通信
+#   shared-network:
+#     external: true
+#     name: aegis-shared-net
+
+# # ==================== 安全说明 ====================
+# # 
+# # 网络架构：
+# # ┌─────────────────────────────────────────────────────┐
+# # │                    外部访问                          │
+# # │                        │                             │
+# # │                        ▼                             │
+# # │              ┌─────────────────┐                     │
+# # │              │  宝塔 Nginx     │                     │
+# # │              │  (HTTPS 终止)   │                     │
+# # │              └────────┬────────┘                     │
+# # │                       │                              │
+# # │        ┌──────────────┼──────────────┐              │
+# # │        │   frontend-network          │              │
+# # │        │         │                   │              │
+# # │        │    ┌────┴────┐              │              │
+# # │        │    │ API     │              │              │
+# # │        │    │ :8000   │              │              │
+# # │        │    └────┬────┘              │              │
+# # │        └─────────┼───────────────────┘              │
+# # │                  │                                  │
+# # │        ┌─────────┼───────────────────┐              │
+# # │        │   backend-network (内部)    │              │
+# # │        │         │                   │              │
+# # │        │    ┌────┴────┐   ┌───────┐ │              │
+# # │        │    │ Worker  │   │ MySQL │ │              │
+# # │        │    │         │   │ Redis │ │              │
+# # │        │    └─────────┘   └───────┘ │              │
+# # │        └─────────────────────────────┘              │
+# # │                                                     │
+# # └─────────────────────────────────────────────────────┘
+# #
+# # 安全特性：
+# # 1. 数据库和缓存不暴露到外部网络
+# # 2. API 是唯一的入口点
+# # 3. Worker 仅能访问内部服务
+# # 4. Redis 禁用危险命令 (FLUSHALL, KEYS, CONFIG 等)
+# #

@@ -5,18 +5,31 @@
 - 获取通知列表
 - 标记通知已读
 - 获取未读数量
+- 事件发射（用于触发动态通知）
+- 获取投递统计信息
+- 测试通知功能
 
 Notes:
     - 支持按分类过滤通知
     - 支持批量标记已读
+    - 完全集成事件驱动架构
 """
 
 import logging
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel
+from datetime import datetime
 
-from app.services.notification_service import notification_service
+from app.services.notification_service import (
+    notification_service,
+    NotificationType,
+    NotificationCategory,
+    NotificationPriority,
+    notify_scan_completed,
+    notify_scan_failed,
+    notify_vulnerability_found
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +48,8 @@ class NotificationResponse(BaseModel):
     time: str
     read: bool
     extra_data: dict = {}
+    priority: str = "medium"
+    delivery_status: str = "pending"
 
 
 class NotificationListResponse(BaseModel):
@@ -53,6 +68,29 @@ class MarkReadResponse(BaseModel):
     """标记已读响应模型"""
     success: bool
     marked_count: int
+
+
+class EventEmitRequest(BaseModel):
+    """事件发射请求模型"""
+    event_type: str
+    data: dict = {}
+    source: str = "api"
+
+
+class EventEmitResponse(BaseModel):
+    """事件发射响应模型"""
+    success: bool
+    event_type: str
+    notifications_created: int
+
+
+class TestNotificationRequest(BaseModel):
+    """测试通知请求模型"""
+    type: str = "info"
+    category: str = "system"
+    title: str = "Test Notification"
+    message: str = "This is a test notification"
+    priority: str = "medium"
 
 
 # ============== API 端点 ==============
@@ -182,3 +220,226 @@ async def clear_all_notifications():
     count = notification_service.clear_all()
     
     return {"success": True, "message": f"已清空 {count} 条通知", "cleared_count": count}
+
+
+@router.post("/events/emit", response_model=EventEmitResponse)
+async def emit_event(request: EventEmitRequest, background_tasks: BackgroundTasks):
+    """
+    发射事件以触发动态通知生成
+    
+    这是核心功能，允许系统各部分通过事件驱动方式创建通知。
+    
+    支持的事件类型：
+    - scan.completed: 扫描完成
+    - scan.failed: 扫描失败
+    - vulnerability.found: 发现漏洞
+    - user.created: 用户创建
+    - user.updated: 用户更新
+    - user.deleted: 用户删除
+    - password_changed: 密码修改
+    
+    Args:
+        request: 事件请求体，包含event_type、data、source
+        
+    Returns:
+        EventEmitResponse: 事件处理结果
+        
+    Example:
+        >>> POST /api/v1/notifications/events/emit
+        >>> {
+        ...     "event_type": "scan.completed",
+        ...     "data": {
+        ...         "task_id": 123,
+        ...         "target_url": "https://example.com",
+        ...         "vulnerabilities_found": 5,
+        ...         "duration_seconds": 120.5
+        ...     },
+        ...     "source": "scanner"
+        ... }
+    """
+    try:
+        notifications_created = await notification_service.emit_event(
+            event_type=request.event_type,
+            data=request.data,
+            source=request.source
+        )
+        
+        logger.info(f"Event emitted: {request.event_type}, created {len(notifications_created)} notifications")
+        
+        return EventEmitResponse(
+            success=True,
+            event_type=request.event_type,
+            notifications_created=len(notifications_created)
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to emit event {request.event_type}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"事件处理失败: {str(e)}")
+
+
+@router.get("/stats")
+async def get_notification_stats():
+    """
+    获取通知系统统计信息
+    
+    Returns:
+        dict: 包含详细统计信息的字典
+    """
+    stats = notification_service.get_delivery_stats()
+    
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        **stats,
+        "categories": {
+            "user_management": len([n for n in notification_service._notifications if n.category == "user_management"]),
+            "scan": len([n for n in notification_service._notifications if n.category == "scan"]),
+            "system": len([n for n in notification_service._notifications if n.category == "system"]),
+            "security": len([n for n in notification_service._notifications if n.category == "security"])
+        },
+        "types": {
+            "success": len([n for n in notification_service._notifications if n.type == "success"]),
+            "warning": len([n for n in notification_service._notifications if n.type == "warning"]),
+            "info": len([n for n in notification_service._notifications if n.type == "info"]),
+            "error": len([n for n in notification_service._notifications if n.type == "error"])
+        }
+    }
+
+
+@router.post("/test", response_model=NotificationResponse)
+async def create_test_notification(request: TestNotificationRequest, background_tasks: BackgroundTasks):
+    """
+    创建测试通知（用于调试和验证）
+    
+    Args:
+        request: 测试通知请求
+        
+    Returns:
+        NotificationResponse: 创建的测试通知
+    """
+    try:
+        notification = await notification_service.create_and_deliver_notification(
+            type=request.type,
+            category=request.category,
+            title=request.title,
+            message=request.message,
+            extra_data={"action": "test", "timestamp": datetime.now().isoformat()},
+            priority=request.priority
+        )
+        
+        logger.info(f"Test notification created: {notification.id}")
+        
+        return NotificationResponse(**notification.to_dict())
+        
+    except Exception as e:
+        logger.error(f"Failed to create test notification: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"创建测试通知失败: {str(e)}")
+
+
+@router.post("/test-scan-completed")
+async def test_scan_completed_notification(
+    task_id: int = 123,
+    target_url: str = "https://example.com",
+    vulnerabilities_found: int = 3,
+    duration_seconds: float = 120.5
+):
+    """
+    测试扫描完成通知（便捷端点）
+    
+    用于快速验证扫描完成通知功能是否正常工作。
+    
+    Args:
+        task_id: 任务ID
+        target_url: 目标URL
+        vulnerabilities_found: 发现的漏洞数
+        duration_seconds: 扫描时长
+        
+    Returns:
+        dict: 操作结果
+    """
+    try:
+        await notify_scan_completed(task_id, target_url, vulnerabilities_found, duration_seconds)
+        
+        return {
+            "success": True,
+            "message": f"Scan completed notification emitted for task #{task_id}",
+            "data": {
+                "task_id": task_id,
+                "target_url": target_url,
+                "vulnerabilities_found": vulnerabilities_found,
+                "duration_seconds": duration_seconds
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to emit scan completed notification: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/test-vulnerability-found")
+async def test_vulnerability_found_notification(
+    task_id: int = 123,
+    vuln_name: str = "SQL Injection",
+    risk_level: str = "high",
+    url: str = "https://example.com/search?q=test"
+):
+    """
+    测试发现漏洞通知（便捷端点）
+    
+    Args:
+        task_id: 任务ID
+        vuln_name: 漏洞名称
+        risk_level: 风险等级 (critical/high/medium/low/info)
+        url: 漏洞URL
+        
+    Returns:
+        dict: 操作结果
+    """
+    try:
+        await notify_vulnerability_found(task_id, {
+            "name": vuln_name,
+            "risk_level": risk_level,
+            "url": url
+        })
+        
+        return {
+            "success": True,
+            "message": f"Vulnerability found notification emitted: {vuln_name}",
+            "data": {
+                "task_id": task_id,
+                "vulnerability_name": vuln_name,
+                "risk_level": risk_level,
+                "url": url
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to emit vulnerability found notification: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/health")
+async def health_check():
+    """
+    健康检查端点
+    
+    Returns:
+        dict: 健康状态
+    """
+    stats = notification_service.get_delivery_stats()
+    
+    is_healthy = (
+        stats["total_failed"] < stats["total_created"] * 0.1  # 失败率低于10%
+    )
+    
+    return {
+        "status": "healthy" if is_healthy else "degraded",
+        "service": "notification_system",
+        "timestamp": datetime.now().isoformat(),
+        "checks": {
+            "delivery_rate": is_healthy,
+            "websocket_integration": len(notification_service._websocket_callbacks) > 0,
+            "event_handlers_registered": stats["registered_handlers"] > 0
+        },
+        "stats": stats
+    }

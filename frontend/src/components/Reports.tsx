@@ -21,7 +21,18 @@ const Reports: React.FC = () => {
   const [activeDropdown, setActiveDropdown] = useState<number | null>(null);
   const [preview, setPreview] = useState<ReportPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [visibleVulnCount, setVisibleVulnCount] = useState(10); // 渐进式加载：初始显示10条
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // 每次加载的漏洞数量（批次大小）
+  const VULN_BATCH_SIZE = 10;
+
+  // 当预览报告变化时，重置可见数量
+  useEffect(() => {
+    if (preview) {
+      setVisibleVulnCount(10); // 重置为初始批次
+    }
+  }, [preview?.task_id]);
 
   const fetchReports = async () => {
     try {
@@ -97,6 +108,18 @@ const Reports: React.FC = () => {
 
   const toggleDropdown = (reportId: number) => {
     setActiveDropdown(activeDropdown === reportId ? null : reportId);
+  };
+
+  // 加载更多漏洞（渐进式加载）
+  const handleLoadMoreVulns = () => {
+    setVisibleVulnCount(prev => Math.min(prev + VULN_BATCH_SIZE, preview?.vulnerabilities.length ?? prev));
+  };
+
+  // 显示所有漏洞（一次性展开）
+  const handleShowAllVulns = () => {
+    if (preview) {
+      setVisibleVulnCount(preview.vulnerabilities.length);
+    }
   };
 
   return (
@@ -218,14 +241,14 @@ const Reports: React.FC = () => {
 
       {preview && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8"
           onClick={() => setPreview(null)}
         >
           <div
-            className="max-h-[85vh] w-full max-w-4xl overflow-hidden rounded-3xl bg-white shadow-2xl"
+            className="flex flex-col max-h-[85vh] w-full max-w-4xl rounded-3xl bg-white shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-start justify-between border-b border-gray-100 px-8 py-6">
+            <div className="flex items-start justify-between border-b border-gray-100 px-8 py-6 shrink-0">
               <div>
                 <h3 className="text-2xl font-bold text-[#2d3343]">模拟攻击报告预览</h3>
                 <p className="mt-1 text-sm text-gray-400">{preview.target_url}</p>
@@ -238,7 +261,7 @@ const Reports: React.FC = () => {
               </button>
             </div>
 
-            <div className="space-y-6 overflow-y-auto px-8 py-6">
+            <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6" style={{ maxHeight: 'calc(85vh - 100px)' }}>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                 <div className="rounded-2xl bg-orange-50 p-4">
                   <div className="text-xs text-gray-400">验证模式</div>
@@ -294,7 +317,13 @@ const Reports: React.FC = () => {
 
               <div className="rounded-2xl border border-gray-100 p-5">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-bold text-[#2d3343]">典型漏洞与可利用性证明</h4>
+                  <div className="flex items-center gap-3">
+                    <h4 className="text-sm font-bold text-[#2d3343]">典型漏洞与可利用性证明</h4>
+                    <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-500">
+                      共 {preview.vulnerabilities.length} 项
+                      {visibleVulnCount < preview.vulnerabilities.length && ` (已显示 ${visibleVulnCount})`}
+                    </span>
+                  </div>
                   <button
                     onClick={() => window.open(getApiResourceUrl(`/reports/${preview.task_id}/html`), '_blank')}
                     className="text-sm font-semibold text-[#ff6b00] transition-colors hover:text-[#e66000]"
@@ -308,7 +337,8 @@ const Reports: React.FC = () => {
                       当前报告未发现可展示的漏洞验证记录。
                     </div>
                   ) : (
-                    preview.vulnerabilities.slice(0, 5).map((vuln) => (
+                    <>
+                      {preview.vulnerabilities.slice(0, visibleVulnCount).map((vuln) => (
                       <div key={vuln.id} className="rounded-2xl bg-gray-50 p-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
@@ -331,7 +361,26 @@ const Reports: React.FC = () => {
                         </div>
                         <p className="mt-3 text-sm text-gray-500">{vuln.description || '暂无详细验证摘要。'}</p>
                       </div>
-                    ))
+                    ))}
+                    
+                    {/* 渐进式加载控制按钮 */}
+                    {visibleVulnCount < preview.vulnerabilities.length && (
+                      <div className="flex items-center justify-center gap-3 pt-4 border-t border-gray-100">
+                        <button
+                          onClick={handleLoadMoreVulns}
+                          className="px-6 py-2.5 bg-[#ff6b00] text-white rounded-xl text-sm font-bold hover:bg-[#e66000] transition-all shadow-sm hover:shadow-md"
+                        >
+                          加载更多 ({Math.min(VULN_BATCH_SIZE, preview.vulnerabilities.length - visibleVulnCount)} 项)
+                        </button>
+                        <button
+                          onClick={handleShowAllVulns}
+                          className="px-6 py-2.5 bg-gray-100 text-[#2d3343] rounded-xl text-sm font-semibold hover:bg-gray-200 transition-all"
+                        >
+                          显示全部 ({preview.vulnerabilities.length - visibleVulnCount} 项剩余)
+                        </button>
+                      </div>
+                    )}
+                  </>
                   )}
                 </div>
               </div>

@@ -682,44 +682,95 @@ class ReportGenerator:
         FONT_NAME = 'ChineseFont'
         
         def register_chinese_font():
-            """注册中文字体，按优先级尝试多个字体"""
-            font_candidates = []
+            """注册中文字体，按优先级尝试多种方式和字体"""
             
-            if platform.system() == 'Windows':
-                font_candidates = [
-                    (r'C:\Windows\Fonts\simsun.ttc', 0),
-                    (r'C:\Windows\Fonts\msyh.ttc', 0),
-                    (r'C:\Windows\Fonts\simhei.ttf', None),
+            def try_register(font_path, font_name, subfont_index=None):
+                """尝试注册单个字体"""
+                if not os.path.exists(font_path):
+                    return False, f"文件不存在: {font_path}"
+                try:
+                    if subfont_index is not None:
+                        pdfmetrics.registerFont(TTFont(font_name, font_path, subfontIndex=subfont_index))
+                    else:
+                        pdfmetrics.registerFont(TTFont(font_name, font_path))
+                    
+                    test_style = ParagraphStyle('Test', fontName=font_name, fontSize=10)
+                    from reportlab.platypus import Paragraph
+                    from io import BytesIO
+                    from reportlab.pdfgen import canvas
+                    buffer = BytesIO()
+                    c = canvas.Canvas(buffer, pagesize=(100, 100))
+                    c.setFont(font_name, 10)
+                    c.drawString(10, 50, "测试中文")
+                    c.save()
+                    return True, f"成功: {font_path}"
+                except Exception as e:
+                    return False, f"{type(e).__name__}: {str(e)}"
+            
+            import subprocess
+            
+            system = platform.system()
+            logger.info(f"当前操作系统: {system}, 尝试注册中文字体...")
+            
+            candidates = []
+            
+            if system == 'Windows':
+                candidates = [
+                    (r'C:\Windows\Fonts\simsun.ttc', 'SimSun', [0]),
+                    (r'C:\Windows\Fonts\msyh.ttc', 'MsYH', [0]),
+                    (r'C:\Windows\Fonts\simhei.ttf', 'SimHei', [None]),
+                    (r'C:\Windows\Fonts\msyhbd.ttc', 'MsYH-Bold', [0]),
+                    (r'C:\Windows\Fonts\simsunb.ttf', 'SimSun-Bold', [None]),
                 ]
-            elif platform.system() == 'Linux':
-                font_candidates = [
-                    ('/usr/share/fonts/truetype/wqy/wqy-microhei.ttc', None),
-                    ('/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc', None),
-                    ('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', 0),
-                    ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', None),
-                    ('/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf', None),
+            elif system == 'Linux':
+                try:
+                    result = subprocess.run(['fc-list', ':lang=zh', 'file'], 
+                                          capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0 and result.stdout.strip():
+                        fonts_found = [line.strip() for line in result.stdout.split('\n') if line.strip()]
+                        logger.info(f"fc-list 找到 {len(fonts_found)} 个中文字体")
+                        for font_file in fonts_found[:10]:
+                            candidates.append((font_file, FONT_NAME, [None, 0]))
+                except Exception as e:
+                    logger.warning(f"fc-list 执行失败: {e}")
+                
+                hardcoded_linux_fonts = [
+                    ('/usr/share/fonts/truetype/wqy/wqy-microhei.ttc', [None, 0]),
+                    ('/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc', [None, 0]),
+                    ('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', [0]),
+                    ('/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf', [None]),
+                    ('/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf', [None]),
+                    ('/usr/share/fonts/truetype/arphic/uming.ttc', [0]),
+                    ('/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf', [None]),
                 ]
-            elif platform.system() == 'Darwin':
-                font_candidates = [
-                    ('/System/Library/Fonts/PingFang.ttc', 0),
-                    ('/System/Library/Fonts/STHeiti Light.ttc', 0),
+                
+                for path, indices in hardcoded_linux_fonts:
+                    candidates.append((path, FONT_NAME, indices))
+                    
+            elif system == 'Darwin':
+                candidates = [
+                    ('/System/Library/Fonts/PingFang.ttc', None),
+                    ('/System/Library/Fonts/STHeiti Light.ttc', None),
+                    ('/System/Library/Fonts/Hiragino Sans GB.ttc', None),
                     ('/Library/Arial Unicode.ttf', None),
                 ]
+                for i, (path, _) in enumerate(candidates):
+                    candidates[i] = (path, FONT_NAME, [None])
             
-            for font_path, subfont_idx in font_candidates:
-                if os.path.exists(font_path):
-                    try:
-                        kwargs = {'fontFileName': font_path}
-                        if subfont_idx is not None:
-                            kwargs['subfontIndex'] = subfont_idx
-                        pdfmetrics.registerFont(TTFont(FONT_NAME, **kwargs))
-                        logger.info(f"成功注册中文字体: {font_path}")
+            seen_paths = set()
+            for font_path, name, indices in candidates:
+                if font_path in seen_paths:
+                    continue
+                seen_paths.add(font_path)
+                
+                for idx in indices:
+                    success, msg = try_register(font_path, name, idx)
+                    logger.info(f"尝试 {font_path} (index={idx}): {msg}")
+                    if success:
+                        logger.info(f"✅ 中文字体注册成功: {font_path}")
                         return True
-                    except Exception as e:
-                        logger.warning(f"字体注册失败 {font_path}: {e}")
-                        continue
             
-            logger.error("无法找到可用的中文字体，PDF中文可能无法正常显示")
+            logger.error("❌ 所有中文字体注册尝试均失败，将使用默认字体")
             return False
         
         font_registered = register_chinese_font()

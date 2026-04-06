@@ -756,7 +756,7 @@ class ScanReportExportView(APIView):
         """导出PDF报告"""
         from django.http import HttpResponse
         from reportlab.lib import colors
-        from reportlab.lib.pagesizes import letter, A4
+        from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.units import inch
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
@@ -765,294 +765,298 @@ class ScanReportExportView(APIView):
         from io import BytesIO
         import os
         import platform
+        import logging
+
+        logger = logging.getLogger(__name__)
 
         # 注册中文字体
+        font_name = 'Helvetica'  # 默认字体
         try:
             # 尝试注册系统字体
+            font_registered = False
             if platform.system() == 'Windows':
-                # Windows系统默认字体路径
-                font_path = r'C:\Windows\Fonts\simsun.ttc'  # 宋体
-                if os.path.exists(font_path):
-                    pdfmetrics.registerFont(TTFont('SimSun', font_path, subfontIndex=0))
-                else:
-                    # 尝试使用其他常用中文字体
-                    for font in ['simhei.ttf', 'msyh.ttf', 'msyhbd.ttf']:
-                        font_path = os.path.join(r'C:\Windows\Fonts', font)
-                        if os.path.exists(font_path):
-                            pdfmetrics.registerFont(TTFont('SimSun', font_path))
-                            break
+                font_paths = [
+                    r'C:\Windows\Fonts\simsun.ttc',
+                    r'C:\Windows\Fonts\msyh.ttc',
+                    r'C:\Windows\Fonts\simhei.ttf'
+                ]
+                for fp in font_paths:
+                    if os.path.exists(fp):
+                        pdfmetrics.registerFont(TTFont('SimSun', fp, subfontIndex=0 if fp.endswith('.ttc') else None))
+                        font_name = 'SimSun'
+                        font_registered = True
+                        break
             elif platform.system() == 'Linux':
-                # Linux系统默认字体路径
-                for font_path in ['/usr/share/fonts/truetype/wqy/wqy-microhei.ttc', 
-                                 '/usr/share/fonts/truetype/simhei.ttf',
-                                 '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf']:
-                    if os.path.exists(font_path):
-                        pdfmetrics.registerFont(TTFont('SimSun', font_path))
+                font_paths = [
+                    '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
+                    '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
+                    '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf',
+                    '/usr/share/fonts/truetype/simhei.ttf'
+                ]
+                for fp in font_paths:
+                    if os.path.exists(fp):
+                        pdfmetrics.registerFont(TTFont('SimSun', fp))
+                        font_name = 'SimSun'
+                        font_registered = True
                         break
             elif platform.system() == 'Darwin':
-                # macOS系统默认字体路径
-                for font_path in ['/System/Library/Fonts/PingFang.ttc', 
-                                 '/Library/Fonts/SimSun.ttf']:
-                    if os.path.exists(font_path):
-                        pdfmetrics.registerFont(TTFont('SimSun', font_path))
+                font_paths = [
+                    '/System/Library/Fonts/PingFang.ttc',
+                    '/Library/Fonts/Arial Unicode.ttf',
+                    '/Library/Fonts/SimSun.ttf'
+                ]
+                for fp in font_paths:
+                    if os.path.exists(fp):
+                        pdfmetrics.registerFont(TTFont('SimSun', fp))
+                        font_name = 'SimSun'
+                        font_registered = True
                         break
+            
+            if not font_registered:
+                logger.warning("未找到合适的中文字体，PDF可能无法正确显示中文")
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"注册中文字体失败: {e}")
 
-        # 创建PDF缓冲区
-        buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4)
-
-        # 获取样式
-        styles = getSampleStyleSheet()
-
-        # 创建自定义样式 - 添加中文字体支持
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Heading1'],
-            fontSize=18,
-            spaceAfter=30,
-            alignment=1,  # 居中
-            textColor=colors.darkblue,
-            fontName='SimSun'  # 使用中文字体
-        )
-
-        heading_style = ParagraphStyle(
-            'CustomHeading',
-            parent=styles['Heading2'],
-            fontSize=14,
-            spaceAfter=20,
-            textColor=colors.darkblue,
-            fontName='SimSun'  # 使用中文字体
-        )
-
-        normal_style = styles['Normal']
-        normal_style.fontSize = 10
-        normal_style.fontName = 'SimSun'  # 使用中文字体
-
-        # 获取数据
-        vulnerabilities = Vulnerability.objects.filter(task=scan_task)
-
-        # 统计数据
-        summary = {
-            "total_vulnerabilities": vulnerabilities.count(),
-            "critical": vulnerabilities.filter(risk_level="critical").count(),
-            "high": vulnerabilities.filter(risk_level="high").count(),
-            "medium": vulnerabilities.filter(risk_level="medium").count(),
-            "low": vulnerabilities.filter(risk_level="low").count(),
-            "pages_scanned": getattr(scan_task, "pages_scanned", 0),
-            "modules_executed": len(scan_task.custom_modules) if scan_task.custom_modules else 5
-        }
-
-        # 获取技术栈信息
-        technology_stack = {}
         try:
-            scan_result = ScanResult.objects.get(task=scan_task)
-            technology_stack = scan_result.technology_stack or {}
-        except ScanResult.DoesNotExist:
-            pass
+            # 创建PDF缓冲区
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=A4, 
+                                  rightMargin=50, leftMargin=50, 
+                                  topMargin=50, bottomMargin=50)
 
-        # 构建PDF内容
-        story = []
+            # 获取样式
+            styles = getSampleStyleSheet()
 
-        # 标题
-        story.append(Paragraph("Web应用程序漏洞检测报告", title_style))
-        story.append(Spacer(1, 20))
+            # 创建自定义样式
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=22,
+                spaceAfter=30,
+                alignment=1,
+                textColor=colors.darkblue,
+                fontName=font_name
+            )
 
-        # 基本信息表格
-        basic_info_data = [
-            ['任务ID', scan_task.task_id],
-            ['目标URL', scan_task.target_url],
-            ['扫描时间', scan_task.completed_at.strftime("%Y-%m-%d %H:%M:%S") if scan_task.completed_at else "N/A"],
-            ['扫描持续时间', f"{scan_task.duration_seconds()} 秒"],
-        ]
+            heading_style = ParagraphStyle(
+                'CustomHeading',
+                parent=styles['Heading2'],
+                fontSize=16,
+                spaceBefore=15,
+                spaceAfter=15,
+                textColor=colors.darkblue,
+                fontName=font_name,
+                borderPadding=5,
+                borderWidth=0,
+                leftIndent=0
+            )
 
-        basic_table = Table(basic_info_data, colWidths=[2*inch, 4*inch])
-        basic_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
-            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
-        story.append(basic_table)
-        story.append(Spacer(1, 20))
+            normal_style = ParagraphStyle(
+                'CustomNormal',
+                parent=styles['Normal'],
+                fontSize=10,
+                fontName=font_name,
+                leading=14
+            )
 
-        # 扫描概览
-        story.append(Paragraph("扫描概览", heading_style))
+            table_header_style = ParagraphStyle(
+                'TableHeader',
+                parent=styles['Normal'],
+                fontSize=10,
+                fontName=font_name,
+                textColor=colors.whitesmoke,
+                alignment=1
+            )
 
-        overview_data = [
-            ['扫描页面数', str(summary['pages_scanned'])],
-            ['执行模块数', str(summary['modules_executed'])],
-            ['服务器信息', technology_stack.get('server', '未知')],
-            ['编程语言', technology_stack.get('language', '未知')],
-            ['框架', technology_stack.get('framework', '未知')],
-            ['数据库', technology_stack.get('database', '未知')],
-        ]
+            # 获取数据
+            vulnerabilities = Vulnerability.objects.filter(task=scan_task)
 
-        overview_table = Table(overview_data, colWidths=[2*inch, 4*inch])
-        overview_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
-            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
-        story.append(overview_table)
-        story.append(Spacer(1, 20))
+            # 统计数据
+            summary = {
+                "total_vulnerabilities": vulnerabilities.count(),
+                "critical": vulnerabilities.filter(risk_level="critical").count(),
+                "high": vulnerabilities.filter(risk_level="high").count(),
+                "medium": vulnerabilities.filter(risk_level="medium").count(),
+                "low": vulnerabilities.filter(risk_level="low").count(),
+                "pages_scanned": getattr(scan_task, "pages_scanned", 0),
+                "modules_executed": len(scan_task.custom_modules) if scan_task.custom_modules else 5
+            }
 
-        # 漏洞统计
-        story.append(Paragraph("漏洞统计", heading_style))
+            # 获取技术栈信息
+            technology_stack = {}
+            try:
+                scan_result = ScanResult.objects.get(task=scan_task)
+                technology_stack = scan_result.technology_stack or {}
+            except ScanResult.DoesNotExist:
+                pass
 
-        stats_data = [
-            ['总漏洞数', str(summary['total_vulnerabilities'])],
-            ['危急漏洞', str(summary['critical'])],
-            ['高危漏洞', str(summary['high'])],
-            ['中危漏洞', str(summary['medium'])],
-            ['低危漏洞', str(summary['low'])],
-        ]
+            # 构建PDF内容
+            story = []
 
-        stats_table = Table(stats_data, colWidths=[2*inch, 4*inch])
-        stats_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
-            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
-        story.append(stats_table)
-        story.append(Spacer(1, 20))
+            # 标题
+            story.append(Paragraph("Aegis 安全检测报告", title_style))
+            story.append(Spacer(1, 20))
 
-        # 漏洞详情
-        if vulnerabilities.exists():
-            story.append(Paragraph("漏洞详情", heading_style))
+            # 基本信息
+            story.append(Paragraph("1. 任务基本信息", heading_style))
+            basic_info_data = [
+                [Paragraph('<b>任务ID</b>', normal_style), Paragraph(scan_task.task_id, normal_style)],
+                [Paragraph('<b>目标URL</b>', normal_style), Paragraph(scan_task.target_url, normal_style)],
+                [Paragraph('<b>扫描时间</b>', normal_style), Paragraph(scan_task.completed_at.strftime("%Y-%m-%d %H:%M:%S") if scan_task.completed_at else "N/A", normal_style)],
+                [Paragraph('<b>扫描时长</b>', normal_style), Paragraph(f"{scan_task.duration_seconds()} 秒", normal_style)],
+            ]
 
-            for idx, vuln in enumerate(vulnerabilities, start=1):
-                # 漏洞标题
+            basic_table = Table(basic_info_data, colWidths=[1.5*inch, 4.5*inch])
+            basic_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 10),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+            ]))
+            story.append(basic_table)
+            story.append(Spacer(1, 20))
+
+            # 扫描概览
+            story.append(Paragraph("2. 扫描概览", heading_style))
+            overview_data = [
+                [Paragraph('<b>扫描页面数</b>', normal_style), Paragraph(str(summary['pages_scanned']), normal_style)],
+                [Paragraph('<b>执行模块数</b>', normal_style), Paragraph(str(summary['modules_executed']), normal_style)],
+                [Paragraph('<b>服务器信息</b>', normal_style), Paragraph(technology_stack.get('server', '未知'), normal_style)],
+                [Paragraph('<b>编程语言</b>', normal_style), Paragraph(technology_stack.get('language', '未知'), normal_style)],
+                [Paragraph('<b>框架/数据库</b>', normal_style), Paragraph(f"{technology_stack.get('framework', '未知')} / {technology_stack.get('database', '未知')}", normal_style)],
+            ]
+
+            overview_table = Table(overview_data, colWidths=[1.5*inch, 4.5*inch])
+            overview_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 10),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+            ]))
+            story.append(overview_table)
+            story.append(Spacer(1, 20))
+
+            # 漏洞统计
+            story.append(Paragraph("3. 漏洞统计", heading_style))
+            stats_data = [
+                [Paragraph('<b>风险等级</b>', table_header_style), Paragraph('<b>数量</b>', table_header_style)],
+                [Paragraph('危急 (Critical)', normal_style), Paragraph(str(summary['critical']), normal_style)],
+                [Paragraph('高危 (High)', normal_style), Paragraph(str(summary['high']), normal_style)],
+                [Paragraph('中危 (Medium)', normal_style), Paragraph(str(summary['medium']), normal_style)],
+                [Paragraph('低危 (Low)', normal_style), Paragraph(str(summary['low']), normal_style)],
+                [Paragraph('<b>总计</b>', normal_style), Paragraph(f"<b>{summary['total_vulnerabilities']}</b>", normal_style)],
+            ]
+
+            stats_table = Table(stats_data, colWidths=[3*inch, 3*inch])
+            stats_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (1, 0), colors.darkblue),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('ALIGN', (1, 1), (1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ]))
+            story.append(stats_table)
+            story.append(Spacer(1, 20))
+
+            # 漏洞详情
+            if vulnerabilities.exists():
+                story.append(PageBreak())
+                story.append(Paragraph("4. 漏洞详情", heading_style))
+
                 risk_colors = {
                     'critical': colors.red,
                     'high': colors.orange,
-                    'medium': colors.yellow,
+                    'medium': colors.goldenrod,
                     'low': colors.green,
                     'info': colors.blue
                 }
 
-                vuln_title = f"{idx}. [{vuln.risk_level.upper()}] {vuln.name} (CVSS: {vuln.cvss_score})"
-                story.append(Paragraph(vuln_title, ParagraphStyle(
-                    'VulnTitle',
-                    parent=styles['Heading3'],
-                    fontSize=12,
-                    textColor=risk_colors.get(vuln.risk_level, colors.black),
-                    spaceAfter=10,
-                    fontName='SimSun'  # 使用中文字体
-                )))
-
-                # 漏洞详细信息表格
-                vuln_data = [
-                    ['漏洞类型', vuln.type],
-                    ['风险等级', vuln.risk_level],
-                    ['CVSS评分', str(vuln.cvss_score)],
-                    ['CVSS向量', vuln.cvss_vector or 'N/A'],
-                    ['URL', vuln.url],
-                    ['请求方法', vuln.method],
-                ]
-
-                if vuln.parameter:
-                    vuln_data.append(['参数', vuln.parameter])
-
-                if vuln.payload and include_evidence:
-                    vuln_data.append(['攻击载荷', vuln.payload])
-
-                vuln_data.extend([
-                    ['发现时间', vuln.detected_at.strftime("%Y-%m-%d %H:%M:%S") if vuln.detected_at else 'N/A'],
-                    ['漏洞描述', vuln.description or 'N/A'],
-                    ['修复建议', vuln.remediation or 'N/A'],
-                    ['证据', vuln.evidence or '无证据详情'],
-                ])
-
-                # 处理长文本，限制表格单元格宽度
-                max_width = 4*inch
-                wrapped_data = []
-                for row in vuln_data:
-                    if len(str(row[1])) > 100:  # 如果内容太长，进行截断
-                        wrapped_content = str(row[1])[:100] + "..."
-                    else:
-                        wrapped_content = str(row[1])
-                    wrapped_data.append([row[0], wrapped_content])
-
-                vuln_table = Table(wrapped_data, colWidths=[1.5*inch, 4.5*inch])
-                vuln_table.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (0, -1), colors.whitesmoke),
-                    ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                    ('FONTNAME', (0, 0), (-1, -1), 'SimSun'),  # 使用中文字体
-                    ('FONTSIZE', (0, 0), (-1, -1), 9),
-                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
-                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ]))
-                story.append(vuln_table)
-                story.append(Spacer(1, 15))
-
-                # 攻击步骤（如果包含证据）
-                if include_evidence and hasattr(vuln, 'attack_steps') and vuln.attack_steps:
-                    story.append(Paragraph("攻击过程:", ParagraphStyle(
-                        'CustomHeading4',
-                        parent=styles['Heading4'],
-                        fontName='SimSun'  # 使用中文字体
+                for idx, vuln in enumerate(vulnerabilities, start=1):
+                    # 漏洞标题
+                    vuln_title = f"{idx}. [{vuln.risk_level.upper()}] {vuln.name}"
+                    story.append(Paragraph(vuln_title, ParagraphStyle(
+                        'VulnTitle',
+                        parent=styles['Heading3'],
+                        fontSize=14,
+                        textColor=risk_colors.get(vuln.risk_level, colors.black),
+                        spaceBefore=10,
+                        spaceAfter=10,
+                        fontName=font_name
                     )))
-                    for step_idx, step in enumerate(vuln.attack_steps, start=1):
-                        step_text = f"{step_idx}. {step.get('action', '')} (响应码: {step.get('response_code', '')}, 时间: {step.get('response_time_ms', '')}ms)"
-                        story.append(Paragraph(step_text, normal_style))
-                    story.append(Spacer(1, 10))
 
-                # 截图/证据链接（如果包含截图）
-                if include_screenshots and hasattr(vuln, 'screenshots') and vuln.screenshots:
-                    story.append(Paragraph("截图/证据链接:", ParagraphStyle(
-                        'CustomHeading4',
-                        parent=styles['Heading4'],
-                        fontName='SimSun'  # 使用中文字体
-                    )))
-                    for shot_idx, shot in enumerate(vuln.screenshots, start=1):
-                        shot_text = f"图 {shot_idx}: {shot.get('description', '截图')} ({shot.get('url', '#')})"
-                        story.append(Paragraph(shot_text, normal_style))
-                    story.append(Spacer(1, 10))
+                    # 漏洞详细信息表格
+                    vuln_data = [
+                        [Paragraph('<b>漏洞类型</b>', normal_style), Paragraph(vuln.type, normal_style)],
+                        [Paragraph('<b>风险等级</b>', normal_style), Paragraph(vuln.risk_level.upper(), normal_style)],
+                        [Paragraph('<b>CVSS评分</b>', normal_style), Paragraph(f"{vuln.cvss_score} ({vuln.cvss_vector or 'N/A'})", normal_style)],
+                        [Paragraph('<b>发现URL</b>', normal_style), Paragraph(f"{vuln.method} {vuln.url}", normal_style)],
+                    ]
 
-                # 参考资料
-                if vuln.references:
-                    story.append(Paragraph("参考资料:", ParagraphStyle(
-                        'CustomHeading4',
-                        parent=styles['Heading4'],
-                        fontName='SimSun'  # 使用中文字体
-                    )))
-                    for ref in vuln.references:
-                        story.append(Paragraph(f"• {ref}", normal_style))
-                    story.append(Spacer(1, 10))
+                    if vuln.parameter:
+                        vuln_data.append([Paragraph('<b>涉及参数</b>', normal_style), Paragraph(vuln.parameter, normal_style)])
 
-        else:
-            story.append(Paragraph("当前报告未发现漏洞。", normal_style))
+                    if vuln.payload and include_evidence:
+                        vuln_data.append([Paragraph('<b>攻击载荷</b>', normal_style), Paragraph(vuln.payload, normal_style)])
 
-        # 生成PDF
-        doc.build(story)
+                    vuln_data.extend([
+                        [Paragraph('<b>漏洞描述</b>', normal_style), Paragraph(vuln.description or 'N/A', normal_style)],
+                        [Paragraph('<b>修复建议</b>', normal_style), Paragraph(vuln.remediation or 'N/A', normal_style)],
+                        [Paragraph('<b>证据详情</b>', normal_style), Paragraph(vuln.evidence or '无证据详情', normal_style)],
+                    ])
 
-        # 创建HTTP响应
-        response = HttpResponse(content_type="application/pdf")
-        response["Content-Disposition"] = f'attachment; filename="scan_report_{scan_task.task_id}.pdf"'
+                    vuln_table = Table(vuln_data, colWidths=[1.2*inch, 4.8*inch])
+                    vuln_table.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (0, -1), colors.whitesmoke),
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+                        ('TOPPADDING', (0, 0), (-1, -1), 5),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                    ]))
+                    story.append(vuln_table)
+                    story.append(Spacer(1, 15))
 
-        # 获取PDF数据
-        pdf_data = buffer.getvalue()
-        buffer.close()
+                    # 攻击步骤
+                    if include_evidence and vuln.attack_steps:
+                        story.append(Paragraph("<b>攻击过程:</b>", normal_style))
+                        for step_idx, step in enumerate(vuln.attack_steps, start=1):
+                            step_text = f"{step_idx}. {step.get('action', '')} (响应: {step.get('response_code', '')}, 耗时: {step.get('response_time_ms', '')}ms)"
+                            story.append(Paragraph(step_text, ParagraphStyle('Step', parent=normal_style, leftIndent=20)))
+                        story.append(Spacer(1, 10))
 
-        # 写入响应
-        response.write(pdf_data)
-        return response
+                    # 参考资料
+                    if vuln.references:
+                        story.append(Paragraph("<b>参考资料:</b>", normal_style))
+                        for ref in vuln.references:
+                            story.append(Paragraph(f"• {ref}", ParagraphStyle('Ref', parent=normal_style, leftIndent=20)))
+                        story.append(Spacer(1, 10))
+                    
+                    # 漏洞之间添加分割线
+                    if idx < vulnerabilities.count():
+                        story.append(Spacer(1, 10))
+
+            else:
+                story.append(Paragraph("本次扫描未发现任何安全漏洞。", normal_style))
+
+            # 生成PDF
+            doc.build(story)
+
+            # 创建HTTP响应
+            response = HttpResponse(content_type="application/pdf")
+            response["Content-Disposition"] = f'attachment; filename="scan_report_{scan_task.task_id}.pdf"'
+            response.write(buffer.getvalue())
+            buffer.close()
+            return response
+
+        except Exception as e:
+            logger.error(f"生成PDF报告失败: {e}", exc_info=True)
+            from django.http import JsonResponse
+            return JsonResponse({
+                'code': 500,
+                'message': f'Failed to generate PDF report: {str(e)}'
+            }, status=500)
 
     def _export_excel_report(self, scan_task, include_evidence, include_screenshots):
         """

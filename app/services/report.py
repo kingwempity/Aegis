@@ -66,6 +66,48 @@ class ReportGenerator:
         
         return summary
 
+    def _get_status_display(self, status: str) -> str:
+        """
+        将任务状态转换为中文显示
+        
+        Args:
+            status: 任务状态代码
+            
+        Returns:
+            中文状态描述
+        """
+        status_map = {
+            "pending": "等待中",
+            "running": "扫描中",
+            "completed": "已完成",
+            "failed": "失败",
+            "cancelled": "已取消",
+        }
+        return status_map.get(status, status) or "未知"
+
+    def _get_severity_display(self, severity: str) -> str:
+        """
+        将风险等级转换为中文显示
+        
+        Args:
+            severity: 风险等级代码
+            
+        Returns:
+            中文风险等级描述
+        """
+        if not severity:
+            return "未知"
+        
+        sev = severity.lower()
+        severity_map = {
+            "critical": "严重",
+            "high": "高危",
+            "medium": "中危",
+            "low": "低危",
+            "info": "信息",
+        }
+        return severity_map.get(sev, severity)
+
     def generate_html(self, task: ScanTask, filename: str) -> str:
         """
         生成 HTML 报告并返回文件路径
@@ -691,11 +733,26 @@ class ReportGenerator:
         story.append(Spacer(1, 20))
         
         # 基本信息表格
+        scan_duration = ""
+        if task.created_at and task.updated_at:
+            duration = task.updated_at - task.created_at
+            total_seconds = int(duration.total_seconds())
+            hours, remainder = divmod(total_seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            if hours > 0:
+                scan_duration = f"{hours}小时{minutes}分钟{seconds}秒"
+            elif minutes > 0:
+                scan_duration = f"{minutes}分钟{seconds}秒"
+            else:
+                scan_duration = f"{seconds}秒"
+        
         basic_info_data = [
             ['任务ID', str(task.id)],
-            ['目标URL', task.target_url],
-            ['扫描时间', task.updated_at.strftime("%Y-%m-%d %H:%M:%S") if task.updated_at else "N/A"],
-            ['任务状态', task.status],
+            ['目标URL', task.target_url or 'N/A'],
+            ['扫描开始时间', task.created_at.strftime("%Y-%m-%d %H:%M:%S") if task.created_at else "N/A"],
+            ['扫描结束时间', task.updated_at.strftime("%Y-%m-%d %H:%M:%S") if task.updated_at else "N/A"],
+            ['扫描耗时', scan_duration or "N/A"],
+            ['任务状态', self._get_status_display(task.status)],
         ]
         
         basic_table = Table(basic_info_data, colWidths=[2*inch, 4*inch])
@@ -713,13 +770,22 @@ class ReportGenerator:
         # 漏洞统计
         story.append(Paragraph("漏洞统计", heading_style))
         
+        # 计算风险评分
+        risk_score = (
+            summary['critical'] * 10 +
+            summary['high'] * 7 +
+            summary['medium'] * 4 +
+            summary['low'] * 1
+        )
+        
         stats_data = [
             ['总漏洞数', str(summary['total'])],
-            ['严重漏洞', str(summary['critical'])],
-            ['高危漏洞', str(summary['high'])],
-            ['中危漏洞', str(summary['medium'])],
-            ['低危漏洞', str(summary['low'])],
-            ['信息', str(summary['info'])],
+            ['严重漏洞 (Critical)', str(summary['critical'])],
+            ['高危漏洞 (High)', str(summary['high'])],
+            ['中危漏洞 (Medium)', str(summary['medium'])],
+            ['低危漏洞 (Low)', str(summary['low'])],
+            ['信息 (Info)', str(summary['info'])],
+            ['风险评分', f"{risk_score} 分"],
         ]
         
         stats_table = Table(stats_data, colWidths=[2*inch, 4*inch])
@@ -739,7 +805,9 @@ class ReportGenerator:
             story.append(Paragraph("漏洞详情", heading_style))
             
             for idx, vuln in enumerate(task.vulnerabilities, start=1):
-                vuln_title = f"{idx}. [{vuln.severity.upper() if vuln.severity else 'N/A'}] {vuln.vuln_name or vuln.vuln_type or '未知漏洞'}"
+                # 漏洞标题（带风险等级颜色标识）
+                severity_display = self._get_severity_display(vuln.severity)
+                vuln_title = f"{idx}. [{severity_display}] {vuln.vuln_name or vuln.vuln_type or '未知漏洞'}"
                 story.append(Paragraph(vuln_title, ParagraphStyle(
                     'VulnTitle',
                     parent=styles['Heading3'],
@@ -748,13 +816,32 @@ class ReportGenerator:
                     fontName='SimSun'
                 )))
                 
+                # CVSS评分显示
+                cvss_display = "N/A"
+                if vuln.cvss_score is not None:
+                    cvss_display = f"{vuln.cvss_score}/10"
+                
+                # 攻击载荷（截断显示）
+                payload_display = "N/A"
+                if vuln.payload:
+                    payload_str = str(vuln.payload)
+                    if len(payload_str) > 200:
+                        payload_display = payload_str[:200] + "..."
+                    else:
+                        payload_display = payload_str
+                
+                # 漏洞详情表格
                 vuln_data = [
                     ['漏洞类型', vuln.vuln_type or 'N/A'],
-                    ['风险等级', vuln.severity or 'N/A'],
-                    ['URL', vuln.url or 'N/A'],
-                    ['参数', vuln.parameter or 'N/A'],
-                    ['漏洞描述', (vuln.description or 'N/A')[:100]],
-                    ['修复建议', (vuln.remediation or 'N/A')[:100]],
+                    ['风险等级', severity_display],
+                    ['CVSS评分', cvss_display],
+                    ['发现URL', vuln.url or 'N/A'],
+                    ['HTTP方法', vuln.method or 'N/A'],
+                    ['注入参数', vuln.parameter or 'N/A'],
+                    ['检测时间', vuln.detected_at.strftime("%Y-%m-%d %H:%M:%S") if vuln.detected_at else "N/A"],
+                    ['攻击载荷', payload_display],
+                    ['漏洞描述', vuln.description or '暂无详细描述'],
+                    ['修复建议', vuln.remediation or '暂无修复建议'],
                 ]
                 
                 vuln_table = Table(vuln_data, colWidths=[1.5*inch, 4.5*inch])
@@ -770,6 +857,17 @@ class ReportGenerator:
                 story.append(Spacer(1, 15))
         else:
             story.append(Paragraph("当前报告未发现漏洞。", normal_style))
+        
+        # 报告页脚
+        story.append(Spacer(1, 30))
+        story.append(Paragraph("— 报告结束 —", ParagraphStyle(
+            'Footer',
+            parent=styles['Normal'],
+            fontSize=10,
+            alignment=1,
+            textColor=colors.grey,
+            fontName='SimSun'
+        )))
         
         doc.build(story)
         

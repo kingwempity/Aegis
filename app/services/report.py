@@ -739,7 +739,7 @@ class ReportGenerator:
             story.append(Paragraph("漏洞详情", heading_style))
             
             for idx, vuln in enumerate(task.vulnerabilities, start=1):
-                vuln_title = f"{idx}. [{vuln.severity.upper() if vuln.severity else 'N/A'}] {vuln.title or vuln.vuln_type or '未知漏洞'}"
+                vuln_title = f"{idx}. [{vuln.severity.upper() if vuln.severity else 'N/A'}] {vuln.vuln_name or vuln.vuln_type or '未知漏洞'}"
                 story.append(Paragraph(vuln_title, ParagraphStyle(
                     'VulnTitle',
                     parent=styles['Heading3'],

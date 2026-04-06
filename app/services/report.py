@@ -656,7 +656,7 @@ class ReportGenerator:
 
     def generate_pdf(self, task: ScanTask, filename: str) -> str:
         """
-        生成 PDF 报告并返回文件路径
+        生成 PDF 报告并返回文件路径 (Acunetix风格)
         
         Args:
             task: 扫描任务对象
@@ -668,71 +668,194 @@ class ReportGenerator:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib.units import inch
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.units import inch, mm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, HRFlowable
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
+        from reportlab.graphics.shapes import Drawing, Rect, String
+        from reportlab.graphics import renderPDF
         import platform
+        import logging
         
-        # 注册中文字体
-        try:
+        logger = logging.getLogger(__name__)
+        
+        FONT_NAME = 'ChineseFont'
+        
+        def register_chinese_font():
+            """注册中文字体，按优先级尝试多个字体"""
+            font_candidates = []
+            
             if platform.system() == 'Windows':
-                font_path = r'C:\Windows\Fonts\simsun.ttc'
-                if os.path.exists(font_path):
-                    pdfmetrics.registerFont(TTFont('SimSun', font_path, subfontIndex=0))
+                font_candidates = [
+                    (r'C:\Windows\Fonts\simsun.ttc', 0),
+                    (r'C:\Windows\Fonts\msyh.ttc', 0),
+                    (r'C:\Windows\Fonts\simhei.ttf', None),
+                ]
             elif platform.system() == 'Linux':
-                for font_path in ['/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
-                                 '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf']:
-                    if os.path.exists(font_path):
-                        pdfmetrics.registerFont(TTFont('SimSun', font_path))
-                        break
+                font_candidates = [
+                    ('/usr/share/fonts/truetype/wqy/wqy-microhei.ttc', None),
+                    ('/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc', None),
+                    ('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', 0),
+                    ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', None),
+                    ('/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf', None),
+                ]
             elif platform.system() == 'Darwin':
-                for font_path in ['/System/Library/Fonts/PingFang.ttc']:
-                    if os.path.exists(font_path):
-                        pdfmetrics.registerFont(TTFont('SimSun', font_path))
-                        break
-        except Exception:
-            pass
+                font_candidates = [
+                    ('/System/Library/Fonts/PingFang.ttc', 0),
+                    ('/System/Library/Fonts/STHeiti Light.ttc', 0),
+                    ('/Library/Arial Unicode.ttf', None),
+                ]
+            
+            for font_path, subfont_idx in font_candidates:
+                if os.path.exists(font_path):
+                    try:
+                        kwargs = {'fontFileName': font_path}
+                        if subfont_idx is not None:
+                            kwargs['subfontIndex'] = subfont_idx
+                        pdfmetrics.registerFont(TTFont(FONT_NAME, **kwargs))
+                        logger.info(f"成功注册中文字体: {font_path}")
+                        return True
+                    except Exception as e:
+                        logger.warning(f"字体注册失败 {font_path}: {e}")
+                        continue
+            
+            logger.error("无法找到可用的中文字体，PDF中文可能无法正常显示")
+            return False
+        
+        font_registered = register_chinese_font()
         
         output_path = os.path.join(OUTPUT_DIR, filename)
-        doc = SimpleDocTemplate(output_path, pagesize=A4)
+        doc = SimpleDocTemplate(
+            output_path,
+            pagesize=A4,
+            rightMargin=20*mm,
+            leftMargin=20*mm,
+            topMargin=15*mm,
+            bottomMargin=15*mm
+        )
         
         styles = getSampleStyleSheet()
         
-        # 自定义样式
+        acunetix_dark = colors.HexColor('#1a2332')
+        acunetix_primary = colors.HexColor('#ff6b35')
+        acunetix_blue = colors.HexColor('#3b82f6')
+        acunetix_bg = colors.HexColor('#f8fafc')
+        acunetix_border = colors.HexColor('#e2e8f0')
+        acunetix_text = colors.HexColor('#334155')
+        acunetix_text_light = colors.HexColor('#64748b')
+        
+        critical_color = colors.HexColor('#dc2626')
+        high_color = colors.HexColor('#ea580c')
+        medium_color = colors.HexColor('#d97706')
+        low_color = colors.HexColor('#16a34a')
+        info_color = colors.HexColor('#0891b2')
+        
         title_style = ParagraphStyle(
             'CustomTitle',
             parent=styles['Heading1'],
-            fontSize=18,
-            spaceAfter=30,
-            alignment=1,
-            textColor=colors.darkblue,
-            fontName='SimSun'
+            fontSize=22,
+            spaceAfter=6,
+            alignment=0,
+            textColor=colors.white,
+            fontName=FONT_NAME if font_registered else 'Helvetica-Bold',
+            leading=28
         )
         
-        heading_style = ParagraphStyle(
-            'CustomHeading',
+        subtitle_style = ParagraphStyle(
+            'Subtitle',
+            parent=styles['Normal'],
+            fontSize=11,
+            textColor=colors.HexColor('#94a3b8'),
+            fontName=FONT_NAME if font_registered else 'Helvetica',
+            spaceAfter=0
+        )
+        
+        section_title_style = ParagraphStyle(
+            'SectionTitle',
             parent=styles['Heading2'],
             fontSize=14,
-            spaceAfter=20,
-            textColor=colors.darkblue,
-            fontName='SimSun'
+            spaceBefore=16,
+            spaceAfter=10,
+            textColor=acunetix_dark,
+            fontName=FONT_NAME if font_registered else 'Helvetica-Bold',
+            borderPadding=(0, 0, 4, 0)
         )
         
-        normal_style = styles['Normal']
-        normal_style.fontSize = 10
-        normal_style.fontName = 'SimSun'
+        heading3_style = ParagraphStyle(
+            'Heading3',
+            parent=styles['Heading3'],
+            fontSize=12,
+            spaceBefore=8,
+            spaceAfter=6,
+            textColor=acunetix_text,
+            fontName=FONT_NAME if font_registered else 'Helvetica-Bold'
+        )
+        
+        normal_style = ParagraphStyle(
+            'NormalCN',
+            parent=styles['Normal'],
+            fontSize=9.5,
+            fontName=FONT_NAME if font_registered else 'Helvetica',
+            textColor=acunetix_text,
+            leading=14
+        )
+        
+        small_style = ParagraphStyle(
+            'SmallCN',
+            parent=styles['Normal'],
+            fontSize=8.5,
+            fontName=FONT_NAME if font_registered else 'Helvetica',
+            textColor=acunetix_text_light,
+            leading=12
+        )
+        
+        mono_style = ParagraphStyle(
+            'Mono',
+            parent=styles['Normal'],
+            fontSize=8,
+            fontName='Courier',
+            textColor=acunetix_text,
+            backColor=colors.HexColor('#f1f5f9'),
+            leading=11
+        )
+        
+        vuln_title_style = ParagraphStyle(
+            'VulnTitle',
+            parent=styles['Heading3'],
+            fontSize=11,
+            spaceBefore=10,
+            spaceAfter=6,
+            fontName=FONT_NAME if font_registered else 'Helvetica-Bold',
+            textColor=acunetix_dark,
+            leftIndent=0
+        )
         
         summary = self._get_summary(task)
         
-        # 构建PDF内容
         story = []
         
-        # 标题
-        story.append(Paragraph("Web应用程序漏洞检测报告", title_style))
-        story.append(Spacer(1, 20))
+        page_width = A4[0] - 40*mm
         
-        # 基本信息表格
+        header_data = [[
+            Paragraph("<b>🛡️ Web应用程序漏洞检测报告</b>", title_style),
+        ], [
+            Paragraph("Aegis Security Scanner | 自动化漏洞检测与攻击验证系统", subtitle_style),
+        ]]
+        header_table = Table(header_data, colWidths=[page_width])
+        header_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), acunetix_dark),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (0, 0), 24),
+            ('BOTTOMPADDING', (0, 0), (0, 0), 4),
+            ('TOPPADDING', (0, 1), (-1, -1), 0),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 16),
+            ('LEFTPADDING', (0, 0), (-1, -1), 24),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 24),
+        ]))
+        story.append(header_table)
+        
         scan_duration = ""
         if task.created_at and task.updated_at:
             duration = task.updated_at - task.created_at
@@ -746,31 +869,37 @@ class ReportGenerator:
             else:
                 scan_duration = f"{seconds}秒"
         
+        status_display = self._get_status_display(task.status)
+        status_color = colors.HexColor('#16a34a') if task.status == 'COMPLETED' else colors.HexColor('#64748b')
+        
         basic_info_data = [
-            ['任务ID', str(task.id)],
-            ['目标URL', task.target_url or 'N/A'],
-            ['扫描开始时间', task.created_at.strftime("%Y-%m-%d %H:%M:%S") if task.created_at else "N/A"],
-            ['扫描结束时间', task.updated_at.strftime("%Y-%m-%d %H:%M:%S") if task.updated_at else "N/A"],
-            ['扫描耗时', scan_duration or "N/A"],
-            ['任务状态', self._get_status_display(task.status)],
+            [Paragraph("<b>扫描目标</b>", small_style), Paragraph(task.target_url or 'N/A', normal_style)],
+            [Paragraph("<b>任务ID</b>", small_style), Paragraph(str(task.id), normal_style)],
+            [Paragraph("<b>开始时间</b>", small_style), Paragraph(task.created_at.strftime("%Y-%m-%d %H:%M:%S") if task.created_at else "N/A", normal_style)],
+            [Paragraph("<b>结束时间</b>", small_style), Paragraph(task.updated_at.strftime("%Y-%m-%d %H:%M:%S") if task.updated_at else "N/A", normal_style)],
+            [Paragraph("<b>扫描耗时</b>", small_style), Paragraph(scan_duration or "N/A", normal_style)],
+            [Paragraph("<b>任务状态</b>", small_style), Paragraph(f"<b>{status_display}</b>", ParagraphStyle('Status', parent=normal_style, textColor=status_color))],
         ]
         
-        basic_table = Table(basic_info_data, colWidths=[2*inch, 4*inch])
+        col_w = [page_width * 0.25, page_width * 0.75]
+        basic_table = Table(basic_info_data, colWidths=col_w, rowHeights=[22]*len(basic_info_data))
         basic_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
-            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f1f5f9')),
+            ('TEXTCOLOR', (0, 0), (-1, -1), acunetix_text),
+            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('GRID', (0, 0), (-1, -1), 0.5, acunetix_border),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+            ('ROUNDEDCORNERS', [3, 3, 3, 3]),
         ]))
+        story.append(Spacer(1, 16))
         story.append(basic_table)
-        story.append(Spacer(1, 20))
         
-        # 漏洞统计
-        story.append(Paragraph("漏洞统计", heading_style))
-        
-        # 计算风险评分
         risk_score = (
             summary['critical'] * 10 +
             summary['high'] * 7 +
@@ -778,96 +907,226 @@ class ReportGenerator:
             summary['low'] * 1
         )
         
-        stats_data = [
-            ['总漏洞数', str(summary['total'])],
-            ['严重漏洞 (Critical)', str(summary['critical'])],
-            ['高危漏洞 (High)', str(summary['high'])],
-            ['中危漏洞 (Medium)', str(summary['medium'])],
-            ['低危漏洞 (Low)', str(summary['low'])],
-            ['信息 (Info)', str(summary['info'])],
-            ['风险评分', f"{risk_score} 分"],
+        if risk_score >= 70:
+            risk_label = "高风险"
+            risk_bar_color = critical_color
+        elif risk_score >= 40:
+            risk_label = "中风险"
+            risk_bar_color = high_color
+        elif risk_score > 0:
+            risk_label = "低风险"
+            risk_bar_color = medium_color
+        else:
+            risk_label = "无风险"
+            risk_bar_color = low_color
+        
+        severity_configs = [
+            ('严重', 'CRITICAL', summary['critical'], critical_color),
+            ('高危', 'HIGH', summary['high'], high_color),
+            ('中危', 'MEDIUM', summary['medium'], medium_color),
+            ('低危', 'LOW', summary['low'], low_color),
+            ('信息', 'INFO', summary['info'], info_color),
         ]
         
-        stats_table = Table(stats_data, colWidths=[2*inch, 4*inch])
-        stats_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
-            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
-        story.append(stats_table)
-        story.append(Spacer(1, 20))
+        stats_header = [
+            Paragraph("<b>风险等级</b>", ParagraphStyle('StatsHeader', parent=small_style, textColor=colors.white)),
+            Paragraph("<b>数量</b>", ParagraphStyle('StatsHeader', parent=small_style, textColor=colors.white)),
+            Paragraph("<b>占比</b>", ParagraphStyle('StatsHeader', parent=small_style, textColor=colors.white)),
+        ]
         
-        # 漏洞详情
+        stats_rows = [stats_header]
+        total_vulns = max(summary['total'], 1)
+        for label, eng_label, count, color in severity_configs:
+            pct = (count / total_vulns) * 100 if total_vulns > 0 else 0
+            count_cell = Paragraph(f"<b>{count}</b>", ParagraphStyle('CountCell', parent=normal_style, textColor=color))
+            pct_cell = Paragraph(f"{pct:.1f}%", small_style)
+            label_cell = Paragraph(f"<b>{label}</b><br/><font size=7 color='#94a3b8'>{eng_label}</font>", 
+                                   ParagraphStyle('LabelCell', parent=normal_style, fontSize=9))
+            stats_rows.append([label_cell, count_cell, pct_cell])
+        
+        stats_rows.append([
+            Paragraph("<b>总计</b>", ParagraphStyle('TotalLabel', parent=normal_style, fontSize=10)),
+            Paragraph(f"<b>{summary['total']}</b>", ParagraphStyle('TotalCount', parent=normal_style, fontSize=10, textColor=acunetix_dark)),
+            Paragraph("<b>100%</b>", ParagraphStyle('TotalPct', parent=normal_style, fontSize=10)),
+        ])
+        
+        stats_col_w = [page_width * 0.35, page_width * 0.25, page_width * 0.25]
+        stats_table = Table(stats_rows, colWidths=stats_col_w)
+        stats_style_commands = [
+            ('BACKGROUND', (0, 0), (-1, 0), acunetix_dark),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('GRID', (0, 0), (-1, -1), 0.5, acunetix_border),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f1f5f9')),
+            ('LINEBELOW', (0, -2), (-1, -2), 1.5, acunetix_dark),
+        ]
+        
+        for i, (_, _, count, color) in enumerate(severity_configs, start=1):
+            if count > 0:
+                stats_style_commands.append(('BACKGROUND', (0, i), (-1, i), colors.HexColor('#fff7ed')))
+        
+        stats_table.setStyle(TableStyle(stats_style_commands))
+        
+        story.append(Spacer(1, 16))
+        story.append(Paragraph("📊 漏洞统计摘要", section_title_style))
+        story.append(stats_table)
+        
+        risk_summary_data = [[
+            Paragraph("<b>综合风险评分</b>", normal_style),
+            Paragraph(f"<b><font size=16 color='{risk_bar_color.hexval()}'>{risk_score}</font></b><br/><font size=8 color='#64748b'>/ 100 分</font>", 
+                     ParagraphStyle('RiskScore', parent=normal_style, alignment=1)),
+            Paragraph(f"<b>{risk_label}</b>", ParagraphStyle('RiskLabel', parent=normal_style, textColor=risk_bar_color, alignment=1)),
+        ]]
+        risk_table = Table(risk_summary_data, colWidths=[page_width*0.4, page_width*0.3, page_width*0.3])
+        risk_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#fefce8')),
+            ('BOX', (0, 0), (-1, -1), 1.5, colors.HexColor('#eab308')),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+            ('LEFTPADDING', (0, 0), (-1, -1), 12),
+        ]))
+        story.append(Spacer(1, 10))
+        story.append(risk_table)
+        
         if task.vulnerabilities:
-            story.append(Paragraph("漏洞详情", heading_style))
+            story.append(Spacer(1, 16))
+            story.append(Paragraph("🔍 漏洞详情", section_title_style))
             
             for idx, vuln in enumerate(task.vulnerabilities, start=1):
-                # 漏洞标题（带风险等级颜色标识）
                 severity_display = self._get_severity_display(vuln.severity)
-                vuln_title = f"{idx}. [{severity_display}] {vuln.vuln_name or vuln.vuln_type or '未知漏洞'}"
-                story.append(Paragraph(vuln_title, ParagraphStyle(
-                    'VulnTitle',
-                    parent=styles['Heading3'],
-                    fontSize=12,
-                    spaceAfter=10,
-                    fontName='SimSun'
-                )))
+                sev_lower = (vuln.severity or 'info').lower()
                 
-                # CVSS评分显示
+                sev_color_map = {
+                    'critical': critical_color,
+                    'high': high_color,
+                    'medium': medium_color,
+                    'low': low_color,
+                    'info': info_color,
+                }
+                sev_bg_map = {
+                    'critical': colors.HexColor('#fef2f2'),
+                    'high': colors.HexColor('#fff7ed'),
+                    'medium': colors.HexColor('#fffbeb'),
+                    'low': colors.HexColor('#f0fdf4'),
+                    'info': colors.HexColor('#f0f9ff'),
+                }
+                
+                current_sev_color = sev_color_map.get(sev_lower, info_color)
+                current_sev_bg = sev_bg_map.get(sev_lower, colors.HexColor('#f0f9ff'))
+                
+                vuln_header_data = [[
+                    Paragraph(f"<font color='{current_sev_color.hexval()}'>●</font>  <b>{idx}. [{severity_display}] {vuln.vuln_name or vuln.vuln_type or '未知漏洞'}</b>", vuln_title_style),
+                ]]
+                vuln_header_table = Table(vuln_header_data, colWidths=[page_width])
+                vuln_header_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, -1), current_sev_bg),
+                    ('TOPPADDING', (0, 0), (-1, -1), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 14),
+                    ('BOX', (0, 0), (-1, -1), 0, colors.white),
+                    ('LINEBELOW', (0, 0), (-1, -1), 2, current_sev_color),
+                ]))
+                story.append(vuln_header_table)
+                
                 cvss_display = "N/A"
                 if vuln.cvss_score is not None:
                     cvss_display = f"{vuln.cvss_score}/10"
                 
-                # 攻击载荷（截断显示）
                 payload_display = "N/A"
                 if vuln.payload:
                     payload_str = str(vuln.payload)
-                    if len(payload_str) > 200:
-                        payload_display = payload_str[:200] + "..."
+                    if len(payload_str) > 300:
+                        payload_display = payload_str[:300] + "..."
                     else:
                         payload_display = payload_str
                 
-                # 漏洞详情表格
-                vuln_data = [
-                    ['漏洞类型', vuln.vuln_type or 'N/A'],
-                    ['风险等级', severity_display],
-                    ['CVSS评分', cvss_display],
-                    ['发现URL', vuln.url or 'N/A'],
-                    ['HTTP方法', vuln.method or 'N/A'],
-                    ['注入参数', vuln.parameter or 'N/A'],
-                    ['检测时间', vuln.detected_at.strftime("%Y-%m-%d %H:%M:%S") if vuln.detected_at else "N/A"],
-                    ['攻击载荷', payload_display],
-                    ['漏洞描述', vuln.description or '暂无详细描述'],
-                    ['修复建议', vuln.remediation or '暂无修复建议'],
+                vuln_detail_data = [
+                    [Paragraph("<b>漏洞类型</b>", small_style), Paragraph(vuln.vuln_type or 'N/A', normal_style)],
+                    [Paragraph("<b>风险等级</b>", small_style), 
+                     Paragraph(f"<font color='{current_sev_color.hexval()}'><b>{severity_display.upper()}</b></font>  ({(vuln.severity or 'N/A').upper()})", normal_style)],
+                    [Paragraph("<b>CVSS评分</b>", small_style), Paragraph(cvss_display, normal_style)],
+                    [Paragraph("<b>触发URL</b>", small_style), Paragraph(f"<font face='Courier' size=8>{vuln.url or 'N/A'}</font>", normal_style)],
+                    [Paragraph("<b>HTTP方法</b>", small_style), Paragraph(f"<b>{vuln.method or 'N/A'}</b>", normal_style)],
+                    [Paragraph("<b>注入参数</b>", small_style), Paragraph(f"<font face='Courier' size=8>{vuln.parameter or 'N/A'}</font>", normal_style)],
                 ]
                 
-                vuln_table = Table(vuln_data, colWidths=[1.5*inch, 4.5*inch])
-                vuln_table.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (0, -1), colors.whitesmoke),
-                    ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                    ('FONTSIZE', (0, 0), (-1, -1), 9),
-                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                if vuln.detected_at:
+                    vuln_detail_data.append([
+                        Paragraph("<b>检测时间</b>", small_style), 
+                        Paragraph(vuln.detected_at.strftime("%Y-%m-%d %H:%M:%S"), normal_style)
+                    ])
+                
+                vuln_detail_data.append([Paragraph("<b>攻击载荷</b>", small_style), 
+                                         Paragraph(f"<font face='Courier' size=7.5 color='#475569'>{payload_display}</font>", 
+                                                  ParagraphStyle('PayloadStyle', parent=normal_style, leading=11))])
+                
+                if vuln.description:
+                    vuln_detail_data.append([Paragraph("<b>漏洞描述</b>", small_style), 
+                                             Paragraph(vuln.description, normal_style)])
+                
+                if vuln.remediation:
+                    vuln_detail_data.append([Paragraph("<b>修复建议</b>", small_style), 
+                                             Paragraph(f"<font color='#16a34a'>{vuln.remediation}</font>", normal_style)])
+                
+                vuln_detail_table = Table(vuln_detail_data, colWidths=[page_width * 0.22, page_width * 0.78])
+                vuln_detail_style_cmds = [
+                    ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#fafafa')),
+                    ('TEXTCOLOR', (0, 0), (-1, -1), acunetix_text),
+                    ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+                    ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 8.5),
+                    ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#e2e8f0')),
                     ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ]))
-                story.append(vuln_table)
-                story.append(Spacer(1, 15))
+                    ('TOPPADDING', (0, 0), (-1, -1), 5),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+                ]
+                
+                vuln_detail_table.setStyle(TableStyle(vuln_detail_style_cmds))
+                story.append(vuln_detail_table)
+                story.append(Spacer(1, 10))
         else:
-            story.append(Paragraph("当前报告未发现漏洞。", normal_style))
+            story.append(Spacer(1, 16))
+            no_vuln_data = [[Paragraph("<font size=14 color='#16a34a'>✅ </font><b>未发现任何漏洞</b>", 
+                                        ParagraphStyle('NoVuln', parent=normal_style, alignment=1, fontSize=13))],
+                           [Paragraph("目标应用程序在本次扫描中未检测到安全漏洞。", 
+                                      ParagraphStyle('NoVulnDesc', parent=small_style, alignment=1))]]
+            no_vuln_table = Table(no_vuln_data, colWidths=[page_width])
+            no_vuln_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f0fdf4')),
+                ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#bbf7d0')),
+                ('TOPPADDING', (0, 0), (-1, -1), 20),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 20),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ]))
+            story.append(no_vuln_table)
         
-        # 报告页脚
-        story.append(Spacer(1, 30))
-        story.append(Paragraph("— 报告结束 —", ParagraphStyle(
-            'Footer',
-            parent=styles['Normal'],
-            fontSize=10,
-            alignment=1,
-            textColor=colors.grey,
-            fontName='SimSun'
-        )))
+        story.append(Spacer(1, 24))
+        story.append(HRFlowable(width="100%", thickness=1, color=acunetix_border, spaceBefore=5, spaceAfter=12))
+        
+        footer_data = [[
+            Paragraph(f"<font color='#94a3b8' size=8>本报告由 Aegis Web应用程序漏洞检测系统自动生成 | 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</font>", 
+                     ParagraphStyle('Footer', parent=small_style, alignment=1)),
+        ]]
+        footer_table = Table(footer_data, colWidths=[page_width])
+        footer_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        story.append(footer_table)
         
         doc.build(story)
         

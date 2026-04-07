@@ -19,7 +19,7 @@ import logging
 import asyncio
 import threading
 from typing import List, Optional, Dict, Any, Callable, Awaitable, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import wraps
@@ -201,45 +201,8 @@ class NotificationService:
         self._worker_loop: Optional[asyncio.AbstractEventLoop] = None
         self._worker_running = False
         
-        self._initialize_default_notifications()
         self._register_default_handlers()
         self._start_background_worker()
-    
-    def _initialize_default_notifications(self):
-        """初始化默认通知（示例数据）"""
-        now = datetime.now()
-        self._notifications = [
-            Notification(
-                id=str(uuid.uuid4()),
-                type=NotificationType.SUCCESS.value,
-                category=NotificationCategory.SCAN.value,
-                title="扫描完成",
-                message="目标 example.com 的扫描已完成",
-                time=now - timedelta(minutes=5),
-                read=False,
-                delivery_status="delivered"
-            ),
-            Notification(
-                id=str(uuid.uuid4()),
-                type=NotificationType.WARNING.value,
-                category=NotificationCategory.SCAN.value,
-                title="发现漏洞",
-                message="在 target.com 发现 2 个高危漏洞",
-                time=now - timedelta(minutes=15),
-                read=False,
-                delivery_status="delivered"
-            ),
-            Notification(
-                id=str(uuid.uuid4()),
-                type=NotificationType.INFO.value,
-                category=NotificationCategory.SYSTEM.value,
-                title="系统更新",
-                message="系统已更新至最新版本 v2.1.0",
-                time=now - timedelta(hours=1),
-                read=False,
-                delivery_status="delivered"
-            ),
-        ]
     
     def _register_default_handlers(self):
         """注册默认的事件处理器"""

@@ -108,6 +108,7 @@ export interface Report {
   payload_count: number;
   attack_path_count: number;
   created_at: string;
+  scan_strategy?: string;
 }
 
 export interface ReportPreviewVulnerability {

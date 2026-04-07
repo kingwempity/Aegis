@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api, ScanTask } from '../api';
+import { getScanStrategyMeta } from '../utils/scanStrategy';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
 import { Plus, Eye, StopSquare, Search, Trash2 } from './Icons';
 import ValidationWorkflow from './ValidationWorkflow';
@@ -61,23 +62,6 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
         return <span className="px-2 py-1 bg-red-100 text-red-600 rounded text-[10px] font-bold">验证失败</span>;
       default:
         return <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-[10px] font-bold">等待验证</span>;
-    }
-  };
-
-  const getStrategyLabel = (strategy?: string) => {
-    switch (strategy) {
-      case 'attack_validation':
-        return '模拟攻击验证';
-      case 'full_audit':
-        return '全量攻击验证';
-      case 'focused_probe':
-        return '定向漏洞验证';
-      case 'default':
-      case 'full':
-      case 'fast':
-        return '基础验证式扫描';
-      default:
-        return strategy || '基础验证式扫描';
     }
   };
 
@@ -145,9 +129,21 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
                   <td className="px-8 py-5 text-xs font-bold text-gray-400">#{task.display_id}</td>
                   <td className="px-8 py-5 font-bold text-[#2d3343]">{task.target_url}</td>
                   <td className="px-8 py-5">
-                    <span className="inline-flex rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-[#c25b00]">
-                      {getStrategyLabel(task.scan_strategy)}
-                    </span>
+                    {(() => {
+                      const strategy = getScanStrategyMeta(task.scan_strategy);
+                      return (
+                        <div className="flex flex-col gap-2">
+                          <span className="inline-flex w-fit rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-[#c25b00]">
+                            {strategy.label}
+                          </span>
+                          <div className="text-xs leading-5 text-gray-400">
+                            <span>{strategy.scope}</span>
+                            <span className="mx-1.5">·</span>
+                            <span>{strategy.speed}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="px-8 py-5">{getStatusBadge(task.status)}</td>
                   <td className="px-8 py-5">

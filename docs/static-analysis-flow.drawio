@@ -1,0 +1,172 @@
+<mxfile host="app.diagrams.net" modified="2026-04-09T10:00:00.000Z" agent="Codex" version="24.7.17">
+  <diagram id="aegis-flow" name="Page-1">
+    <mxGraphModel dx="1200" dy="1800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="1654" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="Aegis 数据流程图&lt;br&gt;（按项目源码实际实现：验证式扫描流程）" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=20;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="260" y="20" width="420" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="start" value="开始" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#1f2937;fontColor=#ffffff;strokeColor=#111827;" vertex="1" parent="1">
+          <mxGeometry x="430" y="90" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="n1" value="用户创建扫描任务" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f0fe;strokeColor=#5b8def;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="340" y="210" width="260" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n2" value="任务入库 ScanTask&lt;br/&gt;status = queued" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf7ea;strokeColor=#82b366;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="340" y="310" width="260" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="n3" value="执行器轮询待执行任务&lt;br/&gt;ScanTaskExecutor" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="340" y="420" width="260" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="n4" value="标记任务开始&lt;br/&gt;status = running" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="340" y="530" width="260" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="n5" value="初始化检测流程" style="rhombus;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="385" y="640" width="170" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="laneTitle" value="项目源码中同时存在两套实现" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="275" y="770" width="410" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="leftLabel" value="新扫描引擎（YAML 插件驱动）" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="90" y="810" width="300" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="rightLabel" value="旧扫描引擎（模块化动态检测）" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="560" y="810" width="300" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="l1" value="加载 YAML 漏洞插件" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="90" y="850" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="l2" value="初始探测目标站点" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="90" y="940" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="l3" value="构建攻击上下文&lt;br/&gt;技术栈 / 输入字段 / CSRF" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="90" y="1030" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="l4" value="生成 Payload 变体" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="90" y="1130" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="l5" value="路径优先级排序与动态路径发现" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="90" y="1220" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="l6" value="构造并发送 HTTP 请求" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="90" y="1310" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="l7" value="按 matchers 匹配响应&lt;br/&gt;word / status / regex / size / binary" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="90" y="1400" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="l8" value="命中则生成漏洞结果对象&lt;br/&gt;未命中则继续下一个载荷/路径" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="90" y="1500" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="r1" value="初始化检测模块&lt;br/&gt;SQLi / XSS / CSRF / 上传 / 路径遍历" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="560" y="850" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="r2" value="爬取网站结构" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="560" y="950" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="r3" value="提取页面链接、表单、输入参数" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="560" y="1040" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="r4" value="按模块执行漏洞检测" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="560" y="1130" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="r5" value="分析响应特征&lt;br/&gt;错误信息 / 反射内容 / 文件访问结果" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="560" y="1220" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="r6" value="发现漏洞则写入 Vulnerability&lt;br/&gt;并更新 task.vulnerabilities_found" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="560" y="1320" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="merge" value="汇总扫描结果 / 统计信息 / 技术栈信息" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="315" y="1620" width="310" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="n6" value="写入 ScanResult / ScanLog" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="340" y="1730" width="260" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n7" value="标记任务完成&lt;br/&gt;status = completed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="340" y="1830" width="260" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="n8" value="前端查询结果 / 导出报告" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f0fe;strokeColor=#5b8def;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="340" y="1940" width="260" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="end" value="结束" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#1f2937;fontColor=#ffffff;strokeColor=#111827;" vertex="1" parent="1">
+          <mxGeometry x="430" y="2040" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="start" target="n1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="n1" target="n2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="n2" target="n3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="n3" target="n4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="n4" target="n5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="新引擎" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="n5" target="l1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" value="旧引擎" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="n5" target="r1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="l1" target="l2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="l2" target="l3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="l3" target="l4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="l4" target="l5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="l5" target="l6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="l6" target="l7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="l7" target="l8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e15" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="r1" target="r2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="r2" target="r3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e17" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="r3" target="r4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e18" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="r4" target="r5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e19" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="r5" target="r6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="l8" target="merge">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e21" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="r6" target="merge">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e22" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="merge" target="n6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e23" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="n6" target="n7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e24" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="n7" target="n8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e25" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="n8" target="end">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

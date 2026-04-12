@@ -391,7 +391,7 @@ class ContextAwareEngine:
     # 技术栈特征映射
     TECH_SIGNATURES = {
         "php": ["php", ".php", "X-Powered-By: PHP"],
-        "thinkphp": ["thinkphp", "ThinkPHP", "X-Powered-By: ThinkPHP", "think_session", "think_path"],
+        "thinkphp": ["thinkphp", "ThinkPHP", "X-Powered-By: ThinkPHP", "think_session", "think_path", "Var_Pathinfo", "s=/", "method=\"post\" action=\"/index/index/login\"", "十年磨一剑", "thinkphp_show_page_trace"],
         "drupal": ["drupal", "Drupal", "X-Generator: Drupal", "sites/default/files", "Drupal.settings"],
         "asp": [".asp", ".aspx", "X-AspNet-Version"],
         "java": ["jsp", ".do", "JSESSIONID", "X-Powered-By: Servlet"],

@@ -102,6 +102,43 @@ class ScanStatistics:
         }
 
 
+class ScannerEngineBuilder:
+    """
+    扫描引擎构建器。
+    """
+    def __init__(self, target: str):
+        self.target = target
+        self.strategy = "default"
+        self.enable_learning = True
+        self.enable_discovery = True
+        self.max_concurrent = 10
+        self.timeout = 10.0
+        self.max_depth = 3
+        
+    def with_strategy(self, strategy: str):
+        self.strategy = strategy
+        return self
+        
+    def build(self):
+        return ScannerEngine(
+            target=self.target,
+            strategy=self.strategy,
+            enable_learning=self.enable_learning,
+            enable_discovery=self.enable_discovery,
+            max_concurrent=self.max_concurrent,
+            timeout=self.timeout,
+            max_depth=self.max_depth
+        )
+
+def create_default_engine(target: str):
+    return ScannerEngineBuilder(target).build()
+
+def create_aggressive_engine(target: str):
+    return ScannerEngineBuilder(target).with_strategy("aggressive").build()
+
+def create_stealthy_engine(target: str):
+    return ScannerEngineBuilder(target).with_strategy("stealthy").build()
+
 class ScannerEngine:
     """
     高级漏洞扫描引擎。
@@ -327,224 +364,100 @@ class ScannerEngine:
                     scheduled += 1
                     try:
                         await self._scan_with_plugin(client, plugin, req)
-                        success_count += 1
-                    except Exception as exc:
-                        error_count += 1
-                        logger.error(
-                            f"❌ 顺序任务异常 [{plugin_id}#{req_idx}]: "
-                            f"{type(exc).__name__}: {exc}"
-                        )
+                    except Exception as e:
+                        logger.error(f"❌ 顺序扫描任务失败: {e}")
                 else:
-                    scheduled += 1
                     tasks.append(self._scan_with_plugin(client, plugin, req))
-        
-        logger.info(f"🎯 共调度 {scheduled} 个扫描请求")
+                    scheduled += 1
+                    
+                    if len(tasks) >= self.max_concurrent:
+                        await _gather_pending()
         
         await _gather_pending()
-        
-        logger.info(f"📊 任务执行结果: 成功={success_count}, 失败={error_count}")
-    
-    async def _scan_with_plugin(
-        self,
-        client: httpx.AsyncClient,
-        plugin: Dict[str, Any],
-        request_def: Dict[str, Any],
-    ) -> None:
+        logger.info(f"✅ 插件扫描完成: 成功 {success_count}, 失败 {error_count}, 总计调度 {scheduled}")
+
+    async def _scan_with_plugin(self, client: httpx.AsyncClient, plugin: Dict[str, Any], req_def: Dict[str, Any]) -> None:
         """
-        使用单个插件执行扫描。
-        
-        Args:
-            client: HTTP客户端
-            plugin: 插件配置
-            request_def: 请求定义
+        执行单个插件请求扫描。
         """
         async with self._semaphore:
-            # 生成payload变体
-            payload_variants = self.script_generator.build_payloads(plugin, request_def)
+            method = req_def.get("method", "GET").upper()
+            paths = req_def.get("path", [])
+            headers = req_def.get("headers", {})
+            body = req_def.get("body")
+            matchers = req_def.get("matchers", [])
+            matchers_condition = req_def.get("matchers-condition", "or")
             
-            # 路径优先级排序
-            ranked_paths = self.path_explorer.rank(
-                plugin, request_def, self.target, self._context
-            )
-            
-            for path in ranked_paths:
-                for payload_variant in payload_variants:
-                    await self._try_attack(
-                        client, plugin, request_def, path, payload_variant
-                    )
-    
-    async def _try_attack(
-        self,
-        client: httpx.AsyncClient,
-        plugin: Dict[str, Any],
-        request_def: Dict[str, Any],
-        path: PathCandidate,
-        payload_variant: PayloadVariant,
-    ) -> bool:
-        """
-        尝试单个攻击请求。
-        
-        Args:
-            client: HTTP客户端
-            plugin: 插件配置
-            request_def: 请求定义
-            path: 路径候选
-            payload_variant: payload变体
-            
-        Returns:
-            是否发现漏洞
-        """
-        # 构建请求
-        url = self.script_generator.render_path(path.url, self.target, payload_variant.encoded)
-        method = request_def.get("method", "GET").upper()
-        
-        logger.info(f"🔍 发送请求: {method} {url}")
-        
-        # 构建请求头和请求体
-        headers = dict(request_def.get("headers", {}))
-        body = None
-        
-        if "body" in request_def:
-            body = self.script_generator.render_body(request_def["body"], payload_variant.encoded)
-        
-        # 添加CSRF令牌
-        if self._context and self._context.csrf_token:
-            headers["X-CSRF-Token"] = self._context.csrf_token
-        
-        self._stats.total_requests += 1
-        
-        try:
-            start_time = time.time()
-            resp = await self._request_in_scope(client, method, url, headers, body)
-            response_time = (time.time() - start_time) * 1000
-            
-            self.path_explorer.mark_visited(path.url)
-            self._stats.paths_visited += 1
-            
-            # 记录结果用于学习
-            matchers = request_def.get("matchers", [])
-            matchers_condition = request_def.get("matchers-condition", "or")
-            
-            logger.info(f"  📊 响应状态: {resp.status_code}, 大小: {len(resp.content)} bytes, 时间: {response_time:.0f}ms")
-            
-            is_vulnerable = self._check_matchers(resp, matchers, matchers_condition)
-            
-            if resp.status_code != 200 or is_vulnerable:
-                # 只在非正常响应或发现漏洞时记录内容片段（避免日志过大）
-                content_preview = resp.text[:300] + "..." if len(resp.text) > 300 else resp.text
-                logger.info(f"  📄 响应内容预览: {content_preview}")
-            
-            self.path_explorer.record_result(path.url, is_vulnerable)
-            
-            if is_vulnerable:
-                self._stats.vulnerabilities_found += 1
-                vuln_info = plugin.get("info", {})
+            for path in paths:
+                # 变量替换
+                url = self._resolve_variables(path)
                 
-                result = ScanResult(
-                    vuln_name=vuln_info.get("name", plugin.get("id", "unknown")),
-                    severity=vuln_info.get("severity", "Info"),
-                    url=url,
-                    payload=payload_variant.encoded,
-                    plugin_id=plugin.get("id", "unknown"),
-                    evidence={
-                        "matchers": matchers,
-                        "encoding_used": payload_variant.encoding_type.value,
-                        "mutation_type": payload_variant.mutation_type,
-                        "response_time_ms": response_time,
-                    },
-                    request={
-                        "method": method,
-                        "url": url,
-                        "headers": headers,
-                        "body": body,
-                        "payload_original": payload_variant.original,
-                    },
-                    response={
-                        "status": resp.status_code,
-                        "headers": dict(resp.headers),
-                        "body_snippet": resp.text[:500],
-                    },
-                    context={
-                        "detected_tech": self._context.detected_tech if self._context else [],
-                        "context_score": payload_variant.context_score,
-                    },
-                )
-                
-                self._vulnerabilities.append(result)
-                logger.info(f"  ✅ 发现漏洞: {result.vuln_name} @ {url}")
-                
-                return True
-            
-            # 从响应中发现新路径
-            if self.enable_discovery:
-                discovered = self.path_explorer.discover_paths(resp.text, self.target)
-                self._stats.paths_discovered += len(discovered)
-            
-            self._stats.successful_requests += 1
-            
-        except httpx.ConnectError as e:
-            self._stats.failed_requests += 1
-            logger.error(f"❌ 连接失败 {url}: {e}")
-            
-        except httpx.TimeoutException as e:
-            self._stats.failed_requests += 1
-            logger.warning(f"⏱️ 请求超时: {url} ({self.timeout}s)")
-            
-        except httpx.HTTPStatusError as e:
-            self._stats.failed_requests += 1
-            logger.warning(f"⚠️ HTTP错误 {url}: {e.response.status_code}")
-            
-        except Exception as e:
-            self._stats.failed_requests += 1
-            logger.error(f"❌ 请求异常 {url}: {type(e).__name__}: {e}")
-        
-        return False
-    
+                self._stats.total_requests += 1
+                try:
+                    resp = await self._request_in_scope(client, method, url, headers, body)
+                    self._stats.successful_requests += 1
+                    
+                    if self._check_matchers(resp, matchers, matchers_condition):
+                        result = ScanResult(
+                            vuln_name=plugin.get("info", {}).get("name", "Unknown Vulnerability"),
+                            severity=plugin.get("info", {}).get("severity", "Medium"),
+                            url=url,
+                            payload=body if body else url,
+                            evidence={
+                                "matchers": matchers,
+                                "matchers_condition": matchers_condition,
+                            },
+                            plugin_id=plugin.get("id", "unknown"),
+                            request={"method": method, "url": url, "headers": headers, "body": body},
+                            response={"status": resp.status_code, "body_snippet": resp.text[:1000]}
+                        )
+                        self._vulnerabilities.append(result)
+                        self._stats.vulnerabilities_found += 1
+                        logger.info(f"🔴 发现漏洞: {result.vuln_name} @ {url}")
+                except Exception as e:
+                    self._stats.failed_requests += 1
+                    logger.debug(f"⚠️ 请求失败 {url}: {e}")
+
+    def _resolve_variables(self, template: str) -> str:
+        """替换模板变量"""
+        import datetime
+        now = datetime.datetime.now()
+        vars = {
+            "BaseURL": self.target,
+            "Year": now.strftime("%Y"),
+            "Month": now.strftime("%m"),
+            "Day": now.strftime("%d"),
+        }
+        result = template
+        for k, v in vars.items():
+            result = result.replace("{{" + k + "}}", v)
+        return result
+
     async def _discovery_scan(self, client: httpx.AsyncClient) -> None:
         """
         对发现的路径进行扫描。
-        
-        Args:
-            client: HTTP客户端
         """
         logger.info(f" 开始发现路径扫描...")
-        
-        # 获取优先级排序的发现路径
         discovered_paths = self.path_explorer._discovered_paths
         prioritized = self.path_explorer.get_prioritized_paths(discovered_paths, self.target)
-        
-        # 只扫描前N个高优先级路径
         max_discovery_scan = min(len(prioritized), 50)
         
         for path in prioritized[:max_discovery_scan]:
-            # 检查是否已访问
             if path.url in self.path_explorer._visited:
                 continue
-            
             self._stats.total_requests += 1
-            
             try:
                 resp = await self._request_in_scope(client, "GET", path.url)
                 self.path_explorer.mark_visited(path.url)
                 self._stats.paths_visited += 1
                 self._stats.successful_requests += 1
-                
-                # 检查敏感信息泄露
                 self._check_sensitive_disclosure(path.url, resp)
-                
             except Exception as e:
                 self._stats.failed_requests += 1
                 logger.debug(f" 发现路径请求失败 {path.url}: {e}")
     
     def _check_sensitive_disclosure(self, url: str, response: httpx.Response) -> None:
-        """
-        检查敏感信息泄露。
-        
-        Args:
-            url: 请求URL
-            response: HTTP响应
-        """
-        # 敏感信息模式
+        """检查敏感信息泄露"""
         sensitive_patterns = {
             "api_key": r'(?i)(api[_-]?key|apikey)\s*[:=]\s*["\']?([a-zA-Z0-9_-]{20,})',
             "password": r'(?i)(password|passwd|pwd)\s*[:=]\s*["\']?([^\s"\']{8,})',
@@ -552,9 +465,7 @@ class ScannerEngine:
             "aws_key": r'(?i)(AKIA[0-9A-Z]{16})',
             "private_key": r'-----BEGIN (?:RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----',
         }
-        
         import re
-        
         for pattern_name, pattern in sensitive_patterns.items():
             if re.search(pattern, response.text):
                 result = ScanResult(
@@ -563,76 +474,31 @@ class ScannerEngine:
                     url=url,
                     payload="N/A",
                     plugin_id="discovery-sensitive",
-                    evidence={
-                        "matchers": [{"type": "regex", "pattern": pattern_name}],
-                        "discovered_in": "discovery_scan",
-                    },
+                    evidence={"matchers": [{"type": "regex", "pattern": pattern_name}]},
                     request={"method": "GET", "url": url},
-                    response={
-                        "status": response.status_code,
-                        "body_snippet": response.text[:500],
-                    },
+                    response={"status": response.status_code, "body_snippet": response.text[:500]},
                 )
-                
                 self._vulnerabilities.append(result)
                 self._stats.vulnerabilities_found += 1
                 logger.info(f" 发现敏感信息泄露: {pattern_name} @ {url}")
     
-    async def _request_in_scope(
-        self,
-        client: httpx.AsyncClient,
-        method: str,
-        url: str,
-        headers: Optional[Dict[str, str]] = None,
-        body: Optional[str] = None,
-        max_redirects: int = 5,
-    ) -> httpx.Response:
-        """
-        发送请求并仅跟随同源重定向，避免向目标域外发包。
-        
-        Args:
-            client: HTTP客户端
-            method: HTTP方法
-            url: 请求URL
-            headers: 请求头
-            body: 请求体
-            max_redirects: 最大重定向次数
-            
-        Returns:
-            HTTP响应
-        """
+    async def _request_in_scope(self, client: httpx.AsyncClient, method: str, url: str, headers: Optional[Dict[str, str]] = None, body: Optional[str] = None, max_redirects: int = 5) -> httpx.Response:
+        """发送请求并仅跟随同源重定向"""
         current_url = url
         current_headers = headers or {}
-        
         for _ in range(max_redirects + 1):
-            resp = await client.request(
-                method, current_url, headers=current_headers, content=body
-            )
-            
+            resp = await client.request(method, current_url, headers=current_headers, content=body)
             location = resp.headers.get("location")
-            
             if not location or not (300 <= resp.status_code < 400):
                 return resp
-            
             next_url = urljoin(current_url, location)
-            
             if not self._is_in_scope(next_url):
                 return resp
-            
             current_url = next_url
-        
         return resp
     
     def _is_in_scope(self, url: str) -> bool:
-        """
-        检查URL是否在扫描范围内。
-        
-        Args:
-            url: 待检查的URL
-            
-        Returns:
-            是否在范围内
-        """
+        """检查URL是否在扫描范围内"""
         parsed = urlparse(url)
         return (
             parsed.scheme.lower() == self._target_origin.scheme.lower()
@@ -643,100 +509,61 @@ class ScannerEngine:
     
     @staticmethod
     def _default_port(scheme: str) -> int:
-        """获取协议默认端口"""
         return 443 if scheme.lower() == "https" else 80
     
     def _check_preconditions(self, req: Dict[str, Any]) -> bool:
-        """
-        模板前置条件校验。
-        
-        Args:
-            req: 请求定义
-            
-        Returns:
-            是否满足前置条件
-        """
+        """模板前置条件校验"""
         pre = req.get("preconditions")
         if not pre:
             return True
-        
-        # 检查方法限制
         if isinstance(pre, dict):
             allowed_methods = pre.get("methods")
             if allowed_methods:
                 method = req.get("method", "GET").upper()
                 if method not in {m.upper() for m in allowed_methods}:
                     return False
-            
-            # 检查技术栈条件
             required_tech = pre.get("requires_tech")
             if required_tech and self._context:
-                if not any(tech in self._context.detected_tech for tech in required_tech):
-                    return False
-        
+                # 优化逻辑：如果没有检测到任何技术栈，为了召回率允许扫描
+                # 如果检测到了技术栈但不在要求列表中，为了防误报跳过扫描
+                if self._context.detected_tech:
+                    if not any(tech in self._context.detected_tech for tech in required_tech):
+                        return False
         return True
     
     def _check_matchers(self, resp: httpx.Response, matchers: List[Dict[str, Any]], matchers_condition: str = "or") -> bool:
-        """
-        检查响应是否命中规则。
-        
-        支持的匹配器类型：
-        - word: 关键词匹配
-        - status: 状态码匹配
-        - regex: 正则表达式匹配
-        - size: 响应大小匹配
-        - binary: 二进制内容匹配
-        
-        Args:
-            resp: HTTP响应
-            matchers: 匹配器列表
-            matchers_condition: 匹配器条件（and/or），默认or
-            
-        Returns:
-            是否命中
-        """
+        """检查响应是否命中规则"""
         if not matchers:
             return False
-        
         for m in matchers:
             if not isinstance(m, dict):
                 continue
-            
             mtype = m.get("type")
             hit = False
-            
             if mtype == "word":
                 words = m.get("words", [])
                 part = m.get("part", "body")
                 condition = m.get("condition", "and")
-                
                 content = resp.text if part == "body" else str(resp.headers)
-                
                 if condition == "and":
                     hit = all(w in content for w in words)
                 else:
                     hit = any(w in content for w in words)
-            
             elif mtype == "status":
                 statuses = m.get("status", [])
                 hit = resp.status_code in statuses
-            
             elif mtype == "regex":
                 import re
                 patterns = m.get("regex", [])
                 part = m.get("part", "body")
                 content = resp.text if part == "body" else str(resp.headers)
-                
                 try:
                     hit = all(re.search(p, content) for p in patterns)
                 except re.error:
                     hit = False
-            
             elif mtype == "size":
                 sizes = m.get("size", [])
-                content_length = len(resp.content)
-                hit = content_length in sizes
-            
+                hit = len(resp.content) in sizes
             elif mtype == "binary":
                 binary_patterns = m.get("binary", [])
                 for pattern in binary_patterns:
@@ -746,50 +573,16 @@ class ScannerEngine:
                             break
                     except ValueError:
                         pass
-            
-            # 根据条件处理
             if matchers_condition == "or" and hit:
                 return True
             elif matchers_condition == "and" and not hit:
                 return False
-        
         return matchers_condition == "and"
     
     def _result_to_dict(self, result: ScanResult) -> Dict[str, Any]:
-        """
-        将扫描结果转换为字典格式。
-        
-        包含完整的攻击路径和载荷信息，用于报告生成。
-        
-        Args:
-            result: 扫描结果
-            
-        Returns:
-            字典格式的结果
-        """
-        # 构建攻击路径信息
-        attack_path = {
-            "steps": [
-                {
-                    "step": 1,
-                    "method": result.request.get("method", "GET") if result.request else "GET",
-                    "url": result.url,
-                    "description": self._get_attack_description(result)
-                }
-            ],
-            "request": result.request,
-            "response_summary": {
-                "status": result.response.get("status") if result.response else None,
-                "body_snippet": result.response.get("body_snippet", "")[:500] if result.response else None
-            } if result.response else None
-        }
-        
-        # 提取漏洞类型
+        """将扫描结果转换为字典格式"""
         vuln_type = self._extract_vuln_type(result.plugin_id, result.vuln_name)
-        
-        # 提取参数名
         parameter = self._extract_parameter(result.url, result.request)
-        
         return {
             "vuln_name": result.vuln_name,
             "vuln_type": vuln_type,
@@ -798,248 +591,21 @@ class ScannerEngine:
             "payload": result.payload,
             "parameter": parameter,
             "method": result.request.get("method", "GET") if result.request else "GET",
-            "plugin_id": result.plugin_id,
-            "scan_time": result.scan_time,
             "evidence": result.evidence,
-            "attack_path": attack_path,
             "request": result.request,
             "response": result.response,
-            "context": result.context,
+            "scan_time": result.scan_time,
         }
-    
-    def _get_attack_description(self, result: ScanResult) -> str:
-        """
-        根据漏洞信息生成攻击描述。
-        
-        Args:
-            result: 扫描结果
-            
-        Returns:
-            攻击描述文本
-        """
-        vuln_name = result.vuln_name.lower() if result.vuln_name else ""
-        
-        if "xss" in vuln_name or "cross-site" in vuln_name:
-            return "向目标注入恶意JavaScript代码，验证XSS漏洞存在"
-        elif "sql" in vuln_name or "sqli" in vuln_name:
-            return "向目标发送SQL注入载荷，验证数据库注入漏洞存在"
-        elif "lfi" in vuln_name or "local file" in vuln_name:
-            return "尝试读取本地敏感文件，验证LFI漏洞存在"
-        elif "rfi" in vuln_name or "remote file" in vuln_name:
-            return "尝试包含远程文件，验证RFI漏洞存在"
-        elif "ssrf" in vuln_name or "server-side" in vuln_name:
-            return "构造服务端请求，验证SSRF漏洞存在"
-        elif "traversal" in vuln_name or "path" in vuln_name:
-            return "使用路径穿越序列访问敏感文件"
-        elif "xxe" in vuln_name or "xml" in vuln_name:
-            return "注入恶意XML实体，验证XXE漏洞存在"
-        elif "cmd" in vuln_name or "rce" in vuln_name or "command" in vuln_name:
-            return "注入系统命令，验证命令执行漏洞存在"
-        elif "redirect" in vuln_name:
-            return "构造恶意重定向URL，验证开放重定向漏洞存在"
-        elif "sensitive" in vuln_name or "disclosure" in vuln_name:
-            return "访问敏感资源，验证信息泄露漏洞存在"
-        else:
-            return "向目标发送恶意请求，验证漏洞存在"
-    
+
     def _extract_vuln_type(self, plugin_id: str, vuln_name: str) -> str:
-        """
-        从插件ID和漏洞名称提取漏洞类型。
-        
-        Args:
-            plugin_id: 插件ID
-            vuln_name: 漏洞名称
-            
-        Returns:
-            漏洞类型字符串
-        """
-        combined = f"{plugin_id} {vuln_name}".lower()
-        
-        if "xss" in combined or "cross-site" in combined:
-            return "XSS"
-        elif "sql" in combined or "sqli" in combined:
-            return "SQL注入"
-        elif "lfi" in combined or "local file" in combined:
-            return "LFI"
-        elif "rfi" in combined or "remote file" in combined:
-            return "RFI"
-        elif "ssrf" in combined or "server-side" in combined:
-            return "SSRF"
-        elif "traversal" in combined or "path" in combined:
-            return "路径穿越"
-        elif "xxe" in combined or "xml" in combined:
-            return "XXE"
-        elif "cmd" in combined or "rce" in combined or "command" in combined:
-            return "命令注入"
-        elif "redirect" in combined:
-            return "开放重定向"
-        elif "sensitive" in combined or "disclosure" in combined:
-            return "信息泄露"
-        else:
-            return "其他"
-    
-    def _extract_parameter(self, url: str, request: Optional[Dict[str, Any]]) -> str:
-        """
-        从URL或请求中提取参数名。
-        
-        Args:
-            url: 请求URL
-            request: 请求详情
-            
-        Returns:
-            参数名字符串
-        """
-        import re
+        if "sqli" in plugin_id or "SQL Injection" in vuln_name: return "SQL Injection"
+        if "xss" in plugin_id or "XSS" in vuln_name: return "Cross-Site Scripting"
+        if "file-upload" in plugin_id: return "Unrestricted File Upload"
+        return "Other"
+
+    def _extract_parameter(self, url: str, request: Dict[str, Any]) -> str:
         from urllib.parse import urlparse, parse_qs
-        
-        # 从URL查询参数提取
-        try:
-            parsed = urlparse(url)
-            if parsed.query:
-                params = list(parse_qs(parsed.query).keys())
-                if params:
-                    return params[0]
-        except Exception:
-            pass
-        
-        # 从路径参数提取
-        path_params = re.findall(r'\{(\w+)\}|\[(\w+)\]', url)
-        if path_params:
-            return path_params[0][0] or path_params[0][1]
-        
-        # 从请求体提取
-        if request and request.get("body"):
-            body = request["body"]
-            # 表单数据
-            if "=" in body:
-                match = re.match(r'(\w+)=', body)
-                if match:
-                    return match.group(1)
-        
-        return "unknown"
-    
-    def get_statistics(self) -> Dict[str, Any]:
-        """
-        获取扫描统计信息。
-        
-        Returns:
-            统计信息字典
-        """
-        stats = self._stats.to_dict()
-        stats["explorer_stats"] = self.path_explorer.get_statistics()
-        return stats
-
-
-class ScannerEngineBuilder:
-    """
-    扫描引擎构建器。
-    
-    提供流式API构建扫描引擎实例。
-    
-    使用示例：
-        engine = (
-            ScannerEngineBuilder()
-            .target("http://example.com")
-            .with_strategy("aggressive")
-            .enable_learning(True)
-            .enable_discovery(True)
-            .with_timeout(15.0)
-            .build()
-        )
-    """
-    
-    def __init__(self):
-        """初始化构建器"""
-        self._target: Optional[str] = None
-        self._strategy: str = "default"
-        self._plugin_dir: str = "/app/scanner/plugins"
-        self._enable_learning: bool = True
-        self._enable_discovery: bool = True
-        self._max_concurrent: int = 10
-        self._timeout: float = 10.0
-        self._max_depth: int = 3
-    
-    def target(self, url: str) -> "ScannerEngineBuilder":
-        """设置目标URL"""
-        self._target = url
-        return self
-    
-    def with_strategy(self, strategy: str) -> "ScannerEngineBuilder":
-        """设置扫描策略"""
-        self._strategy = strategy
-        return self
-    
-    def with_plugin_dir(self, plugin_dir: str) -> "ScannerEngineBuilder":
-        """设置插件目录"""
-        self._plugin_dir = plugin_dir
-        return self
-    
-    def enable_learning(self, enabled: bool) -> "ScannerEngineBuilder":
-        """设置是否启用学习"""
-        self._enable_learning = enabled
-        return self
-    
-    def enable_discovery(self, enabled: bool) -> "ScannerEngineBuilder":
-        """设置是否启用路径发现"""
-        self._enable_discovery = enabled
-        return self
-    
-    def with_max_concurrent(self, max_concurrent: int) -> "ScannerEngineBuilder":
-        """设置最大并发数"""
-        self._max_concurrent = max_concurrent
-        return self
-    
-    def with_timeout(self, timeout: float) -> "ScannerEngineBuilder":
-        """设置超时时间"""
-        self._timeout = timeout
-        return self
-    
-    def with_max_depth(self, max_depth: int) -> "ScannerEngineBuilder":
-        """设置最大深度"""
-        self._max_depth = max_depth
-        return self
-    
-    def build(self) -> ScannerEngine:
-        """构建扫描引擎实例"""
-        if not self._target:
-            raise ValueError("Target URL is required")
-        
-        return ScannerEngine(
-            target=self._target,
-            strategy=self._strategy,
-            plugin_dir=self._plugin_dir,
-            enable_learning=self._enable_learning,
-            enable_discovery=self._enable_discovery,
-            max_concurrent=self._max_concurrent,
-            timeout=self._timeout,
-            max_depth=self._max_depth,
-        )
-
-
-# 便捷函数
-def create_default_engine(target: str) -> ScannerEngine:
-    """创建默认配置的扫描引擎"""
-    return ScannerEngine(target=target)
-
-
-def create_aggressive_engine(target: str) -> ScannerEngine:
-    """创建激进模式的扫描引擎"""
-    return ScannerEngine(
-        target=target,
-        strategy="aggressive",
-        enable_learning=True,
-        enable_discovery=True,
-        max_concurrent=20,
-    )
-
-
-def create_stealthy_engine(target: str) -> ScannerEngine:
-    """创建隐蔽模式的扫描引擎"""
-    return ScannerEngine(
-        target=target,
-        strategy="stealthy",
-        enable_learning=False,
-        enable_discovery=False,
-        max_concurrent=3,
-        timeout=30.0,
-    )
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+        if params: return list(params.keys())[0]
+        return "N/A"

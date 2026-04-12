@@ -36,11 +36,11 @@ const NewScanModal: React.FC<NewScanModalProps> = ({ isOpen, onClose, onSuccess 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl p-8 animate-in fade-in zoom-in duration-300">
-        <div className="flex justify-between items-center mb-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-[90vh] p-8 animate-in fade-in zoom-in duration-300 overflow-y-auto overflow-x-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-6 sticky top-0 bg-white z-10 pb-2">
           <h3 className="text-xl font-bold text-[#2d3343]">新建模拟攻击验证任务</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0 rounded-full p-1 hover:bg-gray-100">
             <X size={24} />
           </button>
         </div>

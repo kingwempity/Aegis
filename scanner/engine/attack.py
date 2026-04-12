@@ -391,6 +391,8 @@ class ContextAwareEngine:
     # 技术栈特征映射
     TECH_SIGNATURES = {
         "php": ["php", ".php", "X-Powered-By: PHP"],
+        "thinkphp": ["thinkphp", "ThinkPHP", "X-Powered-By: ThinkPHP", "think_session", "think_path"],
+        "drupal": ["drupal", "Drupal", "X-Generator: Drupal", "sites/default/files", "Drupal.settings"],
         "asp": [".asp", ".aspx", "X-AspNet-Version"],
         "java": ["jsp", ".do", "JSESSIONID", "X-Powered-By: Servlet"],
         "python": ["wsgi", "python", "csrfmiddlewaretoken"],
@@ -529,7 +531,7 @@ class ContextAwareEngine:
         suggestions = [EncodingType.NONE]
         
         # 根据检测到的技术栈调整编码策略
-        if "php" in context.detected_tech:
+        if "php" in context.detected_tech or "thinkphp" in context.detected_tech:
             suggestions.append(EncodingType.URL)
             if payload_type == PayloadType.SQLI:
                 suggestions.append(EncodingType.HEX)
@@ -613,6 +615,8 @@ class AttackScriptGenerator:
         "{{RandomAlpha}}": lambda ctx: ''.join(random.choices(string.ascii_letters + string.digits, k=8)),
         "{{RandomUUID}}": lambda ctx: str(__import__("uuid").uuid4()),
         "{{MD5}}": lambda ctx: hashlib.md5(str(random.random()).encode()).hexdigest(),
+        "{{Year}}": lambda ctx: time.strftime("%Y"),
+        "{{Month}}": lambda ctx: time.strftime("%m"),
         "{{NewLine}}": lambda ctx: "\n",
         "{{CRLF}}": lambda ctx: "\r\n",
         "{{Tab}}": lambda ctx: "\t",
@@ -756,14 +760,16 @@ class AttackScriptGenerator:
                 score += 0.1
         
         # 检查技术栈匹配
-        if "mysql" in self._context.detected_tech and payload_type == PayloadType.SQLI:
-            score += 0.2
+        if ("mysql" in self._context.detected_tech or "thinkphp" in self._context.detected_tech) and payload_type == PayloadType.SQLI:
+            score += 0.3
         if "php" in self._context.detected_tech and payload_type == PayloadType.LFI:
+            score += 0.2
+        if "drupal" in self._context.detected_tech:
             score += 0.2
         
         return min(score, 1.0)
     
-    def render_path(self, raw_path: str, base_url: str, payload: str) -> str:
+    def render_path(self, raw_path: str, base_url: str, payload: Optional[str] = None) -> str:
         """
         渲染模板变量。
         
@@ -779,7 +785,8 @@ class AttackScriptGenerator:
         
         # 替换内置变量
         result = result.replace("{{BaseURL}}", base_url.rstrip("/"))
-        result = result.replace("{{payload}}", payload)
+        if payload is not None:
+            result = result.replace("{{payload}}", payload)
         
         # 替换其他内置变量
         for var, getter in self.BUILTIN_VARIABLES.items():
@@ -792,7 +799,7 @@ class AttackScriptGenerator:
         
         return result
     
-    def render_body(self, body_template: str, payload: str) -> str:
+    def render_body(self, body_template: str, payload: Optional[str] = None) -> str:
         """
         渲染请求体模板。
         
@@ -803,7 +810,9 @@ class AttackScriptGenerator:
         Returns:
             渲染后的请求体
         """
-        result = body_template.replace("{{payload}}", payload)
+        result = body_template
+        if payload is not None:
+            result = result.replace("{{payload}}", payload)
         
         # 替换其他内置变量
         for var, getter in self.BUILTIN_VARIABLES.items():
@@ -838,17 +847,25 @@ class AttackScriptGenerator:
             if self._context and self._context.csrf_token:
                 headers["X-CSRF-Token"] = self._context.csrf_token
             
-            # 构建请求体
+                 # 构建请求体
             body = None
             if "body" in request_def:
                 body = self.render_body(request_def["body"], payload_variant.encoded)
             
-            requests.append({
+            # 处理 multipart/form-data
+            if headers.get("Content-Type") == "multipart/form-data":
+                # 简单替换 boundary，如果 body 中包含 boundary 占位符
+                if "------WebKitFormBoundary" in (body or ""):
+                    boundary = "----AegisBoundary" + ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+                    headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
+                    body = body.replace("------WebKitFormBoundary", "--" + boundary)
+            
+            return {
                 "url": url,
                 "method": method,
                 "headers": headers,
                 "body": body,
-            })
+            }   })
         
         return requests[0] if requests else {}
 

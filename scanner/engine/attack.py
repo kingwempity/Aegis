@@ -860,12 +860,12 @@ class AttackScriptGenerator:
                     headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
                     body = body.replace("------WebKitFormBoundary", "--" + boundary)
             
-            return {
+            requests.append({
                 "url": url,
                 "method": method,
                 "headers": headers,
                 "body": body,
-            }   })
+            })
         
         return requests[0] if requests else {}
 

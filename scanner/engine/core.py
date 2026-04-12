@@ -289,39 +289,60 @@ class ScannerEngine:
         
         logger.info(f"🔧 开始执行插件扫描 - 共 {len(self.plugins)} 个插件")
         
-        for plugin in self.plugins:
-            plugin_id = plugin.get("id", "unknown")
-            plugin_name = plugin.get("info", {}).get("name", "unknown")
-            requests_list = plugin.get("requests", [])
-            
-            logger.info(f"  📦 插件: {plugin_id} ({plugin_name}) - {len(requests_list)} 个请求")
-            
-            for req_idx, req in enumerate(requests_list):
-                if not self._check_preconditions(req):
-                    logger.debug(f"    ⏭️ 跳过请求 {req_idx}: 不满足前置条件")
-                    continue
-                
-                # 创建扫描任务
-                task = self._scan_with_plugin(client, plugin, req)
-                tasks.append(task)
+        success_count = 0
+        error_count = 0
+        scheduled = 0
         
-        logger.info(f"🎯 共创建 {len(tasks)} 个扫描任务")
-        
-        # 并发执行所有任务
-        if tasks:
+        async def _gather_pending() -> None:
+            nonlocal tasks, success_count, error_count
+            if not tasks:
+                return
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            # 检查并记录异常
-            success_count = 0
-            error_count = 0
-            
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
                     error_count += 1
                     logger.error(f"❌ 扫描任务 {i} 异常: {type(result).__name__}: {result}")
                 else:
                     success_count += 1
+            tasks = []
+        
+        for plugin in self.plugins:
+            plugin_id = plugin.get("id", "unknown")
+            plugin_name = plugin.get("info", {}).get("name", "unknown")
+            requests_list = plugin.get("requests", [])
+            sequential = bool(plugin.get("sequential_requests"))
             
-            logger.info(f"📊 任务执行结果: 成功={success_count}, 失败={error_count}")
+            logger.info(f"  📦 插件: {plugin_id} ({plugin_name}) - {len(requests_list)} 个请求")
+            
+            if sequential:
+                await _gather_pending()
+                logger.info(f"     ⏳ 顺序执行模式 (sequential_requests)")
+            
+            for req_idx, req in enumerate(requests_list):
+                if not self._check_preconditions(req):
+                    logger.debug(f"    ⏭️ 跳过请求 {req_idx}: 不满足前置条件")
+                    continue
+                
+                if sequential:
+                    scheduled += 1
+                    try:
+                        await self._scan_with_plugin(client, plugin, req)
+                        success_count += 1
+                    except Exception as exc:
+                        error_count += 1
+                        logger.error(
+                            f"❌ 顺序任务异常 [{plugin_id}#{req_idx}]: "
+                            f"{type(exc).__name__}: {exc}"
+                        )
+                else:
+                    scheduled += 1
+                    tasks.append(self._scan_with_plugin(client, plugin, req))
+        
+        logger.info(f"🎯 共调度 {scheduled} 个扫描请求")
+        
+        await _gather_pending()
+        
+        logger.info(f"📊 任务执行结果: 成功={success_count}, 失败={error_count}")
     
     async def _scan_with_plugin(
         self,

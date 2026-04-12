@@ -13,7 +13,8 @@ info:
     - https://vulhub.org/#/environments/thinkphp/in-sqlinjection/
 
 requests:
-  # 测试1: 使用updatexml函数进行报错注入
+  # 测试1: updatexml 报错注入（仅匹配 MySQL 报错正文，禁止用 "updatexml" 等词：
+  # Django/Flask DEBUG 页会把请求 URL 回显到响应体，导致 payload 中的函数名被误当成数据库报错）
   - method: GET
     preconditions:
       methods: [GET]
@@ -25,13 +26,10 @@ requests:
       - type: word
         words:
           - "XPATH syntax error"
-          - "updatexml"
-          - "root@"
-          - "localhost"
-        condition: or
+        condition: and
         part: body
 
-  # 测试2: 报错注入特征（避免 Django/Python 调试页中泛化的 "@"、纯 500 误报）
+  # 测试2: extractvalue / updatexml 报错（同样只认 MySQL XPATH 报错字符串）
   - method: GET
     preconditions:
       methods: [GET]
@@ -45,12 +43,10 @@ requests:
       - type: word
         words:
           - "XPATH syntax error"
-          - "updatexml"
-          - "extractvalue"
-        condition: or
+        condition: and
         part: body
 
-  # 测试3: 使用 version() 报错注入（需同时命中 MySQL/XPATH 类特征，避免版本号泛匹配）
+  # 测试3: version() 报错注入（版本号 + 真实 SQL 报错特征；不用 "updatexml" 以免 URL 回显误报）
   - method: GET
     preconditions:
       methods: [GET]
@@ -67,7 +63,6 @@ requests:
       - type: word
         words:
           - "XPATH syntax error"
-          - "updatexml"
           - "MySQL server version"
         condition: or
         part: body

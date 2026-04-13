@@ -307,6 +307,13 @@ class ScannerEngine:
             for path_template in paths:
                 for variant in payload_variants:
                     payload_str = variant.encoded if variant else ""
+
+                    plugin_id = plugin.get("id") if plugin else "default"
+                    cached_vars = getattr(self, "_plugin_vars_cache", {}).get(plugin_id, {})
+                    if "{{ExtractedPath}}" in path_template and not cached_vars.get("ExtractedPath"):
+                        continue
+                    if "{{UploadedFilename}}" in path_template and not cached_vars.get("UploadedFilename"):
+                        continue
                     
                     # 使用当前选择的变量进行解析
                     url = self._resolve_variables(path_template, payload_str, plugin)

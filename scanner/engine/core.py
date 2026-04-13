@@ -14,6 +14,9 @@ scanner.engine.core
 import os
 import asyncio
 import time
+import datetime
+import random
+import string
 from urllib.parse import urljoin, urlparse
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
@@ -295,8 +298,8 @@ class ScannerEngine:
             for path_template in paths:
                 for variant in payload_variants:
                     payload_str = variant.encoded if variant else ""
-                    url = self._resolve_variables(path_template, payload_str)
-                    body = self._resolve_variables(base_body, payload_str) if base_body else None
+                    url = self._resolve_variables(path_template, payload_str, plugin)
+                    body = self._resolve_variables(base_body, payload_str, plugin) if base_body else None
                     
                     self._stats.total_requests += 1
                     try:
@@ -337,18 +340,35 @@ class ScannerEngine:
                     except Exception as e:
                         self._stats.failed_requests += 1
 
-    def _resolve_variables(self, template: str, payload: str = "") -> str:
-        """替换模板变量，包括 {{payload}}"""
+    def _resolve_variables(self, template: str, payload: str = "", plugin: Optional[Dict[str, Any]] = None) -> str:
+        """
+        替换模板变量，支持:
+        - {{BaseURL}}, {{payload}}
+        - {{Year}}, {{Month}}, {{Day}}
+        - {{filename}} (从插件配置的 filename_variants 中随机选择)
+        - {{RandomInt}}, {{RandomString}}
+        """
         if not template: return ""
-        import datetime
         now = datetime.datetime.now()
+        
+        # 处理 filename 变体
+        filename = "test.gif"  # 默认值
+        if plugin:
+            fn_variants = plugin.get("filename_variants", [])
+            if fn_variants:
+                filename = random.choice(fn_variants)
+        
         vars = {
             "BaseURL": self.target,
             "Year": now.strftime("%Y"),
             "Month": now.strftime("%m"),
             "Day": now.strftime("%d"),
-            "payload": payload
+            "payload": payload,
+            "filename": filename,
+            "RandomInt": str(random.randint(1000, 9999)),
+            "RandomString": ''.join(random.choices(string.ascii_lowercase, k=8)),
         }
+        
         result = template
         for k, v in vars.items():
             result = result.replace("{{" + k + "}}", v)

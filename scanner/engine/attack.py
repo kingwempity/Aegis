@@ -391,8 +391,17 @@ class ContextAwareEngine:
     # 技术栈特征映射
     TECH_SIGNATURES = {
         "php": ["php", ".php", "X-Powered-By: PHP"],
-        "thinkphp": ["thinkphp", "ThinkPHP", "X-Powered-By: ThinkPHP", "think_session", "think_path", "Var_Pathinfo", "s=/", "method=\"post\" action=\"/index/index/login\"", "十年磨一剑", "thinkphp_show_page_trace"],
-        "drupal": ["drupal", "Drupal", "X-Generator: Drupal", "sites/default/files", "Drupal.settings"],
+        "thinkphp": [
+            "thinkphp", "ThinkPHP", "X-Powered-By: ThinkPHP",
+            "think_session", "think_path", "Var_Pathinfo",
+            "thinkphp_show_page_trace", "Think\\Db\\",
+            "Think\\Exception", "Think\\Log",
+        ],
+        "drupal": [
+            "Drupal", "X-Generator: Drupal", "Drupal.settings",
+            "sites/default/files", "drupal.js", "Drupal.ajax",
+            "form_build_id", "_drupal_ajax", "user_register_form",
+        ],
         "asp": [".asp", ".aspx", "X-AspNet-Version"],
         "java": ["jsp", ".do", "JSESSIONID", "X-Powered-By: Servlet"],
         "python": ["wsgi", "python", "csrfmiddlewaretoken"],
@@ -402,6 +411,24 @@ class ContextAwareEngine:
         "postgresql": ["postgresql", "pg_", "PostgreSQL"],
         "mssql": ["mssql", "SQL Server", "sqlexpress"],
         "oracle": ["oracle", "ORA-", "Oracle"],
+    }
+    
+    TECH_EXCLUSIVE_SIGNATURES = {
+        "drupal": [
+            "X-Generator: Drupal",
+            "Drupal.settings",
+            "form_build_id",
+            "_drupal_ajax",
+            "user_register_form",
+            "drupal.js",
+        ],
+        "thinkphp": [
+            "X-Powered-By: ThinkPHP",
+            "Think\\Db\\",
+            "Think\\Exception",
+            "Var_Pathinfo",
+            "thinkphp_show_page_trace",
+        ],
     }
     
     # 输入字段检测模式
@@ -415,16 +442,16 @@ class ContextAwareEngine:
     @classmethod
     def detect_technologies(cls, response_body: str, response_headers: Dict[str, str]) -> List[str]:
         """
-        检测目标使用的技术栈。
+        检测目标使用的技术栈（增强版：含互斥逻辑和置信度评分）。
         
-        Args:
-            response_body: 响应体
-            response_headers: 响应头
-            
-        Returns:
-            检测到的技术列表
+        互斥规则：
+        - 当Drupal独有特征命中时，移除thinkphp（避免误判）
+        - 当ThinkPHP独有特征命中时，移除drupal（避免误判）
+        - "s=/" 和 "十年磨一剑" 等弱特征不再作为thinkphp的判定依据
         """
         detected = []
+        detected_with_exclusive = set()
+        
         combined_text = response_body.lower() + " ".join(str(v) for v in response_headers.values()).lower()
         
         for tech, signatures in cls.TECH_SIGNATURES.items():
@@ -432,6 +459,20 @@ class ContextAwareEngine:
                 if sig.lower() in combined_text:
                     detected.append(tech)
                     break
+        
+        for tech, exclusive_sigs in cls.TECH_EXCLUSIVE_SIGNATURES.items():
+            for esig in exclusive_sigs:
+                if esig.lower() in combined_text:
+                    detected_with_exclusive.add(tech)
+                    break
+        
+        if "drupal" in detected_with_exclusive and "thinkphp" in detected:
+            detected.remove("thinkphp")
+            logger.info(f"🔍 技术栈互斥: 检测到Drupal独有特征，移除thinkphp判定")
+        
+        if "thinkphp" in detected_with_exclusive and "drupal" in detected:
+            detected.remove("drupal")
+            logger.info(f"🔍 技术栈互斥: 检测到ThinkPHP独有特征，移除drupal判定")
         
         return detected
     

@@ -8,6 +8,9 @@ scanner.engine.core
 2. 多维度路径优先级探索
 3. 上下文感知攻击策略
 4. 动态路径发现与学习
+5. 规则引擎驱动的多重验证判定
+6. 跨框架误报防护
+7. 详细扫描日志记录
 
 """
 
@@ -18,6 +21,7 @@ import datetime
 import random
 import re
 import string
+import json
 from urllib.parse import urljoin, urlparse
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
@@ -35,28 +39,17 @@ from scanner.engine.attack import (
     PayloadType,
     EncodingType,
 )
+from scanner.engine.rules import (
+    RuleEngine,
+    FrameworkType,
+    ValidationLevel,
+)
 
-# 配置日志
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class ScanResult:
-    """
-    扫描结果实体。
-    
-    Attributes:
-        vuln_name: 漏洞名称
-        severity: 严重程度
-        url: 发现漏洞的URL
-        payload: 使用的payload
-        evidence: 证据信息
-        plugin_id: 插件ID
-        scan_time: 扫描时间戳
-        request: 请求详情
-        response: 响应摘要
-        context: 攻击上下文信息
-    """
     vuln_name: str
     severity: str
     url: str
@@ -67,6 +60,7 @@ class ScanResult:
     request: Dict[str, Any] = field(default_factory=dict)
     response: Dict[str, Any] = field(default_factory=dict)
     context: Dict[str, Any] = field(default_factory=dict)
+    validation_log: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -145,7 +139,7 @@ def create_stealthy_engine(target: str):
 
 class ScannerEngine:
     """
-    高级漏洞扫描引擎。
+    高级漏洞扫描引擎（集成规则引擎与多重验证）。
     """
     
     def __init__(
@@ -158,10 +152,8 @@ class ScannerEngine:
         max_concurrent: int = 10,
         timeout: float = 10.0,
         max_depth: int = 3,
+        rules_config_path: Optional[str] = None,
     ):
-        """
-        初始化扫描引擎。
-        """
         self.target = target.rstrip("/")
         self.strategy = strategy
         self.enable_learning = enable_learning
@@ -170,38 +162,36 @@ class ScannerEngine:
         self.timeout = timeout
         self.max_depth = max_depth
         
-        # 解析插件目录
         resolved_plugin_dir = plugin_dir
         if not os.path.exists(resolved_plugin_dir):
             resolved_plugin_dir = os.path.join(os.getcwd(), "scanner", "plugins")
         
         logger.info(f"📂 插件目录: {resolved_plugin_dir}")
         
-        # 延迟导入避免循环依赖
         from scanner.engine.parser import TemplateParser
         self.plugins = TemplateParser.load_plugins(resolved_plugin_dir)
         
         plugin_ids = [p.get('id', 'unknown') for p in self.plugins]
         logger.info(f"📋 已加载 {len(self.plugins)} 个插件: {plugin_ids}")
         
-        # 初始化组件
         self.script_generator = AttackScriptGenerator(strategy=strategy)
         self.path_explorer = AttackPathExplorer(learning_enabled=enable_learning)
         
-        # 目标URL解析
         self._target_origin = urlparse(self.target)
         
-        # 扫描上下文
         self._context: Optional[AttackContext] = None
-        
-        # 统计信息
         self._stats = ScanStatistics()
-        
-        # 已发现漏洞
         self._vulnerabilities: List[ScanResult] = []
-        
-        # 并发控制
         self._semaphore: Optional[asyncio.Semaphore] = None
+        
+        self._rule_engine = RuleEngine(config_path=rules_config_path)
+        logger.info("🛡️ 规则引擎已初始化（跨框架误报防护已启用）")
+        
+        self._detected_frameworks: List[FrameworkType] = []
+        self._framework_confidence: Dict[FrameworkType, float] = {}
+        self._framework_versions: Dict[FrameworkType, Optional[str]] = {}
+        
+        self._judgment_log: List[Dict[str, Any]] = []
     
     async def run(self) -> List[Dict[str, Any]]:
         """
@@ -236,7 +226,7 @@ class ScannerEngine:
         return [self._result_to_dict(r) for r in self._vulnerabilities]
     
     async def _initial_probe(self, client: httpx.AsyncClient) -> None:
-        """初始探测，获取目标上下文信息"""
+        """初始探测，获取目标上下文信息（集成规则引擎框架检测）"""
         try:
             resp = await self._request_in_scope(client, "GET", self.target)
             self._context = ContextAwareEngine.build_context(
@@ -249,9 +239,46 @@ class ScannerEngine:
             if self.enable_discovery:
                 discovered = self.path_explorer.discover_paths(resp.text, self.target)
                 self._stats.paths_discovered += len(discovered)
+            
+            self._detected_frameworks, self._framework_confidence = (
+                self._rule_engine.detect_framework(
+                    response_body=resp.text,
+                    response_headers=dict(resp.headers),
+                    request_url=self.target,
+                )
+            )
+            
+            for fw in self._detected_frameworks:
+                version = self._rule_engine.detect_version(
+                    fw, resp.text, dict(resp.headers)
+                )
+                self._framework_versions[fw] = version
+            
+            fw_info = ", ".join(
+                f"{fw.value}(v{self._framework_versions.get(fw, 'unknown')}, "
+                f"conf={self._framework_confidence.get(fw, 0):.2f})"
+                for fw in self._detected_frameworks
+            )
+            logger.info(f"🔍 框架检测结果: [{fw_info}]" if fw_info else "🔍 框架检测结果: 未识别已知框架")
+            
+            self._log_judgment(
+                phase="initial_probe",
+                plugin_id="N/A",
+                action="framework_detection",
+                details={
+                    "detected_frameworks": [fw.value for fw in self._detected_frameworks],
+                    "framework_confidence": {fw.value: round(conf, 3) for fw, conf in self._framework_confidence.items()},
+                    "framework_versions": {fw.value: v for fw, v in self._framework_versions.items()},
+                },
+                result="success",
+            )
         except Exception as e:
             logger.warning(f"⚠️ 初始探测失败: {e}")
             self._context = AttackContext(target_url=self.target)
+            self._log_judgment(
+                phase="initial_probe", plugin_id="N/A",
+                action="framework_detection", details={"error": str(e)}, result="failed",
+            )
     
     async def _execute_plugins(self, client: httpx.AsyncClient) -> None:
         """执行所有插件的扫描任务"""
@@ -285,7 +312,7 @@ class ScannerEngine:
         await _gather_pending()
 
     async def _scan_with_plugin(self, client: httpx.AsyncClient, plugin: Dict[str, Any], req_def: Dict[str, Any]) -> bool:
-        """执行单个插件请求扫描，支持动态Payload和置信度评估"""
+        """执行单个插件请求扫描（集成多重验证与跨框架误报防护）"""
         async with self._semaphore:
             method = req_def.get("method", "GET").upper()
             paths = req_def.get("path", [])
@@ -295,10 +322,11 @@ class ScannerEngine:
             matchers_condition = req_def.get("matchers-condition", "or")
             should_report = req_def.get("report", True)
             
-            # 置信度阈值 (低于此值的结果将被过滤或标记为低置信度)
-            confidence_threshold = 0.15  # 放宽阈值以提高检出率
+            plugin_id = plugin.get("id", "unknown")
             
-            # 生成Payload变体
+            rule_min_confidence = self._rule_engine.get_min_confidence(plugin_id)
+            rule_required_evidence = self._rule_engine.get_required_evidence_count(plugin_id)
+            
             payload_variants = self.script_generator.build_payloads(plugin, req_def)
             if not payload_variants:
                 payload_variants = [None]
@@ -308,21 +336,17 @@ class ScannerEngine:
                 for variant in payload_variants:
                     payload_str = variant.encoded if variant else ""
 
-                    plugin_id = plugin.get("id") if plugin else "default"
                     cached_vars = getattr(self, "_plugin_vars_cache", {}).get(plugin_id, {})
                     if "{{ExtractedPath}}" in path_template and not cached_vars.get("ExtractedPath"):
                         continue
                     if "{{UploadedFilename}}" in path_template and not cached_vars.get("UploadedFilename"):
                         continue
                     
-                    # 使用当前选择的变量进行解析
                     url = self._resolve_variables(path_template, payload_str, plugin)
                     
-                    # 准备请求头 (处理 multipart)
                     current_headers = dict(headers)
                     current_body = self._resolve_variables(base_body, payload_str, plugin) if base_body else None
                     
-                    # 自动注入 CSRF 令牌（如果已获取）
                     if self._context and self._context.csrf_token:
                         current_headers["X-CSRF-Token"] = self._context.csrf_token
                     
@@ -341,43 +365,143 @@ class ScannerEngine:
                         resp = await self._request_in_scope(client, method, url, current_headers, current_body)
                         self._stats.successful_requests += 1
                         
-                        # 动态提取变量 (支持从响应中提取路径等)
                         self._extract_dynamic_variables(resp, plugin)
                         
-                        # 基础匹配检查
                         if self._check_matchers(resp, matchers, matchers_condition):
                             any_success = True
-                            # 计算置信度
-                            confidence = self._calculate_confidence(resp, matchers, plugin)
                             
-                            # 放宽条件: 即使置信度较低也记录 (可通过阈值调整)
-                            if should_report and confidence >= confidence_threshold:
-                                result = ScanResult(
-                                    vuln_name=plugin.get("info", {}).get("name", "Unknown Vulnerability"),
-                                    severity=plugin.get("info", {}).get("severity", "Medium"),
-                                    url=url,
-                                    payload=payload_str or "N/A",
-                                    evidence={
-                                        "matchers": matchers,
-                                        "matchers_condition": matchers_condition,
-                                        "confidence": round(confidence, 3),
-                                        "response_status": resp.status_code,
-                                    },
-                                    plugin_id=plugin.get("id", "unknown"),
-                                    request={"method": method, "url": url, "headers": current_headers, "body": current_body},
-                                    response={
-                                        "status": resp.status_code,
-                                        "body_snippet": resp.text[:1000],
-                                        "content_length": len(resp.content),
-                                    },
-                                )
-                                self._vulnerabilities.append(result)
-                                self._stats.vulnerabilities_found += 1
+                            if should_report:
+                                matched_keywords = self._extract_matched_keywords(resp, matchers)
                                 
-                                level = "🔴" if confidence > 0.6 else "🟡" if confidence > 0.3 else "🔵"
-                                logger.info(f"{level} 发现漏洞 [{confidence:.1%}]: {result.vuln_name} @ {url}")
+                                is_valid, validation_reason = self._rule_engine.validate_vulnerability(
+                                    plugin_id=plugin_id,
+                                    detected_frameworks=self._detected_frameworks,
+                                    response_body=resp.text,
+                                    response_headers=dict(resp.headers),
+                                    request_url=url,
+                                    matched_keywords=matched_keywords,
+                                )
+                                
+                                base_confidence = self._calculate_confidence(resp, matchers, plugin)
+                                
+                                adjusted_confidence, adjustment_details = self._rule_engine.adjust_confidence(
+                                    plugin_id=plugin_id,
+                                    base_confidence=base_confidence,
+                                    detected_frameworks=self._detected_frameworks,
+                                    response_body=resp.text,
+                                    response_headers=dict(resp.headers),
+                                    request_url=url,
+                                    matched_keywords=matched_keywords,
+                                )
+                                
+                                evidence_count = self._count_evidence(resp, matchers)
+                                
+                                judgment_record = {
+                                    "phase": "vulnerability_judgment",
+                                    "plugin_id": plugin_id,
+                                    "url": url,
+                                    "payload": payload_str[:200] if payload_str else "N/A",
+                                    "base_confidence": round(base_confidence, 4),
+                                    "adjusted_confidence": round(adjusted_confidence, 4),
+                                    "adjustment_details": adjustment_details,
+                                    "is_valid": is_valid,
+                                    "validation_reason": validation_reason,
+                                    "evidence_count": evidence_count,
+                                    "required_evidence": rule_required_evidence,
+                                    "matched_keywords": matched_keywords[:10],
+                                    "detected_frameworks": [fw.value for fw in self._detected_frameworks],
+                                    "framework_confidence": {
+                                        fw.value: round(self._framework_confidence.get(fw, 0), 3)
+                                        for fw in self._detected_frameworks
+                                    },
+                                    "response_status": resp.status_code,
+                                    "response_length": len(resp.content),
+                                }
+                                
+                                final_report = False
+                                final_reason = ""
+                                
+                                if not is_valid:
+                                    final_report = False
+                                    final_reason = f"验证未通过: {validation_reason}"
+                                    logger.info(
+                                        f"🛡️ 跨框架误报拦截: [{plugin_id}] @ {url} - {validation_reason}"
+                                    )
+                                elif adjusted_confidence < rule_min_confidence:
+                                    final_report = False
+                                    final_reason = (
+                                        f"置信度不足: {adjusted_confidence:.3f} < {rule_min_confidence:.3f}"
+                                    )
+                                    logger.info(
+                                        f"🔵 低置信度过滤: [{plugin_id}] conf={adjusted_confidence:.3f} @ {url}"
+                                    )
+                                elif evidence_count < rule_required_evidence:
+                                    final_report = False
+                                    final_reason = (
+                                        f"证据不足: {evidence_count} < {rule_required_evidence}"
+                                    )
+                                    logger.info(
+                                        f"🔵 证据不足过滤: [{plugin_id}] evidence={evidence_count} @ {url}"
+                                    )
+                                else:
+                                    final_report = True
+                                    final_reason = "验证通过"
+                                
+                                judgment_record["final_decision"] = "report" if final_report else "suppress"
+                                judgment_record["final_reason"] = final_reason
+                                self._judgment_log.append(judgment_record)
+                                
+                                if final_report:
+                                    result = ScanResult(
+                                        vuln_name=plugin.get("info", {}).get("name", "Unknown Vulnerability"),
+                                        severity=plugin.get("info", {}).get("severity", "Medium"),
+                                        url=url,
+                                        payload=payload_str or "N/A",
+                                        evidence={
+                                            "matchers": matchers,
+                                            "matchers_condition": matchers_condition,
+                                            "confidence": round(adjusted_confidence, 3),
+                                            "base_confidence": round(base_confidence, 3),
+                                            "evidence_count": evidence_count,
+                                            "matched_keywords": matched_keywords[:10],
+                                            "response_status": resp.status_code,
+                                            "framework_validation": {
+                                                "is_valid": is_valid,
+                                                "reason": validation_reason,
+                                            },
+                                            "confidence_adjustments": [
+                                                a for a in adjustment_details if a.get("triggered")
+                                            ],
+                                        },
+                                        plugin_id=plugin_id,
+                                        request={"method": method, "url": url, "headers": current_headers, "body": current_body},
+                                        response={
+                                            "status": resp.status_code,
+                                            "body_snippet": resp.text[:1000],
+                                            "content_length": len(resp.content),
+                                        },
+                                        validation_log={
+                                            "detected_frameworks": [fw.value for fw in self._detected_frameworks],
+                                            "framework_versions": {
+                                                fw.value: v for fw, v in self._framework_versions.items()
+                                            },
+                                            "judgment_reason": final_reason,
+                                        },
+                                    )
+                                    self._vulnerabilities.append(result)
+                                    self._stats.vulnerabilities_found += 1
+                                    
+                                    level = "🔴" if adjusted_confidence > 0.6 else "🟡" if adjusted_confidence > 0.3 else "🔵"
+                                    logger.info(
+                                        f"{level} 确认漏洞 [{adjusted_confidence:.1%}]: "
+                                        f"{result.vuln_name} @ {url} (证据={evidence_count})"
+                                    )
                     except Exception as e:
                         self._stats.failed_requests += 1
+                        self._log_judgment(
+                            phase="scan_request", plugin_id=plugin_id,
+                            action="request_failed", details={"url": url, "error": str(e)}, result="failed",
+                        )
             
             return any_success
 
@@ -809,4 +933,102 @@ class ScannerEngine:
             "request": result.request,
             "response": result.response,
             "scan_time": result.scan_time,
+            "validation_log": result.validation_log,
+        }
+    
+    def _extract_matched_keywords(self, resp: httpx.Response, matchers: List[Dict[str, Any]]) -> List[str]:
+        """提取实际命中的关键词列表，用于置信度调整和日志记录"""
+        matched = []
+        for matcher in matchers:
+            if not isinstance(matcher, dict):
+                continue
+            mtype = matcher.get("type")
+            if mtype == "word":
+                words = matcher.get("words", [])
+                part = matcher.get("part", "body")
+                content = resp.text if part == "body" else str(resp.headers)
+                case_insensitive = matcher.get("case_insensitive", True)
+                check_content = content.lower() if case_insensitive else content
+                for w in words:
+                    check_w = w.lower() if case_insensitive else w
+                    if check_w in check_content:
+                        matched.append(w)
+            elif mtype == "status":
+                if resp.status_code in matcher.get("status", []):
+                    matched.append(f"status:{resp.status_code}")
+            elif mtype == "regex":
+                patterns = matcher.get("regex", [])
+                content = resp.text if matcher.get("part", "body") == "body" else str(resp.headers)
+                flags = re.IGNORECASE if matcher.get("case_insensitive", True) else 0
+                for p in patterns:
+                    try:
+                        if re.search(p, content, flags=flags):
+                            matched.append(f"regex:{p[:50]}")
+                    except re.error:
+                        pass
+        return matched
+    
+    def _count_evidence(self, resp: httpx.Response, matchers: List[Dict[str, Any]]) -> int:
+        """计算命中的证据数量（匹配器数量 + 关键词特异性加权）"""
+        evidence = 0
+        for matcher in matchers:
+            if self._match_single_matcher(resp, matcher):
+                evidence += 1
+                mtype = matcher.get("type")
+                if mtype == "word":
+                    words = matcher.get("words", [])
+                    part = matcher.get("part", "body")
+                    content = resp.text if part == "body" else str(resp.headers)
+                    case_insensitive = matcher.get("case_insensitive", True)
+                    check_content = content.lower() if case_insensitive else content
+                    from scanner.engine.rules import HIGH_SPECIFICITY_SQLI_KEYWORDS, THINKPHP_EXCLUSIVE_SQLI_KEYWORDS
+                    for w in words:
+                        check_w = w.lower() if case_insensitive else w
+                        if check_w in check_content:
+                            if any(hkw.lower() == check_w for hkw in HIGH_SPECIFICITY_SQLI_KEYWORDS):
+                                evidence += 1
+                            if any(ekw.lower() == check_w for ekw in THINKPHP_EXCLUSIVE_SQLI_KEYWORDS):
+                                evidence += 1
+                elif mtype == "regex":
+                    evidence += 1
+        return evidence
+    
+    def _log_judgment(
+        self,
+        phase: str,
+        plugin_id: str,
+        action: str,
+        details: Dict[str, Any],
+        result: str,
+    ) -> None:
+        """记录判定日志，便于问题追踪和审计"""
+        record = {
+            "timestamp": time.time(),
+            "phase": phase,
+            "plugin_id": plugin_id,
+            "action": action,
+            "details": details,
+            "result": result,
+        }
+        self._judgment_log.append(record)
+        logger.debug(
+            f"📝 判定日志 [{phase}] {plugin_id}/{action}: {result} - "
+            f"{json.dumps(details, ensure_ascii=False)[:200]}"
+        )
+    
+    def get_judgment_log(self) -> List[Dict[str, Any]]:
+        """获取完整的判定日志"""
+        return list(self._judgment_log)
+    
+    def get_framework_detection_result(self) -> Dict[str, Any]:
+        """获取框架检测结果"""
+        return {
+            "detected_frameworks": [fw.value for fw in self._detected_frameworks],
+            "framework_confidence": {
+                fw.value: round(self._framework_confidence.get(fw, 0), 3)
+                for fw in self._detected_frameworks
+            },
+            "framework_versions": {
+                fw.value: v for fw, v in self._framework_versions.items()
+            },
         }

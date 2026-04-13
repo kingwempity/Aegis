@@ -502,7 +502,13 @@ class ScannerEngine:
                     
                     self._stats.total_requests += 1
                     try:
+                        request_started_at = time.perf_counter()
                         resp = await self._request_in_scope(client, method, url, current_headers, current_body)
+                        request_elapsed_ms = (time.perf_counter() - request_started_at) * 1000.0
+                        try:
+                            resp.extensions["aegis_elapsed_ms"] = request_elapsed_ms
+                        except Exception:
+                            pass
                         self._stats.successful_requests += 1
                         
                         self._extract_dynamic_variables(resp, plugin)
@@ -561,6 +567,7 @@ class ScannerEngine:
                                     },
                                     "response_status": resp.status_code,
                                     "response_length": len(resp.content),
+                                    "response_time_ms": round(request_elapsed_ms, 2),
                                 }
                                 
                                 final_report = False
@@ -610,6 +617,7 @@ class ScannerEngine:
                                             "evidence_count": evidence_count,
                                             "matched_keywords": matched_keywords[:10],
                                             "response_status": resp.status_code,
+                                            "response_time_ms": round(request_elapsed_ms, 2),
                                             "framework_validation": {
                                                 "is_valid": is_valid,
                                                 "reason": validation_reason,
@@ -624,6 +632,7 @@ class ScannerEngine:
                                             "status": resp.status_code,
                                             "body_snippet": resp.text[:1000],
                                             "content_length": len(resp.content),
+                                            "response_time_ms": round(request_elapsed_ms, 2),
                                         },
                                         validation_log={
                                             "detected_frameworks": [fw.value for fw in self._detected_frameworks],
@@ -738,36 +747,55 @@ class ScannerEngine:
             .replace("\\u002F", "/")
             .replace("\\u002f", "/")
         )
+        request_url = str(resp.request.url) if getattr(resp, "request", None) else ""
+        is_register_context = (
+            "user/register" in request_url
+            or "q=user/register" in request_url
+            or "user_register_form" in normalized_content
+        )
+        upload_evidence_markers = [
+            "public://",
+            '"uri"',
+            '"fid"',
+            '"uuid"',
+            "sites/default/files",
+        ]
+        has_upload_evidence = (
+            resp.status_code < 400
+            and any(marker in normalized_content for marker in upload_evidence_markers)
+        )
         
         # 1. 尝试提取 Drupal form_build_id (用于表单提交)
         # 支持 HTML 和 AJAX JSON 响应
-        form_build_match = re.search(r'name="form_build_id"\s+value="([^"]+)"', normalized_content)
-        if not form_build_match:
-            form_build_match = re.search(r'"form_build_id"\s*:\s*"([^"]+)"', normalized_content)
-            
-        if form_build_match:
-            form_build_id = form_build_match.group(1)
-            self._plugin_vars_cache[plugin_id]["FormBuildId"] = form_build_id
-            logger.info(f"📋 提取到 form_build_id: {form_build_id}")
+        if is_register_context and resp.status_code < 400:
+            form_build_match = re.search(r'name="form_build_id"\s+value="([^"]+)"', normalized_content)
+            if not form_build_match:
+                form_build_match = re.search(r'"form_build_id"\s*:\s*"([^"]+)"', normalized_content)
+                
+            if form_build_match:
+                form_build_id = form_build_match.group(1)
+                self._plugin_vars_cache[plugin_id]["FormBuildId"] = form_build_id
+                logger.info(f"📋 提取到 form_build_id: {form_build_id}")
         
         # 2. 尝试提取 Drupal form_token
-        form_token_match = re.search(r'name="form_token"\s+value="([^"]+)"', normalized_content)
-        if not form_token_match:
-            form_token_match = re.search(r'"form_token"\s*:\s*"([^"]+)"', normalized_content)
-            
-        if form_token_match:
-            form_token = form_token_match.group(1)
-            self._plugin_vars_cache[plugin_id]["FormToken"] = form_token
-            logger.info(f"🔐 提取到 form_token: {form_token}")
+        if is_register_context and resp.status_code < 400:
+            form_token_match = re.search(r'name="form_token"\s+value="([^"]+)"', normalized_content)
+            if not form_token_match:
+                form_token_match = re.search(r'"form_token"\s*:\s*"([^"]+)"', normalized_content)
+                
+            if form_token_match:
+                form_token = form_token_match.group(1)
+                self._plugin_vars_cache[plugin_id]["FormToken"] = form_token
+                logger.info(f"🔐 提取到 form_token: {form_token}")
         
         # 3. 尝试提取 Drupal 典型的 sites/default/files/... 路径
-        extracted_path = self._extract_upload_path(normalized_content)
+        extracted_path = self._extract_upload_path(normalized_content) if has_upload_evidence else ""
         if extracted_path:
             self._plugin_vars_cache[plugin_id]["ExtractedPath"] = extracted_path
             logger.info(f"✨ 从响应中提取到动态路径: {extracted_path}")
         
         # 4. 尝试提取上传后的文件名 (Drupal AJAX 响应)
-        filename_match = re.search(r'"filename"\s*:\s*"([^"]+)"', normalized_content)
+        filename_match = re.search(r'"filename"\s*:\s*"([^"]+)"', normalized_content) if has_upload_evidence else None
         if filename_match:
             uploaded_filename = filename_match.group(1)
             self._plugin_vars_cache[plugin_id]["UploadedFilename"] = uploaded_filename
@@ -978,6 +1006,21 @@ class ScannerEngine:
             except Exception:
                 hit = False
 
+        elif mtype == "time":
+            elapsed_ms = 0.0
+            try:
+                elapsed_ms = float(resp.extensions.get("aegis_elapsed_ms", 0.0))
+            except Exception:
+                elapsed_ms = 0.0
+
+            min_ms = float(matcher.get("min_ms", matcher.get("min_duration_ms", 0.0)) or 0.0)
+            max_ms_raw = matcher.get("max_ms", matcher.get("max_duration_ms"))
+            max_ms = float(max_ms_raw) if max_ms_raw is not None else None
+
+            hit = elapsed_ms >= min_ms
+            if hit and max_ms is not None:
+                hit = elapsed_ms <= max_ms
+
         if negative:
             hit = not hit
 
@@ -1051,6 +1094,8 @@ class ScannerEngine:
                     confidence += 0.08
                 else:
                     confidence += 0.03
+            elif mtype == "time":
+                confidence += 0.18
             elif mtype == "size":
                 confidence += 0.08
             else:
@@ -1174,6 +1219,14 @@ class ScannerEngine:
                             matched.append(f"regex:{p[:50]}")
                     except re.error:
                         pass
+            elif mtype == "time":
+                elapsed_ms = 0.0
+                try:
+                    elapsed_ms = float(resp.extensions.get("aegis_elapsed_ms", 0.0))
+                except Exception:
+                    elapsed_ms = 0.0
+                if self._match_single_matcher(resp, matcher):
+                    matched.append(f"time:{int(elapsed_ms)}ms")
         return matched
     
     def _count_evidence(self, resp: httpx.Response, matchers: List[Dict[str, Any]]) -> int:
@@ -1198,6 +1251,8 @@ class ScannerEngine:
                             if any(ekw.lower() == check_w for ekw in THINKPHP_EXCLUSIVE_SQLI_KEYWORDS):
                                 evidence += 1
                 elif mtype == "regex":
+                    evidence += 1
+                elif mtype == "time":
                     evidence += 1
         return evidence
     

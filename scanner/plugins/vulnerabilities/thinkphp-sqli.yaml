@@ -193,6 +193,9 @@ requests:
       - "{{BaseURL}}/index.php?ids[SLEEP(3)]=1"
       - "{{BaseURL}}/index.php?ids[BENCHMARK(5000000,SHA1('test'))]=1"
       - "{{BaseURL}}/index.php?id=SLEEP(3)%23"
+    matchers-condition: and
     matchers:
       - type: status
         status: [200, 500]
+      - type: time
+        min_ms: 2500

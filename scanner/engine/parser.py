@@ -5,7 +5,7 @@ YAML 模板解析器。
 """
 
 import os
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 import yaml
 
@@ -36,7 +36,7 @@ class TemplateParser:
         return plugins
 
     @staticmethod
-    def _is_valid_plugin(data: Dict[str, Any] | None) -> bool:
+    def _is_valid_plugin(data: Optional[Dict[str, Any]]) -> bool:
         if not data or not isinstance(data, dict):
             return False
         if "requests" not in data or not isinstance(data["requests"], list):

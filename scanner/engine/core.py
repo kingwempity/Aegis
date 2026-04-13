@@ -293,6 +293,7 @@ class ScannerEngine:
             base_body = req_def.get("body")
             matchers = req_def.get("matchers", [])
             matchers_condition = req_def.get("matchers-condition", "or")
+            should_report = req_def.get("report", True)
             
             # 置信度阈值 (低于此值的结果将被过滤或标记为低置信度)
             confidence_threshold = 0.15  # 放宽阈值以提高检出率
@@ -318,11 +319,11 @@ class ScannerEngine:
                     if self._context and self._context.csrf_token:
                         current_headers["X-CSRF-Token"] = self._context.csrf_token
                     
-                    if current_headers.get("Content-Type") == "multipart/form-data":
-                        if "------WebKitFormBoundary" in (current_body or ""):
-                            boundary = "----AegisBoundary" + ''.join(random.choices(string.ascii_letters + string.digits, k=16))
-                            current_headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
-                            current_body = current_body.replace("------WebKitFormBoundary", "--" + boundary)
+                    content_type = current_headers.get("Content-Type", "")
+                    if content_type.startswith("multipart/form-data"):
+                        boundary = self._infer_multipart_boundary(current_body or "")
+                        if boundary and "boundary=" not in content_type:
+                            current_headers["Content-Type"] = f"{content_type}; boundary={boundary}"
                     
                     self._stats.total_requests += 1
                     try:
@@ -336,10 +337,10 @@ class ScannerEngine:
                         if self._check_matchers(resp, matchers, matchers_condition):
                             any_success = True
                             # 计算置信度
-                            confidence = self._calculate_confidence(resp, matchers)
+                            confidence = self._calculate_confidence(resp, matchers, plugin)
                             
                             # 放宽条件: 即使置信度较低也记录 (可通过阈值调整)
-                            if confidence >= confidence_threshold:
+                            if should_report and confidence >= confidence_threshold:
                                 result = ScanResult(
                                     vuln_name=plugin.get("info", {}).get("name", "Unknown Vulnerability"),
                                     severity=plugin.get("info", {}).get("severity", "Medium"),
@@ -422,6 +423,22 @@ class ScannerEngine:
             result = result.replace("{{" + k + "}}", v)
         return result
 
+    def _infer_multipart_boundary(self, body: str) -> str:
+        if not body:
+            return ""
+
+        for raw_line in body.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith("--") and len(line) > 4:
+                candidate = line[2:]
+                if candidate.endswith("--"):
+                    candidate = candidate[:-2]
+                if candidate:
+                    return candidate
+        return ""
+
     def _extract_dynamic_variables(self, resp: httpx.Response, plugin: Optional[Dict[str, Any]]) -> None:
         """从响应中提取动态变量，如文件上传后的真实路径"""
         if not plugin: return
@@ -435,42 +452,72 @@ class ScannerEngine:
             self._plugin_vars_cache[plugin_id] = {}
             
         content = resp.text
+        normalized_content = (
+            content
+            .replace("\\/", "/")
+            .replace("\\u002F", "/")
+            .replace("\\u002f", "/")
+        )
         
         # 1. 尝试提取 Drupal form_build_id (用于表单提交)
-        form_build_match = re.search(r'name="form_build_id"\s+value="([^"]+)"', content)
+        form_build_match = re.search(r'name="form_build_id"\s+value="([^"]+)"', normalized_content)
         if form_build_match:
             form_build_id = form_build_match.group(1)
             self._plugin_vars_cache[plugin_id]["FormBuildId"] = form_build_id
             logger.info(f"📋 提取到 form_build_id: {form_build_id}")
         
         # 2. 尝试提取 Drupal form_token (用于表单提交)
-        form_token_match = re.search(r'name="form_token"\s+value="([^"]+)"', content)
+        form_token_match = re.search(r'name="form_token"\s+value="([^"]+)"', normalized_content)
         if form_token_match:
             form_token = form_token_match.group(1)
             self._plugin_vars_cache[plugin_id]["FormToken"] = form_token
             logger.info(f"🔐 提取到 form_token: {form_token}")
         
         # 3. 尝试提取 Drupal 典型的 sites/default/files/... 路径
-        path_match = re.search(r'sites/default/files/[^"\'>\s]+', content)
-        if path_match:
-            extracted_path = path_match.group(0)
+        extracted_path = self._extract_upload_path(normalized_content)
+        if extracted_path:
             self._plugin_vars_cache[plugin_id]["ExtractedPath"] = extracted_path
             logger.info(f"✨ 从响应中提取到动态路径: {extracted_path}")
         
         # 4. 尝试提取上传后的文件名 (Drupal AJAX 响应)
-        filename_match = re.search(r'"filename"\s*:\s*"([^"]+)"', content)
+        filename_match = re.search(r'"filename"\s*:\s*"([^"]+)"', normalized_content)
         if filename_match:
             uploaded_filename = filename_match.group(1)
             self._plugin_vars_cache[plugin_id]["UploadedFilename"] = uploaded_filename
             logger.info(f"📎 提取到上传文件名: {uploaded_filename}")
+        elif extracted_path:
+            uploaded_filename = extracted_path.rsplit("/", 1)[-1]
+            self._plugin_vars_cache[plugin_id]["UploadedFilename"] = uploaded_filename
         
         # 5. 尝试提取 CSRF Token (如果响应包含)
-        csrf_match = re.search(r'"csrf_token"\s*:\s*"([^"]+)"', content)
+        csrf_match = re.search(r'"csrf_token"\s*:\s*"([^"]+)"', normalized_content)
         if csrf_match:
             token = csrf_match.group(1)
             if self._context:
                 self._context.csrf_token = token
                 logger.info(f"🔑 提取到 CSRF Token: {token}")
+
+    def _extract_upload_path(self, content: str) -> str:
+        if not content:
+            return ""
+
+        absolute_or_relative_paths = re.findall(
+            r'(https?://[^\s"\']+|/?sites/default/files/[^\s"\'>,]+)',
+            content,
+            flags=re.IGNORECASE,
+        )
+        for raw_match in absolute_or_relative_paths:
+            parsed = urlparse(raw_match)
+            candidate = parsed.path if parsed.scheme else raw_match
+            candidate = candidate.lstrip("/")
+            if candidate.lower().startswith("sites/default/files/"):
+                return candidate
+
+        public_uri_match = re.search(r'public://([^\s"\'>,]+)', content, flags=re.IGNORECASE)
+        if public_uri_match:
+            return f"sites/default/files/{public_uri_match.group(1).lstrip('/')}"
+
+        return ""
 
     async def _discovery_scan(self, client: httpx.AsyncClient) -> None:
         """对发现的路径进行扫描"""
@@ -531,6 +578,69 @@ class ScannerEngine:
                     if not any(tech in self._context.detected_tech for tech in required_tech): return False
         return True
     
+    def _match_single_matcher(self, resp: httpx.Response, matcher: Dict[str, Any]) -> bool:
+        if not isinstance(matcher, dict):
+            return False
+
+        mtype = matcher.get("type")
+        hit = False
+        case_insensitive = matcher.get("case_insensitive", True)
+        negative = matcher.get("negative", False)
+
+        if mtype == "word":
+            words = matcher.get("words", [])
+            part = matcher.get("part", "body")
+            content = resp.text if part == "body" else str(resp.headers)
+
+            if case_insensitive:
+                content_lower = content.lower()
+                words_to_check = [w.lower() for w in words]
+                condition = matcher.get("condition", "and")
+
+                if condition == "and":
+                    hit = all(w in content_lower for w in words_to_check)
+                else:
+                    hit = any(w in content_lower for w in words_to_check)
+            else:
+                condition = matcher.get("condition", "and")
+                if condition == "and":
+                    hit = all(w in content for w in words)
+                else:
+                    hit = any(w in content for w in words)
+
+        elif mtype == "status":
+            hit = resp.status_code in matcher.get("status", [])
+
+        elif mtype == "regex":
+            content = resp.text if matcher.get("part", "body") == "body" else str(resp.headers)
+            flags = re.IGNORECASE if case_insensitive else 0
+
+            try:
+                patterns = matcher.get("regex", [])
+                hit = all(re.search(p, content, flags=flags) for p in patterns)
+            except re.error:
+                hit = False
+
+        elif mtype == "size":
+            expected_size = matcher.get("size", 0)
+            tolerance = matcher.get("tolerance", 100)
+            actual_size = len(resp.content)
+            hit = abs(actual_size - expected_size) <= tolerance
+
+        elif mtype == "binary":
+            binary_patterns = matcher.get("binary", [])
+            import base64
+            try:
+                decoded = base64.b64decode(resp.text + "==") if resp.text else b""
+                hit = any(p.encode() in decoded for p in binary_patterns)
+            except Exception:
+                hit = False
+
+        if negative:
+            hit = not hit
+
+        return hit
+
     def _check_matchers(self, resp: httpx.Response, matchers: List[Dict[str, Any]], matchers_condition: str = "or") -> bool:
         """
         检查响应是否命中规则 (增强版)
@@ -549,70 +659,7 @@ class ScannerEngine:
         total_matchers = len(matchers)
         
         for m in matchers:
-            if not isinstance(m, dict):
-                continue
-            
-            mtype = m.get("type")
-            hit = False
-            case_insensitive = m.get("case_insensitive", True)  # 默认大小写不敏感
-            negative = m.get("negative", False)  # 负向匹配
-            
-            if mtype == "word":
-                words = m.get("words", [])
-                part = m.get("part", "body")
-                content = resp.text if part == "body" else str(resp.headers)
-                
-                # 大小写处理
-                if case_insensitive:
-                    content_lower = content.lower()
-                    words_to_check = [w.lower() for w in words]
-                    condition = m.get("condition", "and")
-                    
-                    if condition == "and":
-                        hit = all(w in content_lower for w in words_to_check)
-                    else:
-                        hit = any(w in content_lower for w in words_to_check)
-                else:
-                    condition = m.get("condition", "and")
-                    if condition == "and":
-                        hit = all(w in content for w in words)
-                    else:
-                        hit = any(w in content for w in words)
-            
-            elif mtype == "status":
-                hit = resp.status_code in m.get("status", [])
-            
-            elif mtype == "regex":
-                import re
-                content = resp.text if m.get("part", "body") == "body" else str(resp.headers)
-                flags = re.IGNORECASE if case_insensitive else 0
-                
-                try:
-                    patterns = m.get("regex", [])
-                    hit = all(re.search(p, content, flags=flags) for p in patterns)
-                except re.error:
-                    hit = False
-            
-            elif mtype == "size":
-                # 响应长度差异检测 (用于盲注场景)
-                expected_size = m.get("size", 0)
-                tolerance = m.get("tolerance", 100)  # 允许的字节误差范围
-                actual_size = len(resp.content)
-                hit = abs(actual_size - expected_size) <= tolerance
-            
-            elif mtype == "binary":
-                # 二进制/编码内容检测
-                binary_patterns = m.get("binary", [])
-                import base64
-                try:
-                    decoded = base64.b64decode(resp.text + "==") if resp.text else b""
-                    hit = any(p.encode() in decoded for p in binary_patterns)
-                except Exception:
-                    hit = False
-            
-            # 处理负向匹配
-            if negative:
-                hit = not hit
+            hit = self._match_single_matcher(resp, m)
             
             if hit:
                 hit_count += 1
@@ -630,7 +677,7 @@ class ScannerEngine:
         # OR条件：至少一个命中
         return hit_count > 0
     
-    def _calculate_confidence(self, resp: httpx.Response, matchers: List[Dict[str, Any]]) -> float:
+    def _calculate_confidence(self, resp: httpx.Response, matchers: List[Dict[str, Any]], plugin: Optional[Dict[str, Any]] = None) -> float:
         """
         计算漏洞判定的置信度 (0.0 - 1.0)
         
@@ -641,7 +688,34 @@ class ScannerEngine:
         - 响应体特征强度
         """
         confidence = 0.0
-        weight_total = 0.0
+        matched_count = 0
+
+        for matcher in matchers:
+            if not self._match_single_matcher(resp, matcher):
+                continue
+
+            matched_count += 1
+            mtype = matcher.get("type")
+            part = matcher.get("part", "body")
+
+            if mtype == "regex":
+                confidence += 0.28
+            elif mtype == "word":
+                confidence += 0.18 if part == "header" else 0.24
+            elif mtype == "status":
+                if resp.status_code >= 500:
+                    confidence += 0.12
+                elif resp.status_code >= 400:
+                    confidence += 0.08
+                else:
+                    confidence += 0.03
+            elif mtype == "size":
+                confidence += 0.08
+            else:
+                confidence += 0.06
+
+        if matched_count > 1:
+            confidence += min((matched_count - 1) * 0.07, 0.21)
         
         # 高置信度特征词 (唯一性强)
         high_confidence_keywords = [
@@ -663,14 +737,42 @@ class ScannerEngine:
         ]
         
         content_lower = resp.text.lower()
+        header_lower = str(resp.headers).lower()
+        plugin_info = plugin.get("info", {}) if plugin else {}
+        tags = {str(tag).lower() for tag in plugin_info.get("tags", [])}
+        plugin_fingerprint = " ".join(
+            [
+                str(plugin.get("id", "") if plugin else ""),
+                str(plugin_info.get("name", "")),
+                " ".join(tags),
+            ]
+        ).lower()
         
         # 检查高置信度特征
-        high_hits = sum(1 for kw in high_confidence_keywords if kw.lower() in content_lower)
-        confidence += min(high_hits * 0.3, 0.6)  # 最多贡献0.6
+        if any(token in plugin_fingerprint for token in ["sql", "sqli", "injection"]):
+            high_hits = sum(1 for kw in high_confidence_keywords if kw.lower() in content_lower)
+            confidence += min(high_hits * 0.3, 0.6)
         
         # 检查中置信度特征
-        medium_hits = sum(1 for kw in medium_confidence_keywords if kw.lower() in content_lower)
-        confidence += min(medium_hits * 0.1, 0.3)  # 最多贡献0.3
+        if any(token in plugin_fingerprint for token in ["sql", "sqli", "injection"]):
+            medium_hits = sum(1 for kw in medium_confidence_keywords if kw.lower() in content_lower)
+            confidence += min(medium_hits * 0.1, 0.3)
+
+        if "xss" in tags or "cross-site scripting" in plugin_fingerprint:
+            xss_indicators = [
+                "<script",
+                "<svg",
+                "onload=",
+                "onerror=",
+                "javascript:",
+                "alert(",
+                "document.cookie",
+                "document.domain",
+            ]
+            xss_hits = sum(1 for kw in xss_indicators if kw in content_lower)
+            confidence += min(xss_hits * 0.08, 0.24)
+            if "text/html" in header_lower:
+                confidence += 0.08
         
         # 状态码异常加分
         if resp.status_code >= 500:

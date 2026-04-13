@@ -1,23 +1,24 @@
 """
 scanner.engine.rules
 --------------------
-规则引擎：提供基于框架、置信度、多重证据的漏洞判定与误报过滤逻辑。
-
-核心逻辑：
-1. 框架自动识别与版本探测
-2. 漏洞置信度动态调整 (ConfidenceAdjustment)
-3. 多维度证据计数 (Evidence Counting)
-4. 跨框架误报防护 (Cross-Framework Protection)
-5. 严格/中等/宽松验证等级 (ValidationLevel)
+规则引擎：提供框架识别、插件隔离、路径验证、响应分析、版本确认与可配置化判定。
 """
 
-from enum import Enum
-from typing import List, Dict, Any, Optional, Set, Tuple
-from dataclasses import dataclass, field
-import re
+from __future__ import annotations
+
+import copy
+import json
 import logging
+import os
+import re
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
+
+import yaml
 
 logger = logging.getLogger(__name__)
+
 
 class FrameworkType(Enum):
     UNKNOWN = "unknown"
@@ -29,10 +30,12 @@ class FrameworkType(Enum):
     SPRING = "spring"
     STRUTS2 = "struts2"
 
+
 class ValidationLevel(Enum):
-    LOOSE = 1      # 宽松：命中即报
-    MODERATE = 2   # 中等：需要一定置信度或多个证据
-    STRICT = 3     # 严格：需要高置信度和框架匹配
+    LOOSE = 1
+    MODERATE = 2
+    STRICT = 3
+
 
 @dataclass
 class FrameworkSignature:
@@ -43,6 +46,7 @@ class FrameworkSignature:
     exclusive_signatures: List[str] = field(default_factory=list)
     version_patterns: List[str] = field(default_factory=list)
 
+
 @dataclass
 class ConfidenceAdjustment:
     factor_name: str
@@ -50,12 +54,22 @@ class ConfidenceAdjustment:
     adjustment: float
     description: str
 
+
 @dataclass
 class ExclusionRule:
     rule_id: str
     condition: str
     exclusion_patterns: List[str] = field(default_factory=list)
     description: str = ""
+
+
+@dataclass
+class VersionConstraint:
+    min_inclusive: Optional[str] = None
+    min_exclusive: Optional[str] = None
+    max_inclusive: Optional[str] = None
+    max_exclusive: Optional[str] = None
+
 
 @dataclass
 class DetectionRule:
@@ -66,17 +80,16 @@ class DetectionRule:
     required_evidence_count: int = 1
     exclusion_rules: List[str] = field(default_factory=list)
     confidence_adjustments: List[ConfidenceAdjustment] = field(default_factory=list)
+    required_path_patterns: List[str] = field(default_factory=list)
+    allow_when_framework_unknown: bool = True
+    version_constraints: List[VersionConstraint] = field(default_factory=list)
 
-# =============================================================================
-# 框架指纹定义
-# =============================================================================
 
+# 默认内置规则（作为兜底，优先加载外部 rules_config.yaml）
 FRAMEWORK_SIGNATURES: Dict[FrameworkType, FrameworkSignature] = {
     FrameworkType.THINKPHP: FrameworkSignature(
         framework=FrameworkType.THINKPHP,
-        headers={
-            "X-Powered-By": r"ThinkPHP",
-        },
+        headers={"X-Powered-By": r"ThinkPHP"},
         body_patterns=[
             r"十年磨一剑",
             r"ThinkPHP",
@@ -85,11 +98,7 @@ FRAMEWORK_SIGNATURES: Dict[FrameworkType, FrameworkSignature] = {
             r"think-error",
             r"thinkphp_show_page_trace",
         ],
-        url_patterns=[
-            r"s=/index/index",
-            r"public/static",
-            r"\?s=",
-        ],
+        url_patterns=[r"s=/index/index", r"public/static", r"\?s=", r"/index\.php"],
         exclusive_signatures=[
             "X-Powered-By: ThinkPHP",
             "Think\\Db\\Exception",
@@ -97,16 +106,11 @@ FRAMEWORK_SIGNATURES: Dict[FrameworkType, FrameworkSignature] = {
             "thinkphp_show_page_trace",
             "十年磨一剑",
         ],
-        version_patterns=[
-            r"ThinkPHP\s*v?([0-9\.]+)",
-        ],
+        version_patterns=[r"ThinkPHP\s*[Vv/]?([0-9]+(?:\.[0-9]+)+)"],
     ),
     FrameworkType.DRUPAL: FrameworkSignature(
         framework=FrameworkType.DRUPAL,
-        headers={
-            "X-Generator": r"Drupal",
-            "X-Drupal-Cache": r".*",
-        },
+        headers={"X-Generator": r"Drupal", "X-Drupal-Cache": r".*"},
         body_patterns=[
             r"Drupal\.settings",
             r"sites/default/files",
@@ -114,12 +118,7 @@ FRAMEWORK_SIGNATURES: Dict[FrameworkType, FrameworkSignature] = {
             r'name="form_build_id"',
             r"jQuery\.extend\(Drupal\.settings",
         ],
-        url_patterns=[
-            r"sites/default/files",
-            r"node/add",
-            r"user/register",
-            r"q=user",
-        ],
+        url_patterns=[r"sites/default/files", r"node/add", r"user/register", r"q=user"],
         exclusive_signatures=[
             "X-Generator: Drupal",
             "Drupal.settings",
@@ -127,173 +126,49 @@ FRAMEWORK_SIGNATURES: Dict[FrameworkType, FrameworkSignature] = {
             "_drupal_ajax",
             "sites/default/files",
         ],
-        version_patterns=[
-            r"Drupal\s*([0-9\.]+)",
-        ],
-    ),
-    FrameworkType.DJANGO: FrameworkSignature(
-        framework=FrameworkType.DJANGO,
-        headers={
-            "X-Frame-Options": r"DENY",
-            "Server": r"WSGIServer",
-        },
-        body_patterns=[
-            r"csrfmiddlewaretoken",
-            r"django\.js",
-            r"It worked!",
-            r"Django debug page",
-        ],
-        url_patterns=[
-            r"/admin/login/",
-            r"/static/admin/",
-            r"csrfmiddlewaretoken",
-        ],
-        exclusive_signatures=[
-            "csrfmiddlewaretoken",
-            "IntegrityError",
-            "UNIQUE constraint failed",
-            "django.jQuery",
-        ],
-        version_patterns=[
-            r"Django\s*([0-9\.]+)",
-        ],
+        version_patterns=[r"Drupal\s*([0-9]+(?:\.[0-9]+)+)", r"Drupal\s+([0-9]+)"],
     ),
 }
 
-# =============================================================================
-# 误报过滤规则
-# =============================================================================
 
 EXCLUSION_RULES: Dict[str, ExclusionRule] = {
     "response_has_thinkphp_exclusive_sig": ExclusionRule(
         rule_id="response_has_thinkphp_exclusive_sig",
         condition="framework_mismatch",
-        exclusion_patterns=[
-            r"X-Powered-By:\s*ThinkPHP",
-            r"Think\\Db\\Exception",
-            r"Var_Pathinfo",
-        ],
+        exclusion_patterns=[r"X-Powered-By:\s*ThinkPHP", r"Think\\Db\\Exception", r"Var_Pathinfo"],
         description="当响应包含ThinkPHP独有特征时，排除非ThinkPHP漏洞误报",
     ),
     "response_has_drupal_exclusive_sig": ExclusionRule(
         rule_id="response_has_drupal_exclusive_sig",
         condition="framework_mismatch",
-        exclusion_patterns=[
-            r"X-Generator:\s*Drupal",
-            r"Drupal\.settings",
-            r"sites/default/files",
-        ],
+        exclusion_patterns=[r"X-Generator:\s*Drupal", r"Drupal\.settings", r"sites/default/files"],
         description="当响应包含Drupal独有特征时，排除非Drupal漏洞误报",
-    ),
-    "response_has_django_exclusive_sig": ExclusionRule(
-        rule_id="response_has_django_exclusive_sig",
-        condition="framework_mismatch",
-        exclusion_patterns=[
-            r"csrfmiddlewaretoken",
-            r"IntegrityError",
-            r"UNIQUE constraint failed",
-        ],
-        description="当响应包含Django独有特征时，排除非Django漏洞误报",
     ),
 }
 
-# =============================================================================
-# 漏洞检测判定规则 (DetectionRules)
-# =============================================================================
 
 DETECTION_RULES: Dict[str, DetectionRule] = {
     "thinkphp-sqli": DetectionRule(
         plugin_id="thinkphp-sqli",
         expected_frameworks=[FrameworkType.THINKPHP],
-        validation_level=ValidationLevel.MODERATE,
-        min_confidence=0.40,
+        validation_level=ValidationLevel.STRICT,
+        min_confidence=0.45,
         required_evidence_count=2,
-        exclusion_rules=[
-            "response_has_drupal_exclusive_sig",
-            "response_has_django_exclusive_sig",
-        ],
-        confidence_adjustments=[
-            ConfidenceAdjustment(
-                factor_name="framework_match",
-                condition="target_is_thinkphp",
-                adjustment=0.20,
-                description="目标确认是ThinkPHP框架，提升置信度",
-            ),
-            ConfidenceAdjustment(
-                factor_name="framework_mismatch",
-                condition="target_is_not_thinkphp",
-                adjustment=-0.20,
-                description="目标不是ThinkPHP框架，降低置信度",
-            ),
-            ConfidenceAdjustment(
-                factor_name="thinkphp_exclusive_hit",
-                condition="response_has_thinkphp_exclusive_sig",
-                adjustment=0.25,
-                description="响应包含ThinkPHP独有特征（如Trace或Db异常），大幅提升置信度",
-            ),
-            ConfidenceAdjustment(
-                factor_name="sql_error_match",
-                condition="response_has_sql_error",
-                adjustment=0.15,
-                description="响应包含通用SQL错误特征",
-            ),
-        ],
+        exclusion_rules=["response_has_drupal_exclusive_sig"],
+        required_path_patterns=[r"/index\.php", r"[?&]s="],
+        allow_when_framework_unknown=True,
     ),
     "drupal-cve-2019-6341": DetectionRule(
         plugin_id="drupal-cve-2019-6341",
         expected_frameworks=[FrameworkType.DRUPAL],
-        validation_level=ValidationLevel.MODERATE,
+        validation_level=ValidationLevel.STRICT,
         min_confidence=0.35,
         required_evidence_count=2,
-        exclusion_rules=[
-            "response_has_thinkphp_exclusive_sig",
-            "response_has_django_exclusive_sig",
-        ],
-        confidence_adjustments=[
-            ConfidenceAdjustment(
-                factor_name="framework_match",
-                condition="target_is_drupal",
-                adjustment=0.20,
-                description="目标确认是Drupal框架，提升置信度",
-            ),
-            ConfidenceAdjustment(
-                factor_name="drupal_exclusive_hit",
-                condition="response_has_drupal_exclusive_sig",
-                adjustment=0.25,
-                description="响应包含Drupal独有特征，大幅提升置信度",
-            ),
-        ],
-    ),
-    "django-cve-2017-12794": DetectionRule(
-        plugin_id="django-cve-2017-12794",
-        expected_frameworks=[FrameworkType.DJANGO],
-        validation_level=ValidationLevel.MODERATE,
-        min_confidence=0.25,
-        required_evidence_count=1,
-        exclusion_rules=[
-            "response_has_thinkphp_exclusive_sig",
-            "response_has_drupal_exclusive_sig",
-        ],
-        confidence_adjustments=[
-            ConfidenceAdjustment(
-                factor_name="framework_match",
-                condition="target_is_django",
-                adjustment=0.20,
-                description="目标确认是Django框架，提升置信度",
-            ),
-            ConfidenceAdjustment(
-                factor_name="django_exclusive_hit",
-                condition="response_has_django_exclusive_sig",
-                adjustment=0.25,
-                description="响应包含Django独有特征（如调试页错误），大幅提升置信度",
-            ),
-        ],
+        exclusion_rules=["response_has_thinkphp_exclusive_sig"],
+        required_path_patterns=[r"/user/register", r"sites/default/files"],
+        allow_when_framework_unknown=True,
     ),
 }
-
-# =============================================================================
-# 关键词库
-# =============================================================================
 
 HIGH_SPECIFICITY_SQLI_KEYWORDS = [
     "XPATH syntax error",
@@ -301,12 +176,6 @@ HIGH_SPECIFICITY_SQLI_KEYWORDS = [
     "updatexml()",
     "SQLSTATE[42",
     "SQLSTATE[HY000]",
-]
-
-THINKPHP_EXCLUSIVE_SQLI_KEYWORDS = [
-    "Think\\Db\\Exception",
-    "Think\\Exception",
-    "thinkphp_show_page_trace",
 ]
 
 GENERIC_SQL_ERRORS = [
@@ -318,97 +187,486 @@ GENERIC_SQL_ERRORS = [
     "unclosed quotation mark",
 ]
 
-# =============================================================================
-# 规则引擎实现
-# =============================================================================
 
 class RuleEngine:
     def __init__(self, config_path: Optional[str] = None):
-        self._framework_signatures = FRAMEWORK_SIGNATURES
-        self._exclusion_rules = EXCLUSION_RULES
-        self._detection_rules = DETECTION_RULES
+        self._framework_signatures = copy.deepcopy(FRAMEWORK_SIGNATURES)
+        self._exclusion_rules = copy.deepcopy(EXCLUSION_RULES)
+        self._detection_rules = copy.deepcopy(DETECTION_RULES)
         
-    def detect_framework(self, response_body: str, response_headers: Dict[str, str], request_url: str) -> Tuple[List[FrameworkType], Dict[FrameworkType, float]]:
-        detected = []
-        confidences = {}
-        body_lower = response_body.lower()
-        header_text = str(response_headers).lower()
-        
-        for fw_type, sig in self._framework_signatures.items():
-            score = 0.0
-            # Header match
-            for h, p in sig.headers.items():
-                if h in response_headers and re.search(p, response_headers[h], re.I):
-                    score += 0.4
-            # Body patterns
-            for p in sig.body_patterns:
-                if re.search(p, response_body, re.I):
-                    score += 0.2
-            # URL patterns
-            for p in sig.url_patterns:
-                if re.search(p, request_url, re.I):
-                    score += 0.2
-            # Exclusive signatures
-            for es in sig.exclusive_signatures:
-                if es.lower() in body_lower or es.lower() in header_text:
-                    score += 0.5
-            
-            if score > 0.3:
-                detected.append(fw_type)
-                confidences[fw_type] = min(score, 1.0)
-                
-        if not detected:
-            detected.append(FrameworkType.UNKNOWN)
-            confidences[FrameworkType.UNKNOWN] = 1.0
-            
-        return detected, confidences
+        # 确定配置文件路径
+        self._config_path = config_path or self._default_config_path()
+        self._load_external_config(self._config_path)
 
-    def detect_version(self, framework: FrameworkType, response_body: str, response_headers: Dict[str, str]) -> Optional[str]:
-        sig = self._framework_signatures.get(framework)
-        if not sig: return None
-        combined = response_body + str(response_headers)
-        for p in sig.version_patterns:
-            m = re.search(p, combined, re.I)
-            if m: return m.group(1)
+    def _default_config_path(self) -> str:
+        """
+        查找默认配置文件路径，按以下顺序尝试：
+        1. 与当前脚本同级目录的 rules_config.yaml
+        2. scanner/engine/rules_config.yaml (项目根目录相对路径)
+        """
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        path1 = os.path.join(script_dir, "rules_config.yaml")
+        if os.path.exists(path1):
+            return path1
+            
+        # 尝试相对于工作目录的路径
+        path2 = os.path.join(os.getcwd(), "scanner", "engine", "rules_config.yaml")
+        return path2
+
+    def _load_external_config(self, config_path: Optional[str]) -> None:
+        if not config_path or not os.path.exists(config_path):
+            logger.warning("⚠️ 规则配置文件不存在: %s", config_path)
+            return
+
+        try:
+            with open(config_path, "r", encoding="utf-8") as fh:
+                if config_path.lower().endswith(".json"):
+                    raw = json.load(fh)
+                else:
+                    raw = yaml.safe_load(fh) or {}
+        except Exception as exc:
+            logger.warning("⚠️ 规则配置加载失败 %s: %s", config_path, exc)
+            return
+
+        # 重新初始化以完全由配置文件驱动，而不是合并（除非配置文件中缺失）
+        if "framework_signatures" in raw:
+            self._framework_signatures = {}
+            self._merge_framework_signatures(raw["framework_signatures"])
+            
+        if "exclusion_rules" in raw:
+            self._exclusion_rules = {}
+            self._merge_exclusion_rules(raw["exclusion_rules"])
+            
+        if "detection_rules" in raw:
+            self._detection_rules = {}
+            self._merge_detection_rules(raw["detection_rules"])
+            
+        logger.info("🧩 已成功加载外部规则配置: %s (框架数=%d, 排除规则数=%d, 检测规则数=%d)", 
+                    config_path, len(self._framework_signatures), len(self._exclusion_rules), len(self._detection_rules))
+
+    def _merge_framework_signatures(self, raw_signatures: Dict[str, Any]) -> None:
+        for name, data in raw_signatures.items():
+            fw = self._to_framework(name)
+            if not fw:
+                continue
+            if not isinstance(data, dict):
+                continue
+            self._framework_signatures[fw] = FrameworkSignature(
+                framework=fw,
+                headers=data.get("headers", {}),
+                body_patterns=data.get("body_patterns", []),
+                url_patterns=data.get("url_patterns", []),
+                exclusive_signatures=data.get("exclusive_signatures", []),
+                version_patterns=data.get("version_patterns", []),
+            )
+
+    def _merge_exclusion_rules(self, raw_rules: Dict[str, Any]) -> None:
+        for rule_id, data in raw_rules.items():
+            if not isinstance(data, dict):
+                continue
+            self._exclusion_rules[rule_id] = ExclusionRule(
+                rule_id=rule_id,
+                condition=str(data.get("condition", "framework_mismatch")),
+                exclusion_patterns=[str(x) for x in data.get("exclusion_patterns", [])],
+                description=str(data.get("description", "")),
+            )
+
+    def _merge_detection_rules(self, raw_rules: Dict[str, Any]) -> None:
+        for plugin_id, data in raw_rules.items():
+            if not isinstance(data, dict):
+                continue
+            self._detection_rules[plugin_id] = DetectionRule(
+                plugin_id=plugin_id,
+                expected_frameworks=self._framework_list(data.get("expected_frameworks", [])),
+                validation_level=self._to_validation_level(data.get("validation_level", "moderate")),
+                min_confidence=float(data.get("min_confidence", 0.3)),
+                required_evidence_count=int(data.get("required_evidence_count", 1)),
+                exclusion_rules=[str(x) for x in data.get("exclusion_rules", [])],
+                confidence_adjustments=self._parse_confidence_adjustments(data.get("confidence_adjustments", [])),
+                required_path_patterns=[str(x) for x in data.get("required_path_patterns", [])],
+                allow_when_framework_unknown=bool(data.get("allow_when_framework_unknown", True)),
+                version_constraints=self._parse_version_constraints(data.get("version_constraints", [])),
+            )
+
+    def _parse_confidence_adjustments(self, items: List[Any]) -> List[ConfidenceAdjustment]:
+        result: List[ConfidenceAdjustment] = []
+        for item in items or []:
+            if isinstance(item, ConfidenceAdjustment):
+                result.append(item)
+                continue
+            if not isinstance(item, dict):
+                continue
+            result.append(
+                ConfidenceAdjustment(
+                    factor_name=str(item.get("factor_name", "custom")),
+                    condition=str(item.get("condition", "")),
+                    adjustment=float(item.get("adjustment", 0.0)),
+                    description=str(item.get("description", "")),
+                )
+            )
+        return result
+
+    def _parse_version_constraints(self, items: List[Any]) -> List[VersionConstraint]:
+        result: List[VersionConstraint] = []
+        for item in items or []:
+            if isinstance(item, VersionConstraint):
+                result.append(item)
+                continue
+            if not isinstance(item, dict):
+                continue
+            result.append(
+                VersionConstraint(
+                    min_inclusive=item.get("min_inclusive"),
+                    min_exclusive=item.get("min_exclusive"),
+                    max_inclusive=item.get("max_inclusive"),
+                    max_exclusive=item.get("max_exclusive"),
+                )
+            )
+        return result
+
+    def _to_framework(self, value: Any) -> Optional[FrameworkType]:
+        if isinstance(value, FrameworkType):
+            return value
+        if value is None:
+            return None
+        value_str = str(value).strip().lower()
+        for item in FrameworkType:
+            if item.value == value_str:
+                return item
         return None
 
-    def validate_vulnerability(self, plugin_id: str, detected_frameworks: List[FrameworkType], response_body: str, response_headers: Dict[str, str], request_url: str, matched_keywords: List[str]) -> Tuple[bool, str]:
-        rule = self._detection_rules.get(plugin_id)
-        if not rule: return True, "No rule defined"
+    def _framework_list(self, values: List[Any]) -> List[FrameworkType]:
+        result: List[FrameworkType] = []
+        for value in values or []:
+            fw = self._to_framework(value)
+            if fw:
+                result.append(fw)
+        return result
+
+    def _to_validation_level(self, value: Any) -> ValidationLevel:
+        if isinstance(value, ValidationLevel):
+            return value
+        try:
+            if isinstance(value, int):
+                return ValidationLevel(value)
+            value_str = str(value).strip().lower()
+            if value_str == "loose":
+                return ValidationLevel.LOOSE
+            if value_str == "strict":
+                return ValidationLevel.STRICT
+        except Exception:
+            pass
+        return ValidationLevel.MODERATE
+
+    def get_detection_rule(self, plugin_id: str) -> Optional[DetectionRule]:
+        return self._detection_rules.get(plugin_id)
+
+    def detect_framework(
+        self,
+        response_body: str,
+        response_headers: Dict[str, str],
+        request_url: str,
+    ) -> Tuple[List[FrameworkType], Dict[FrameworkType, float]]:
+        """
+        检测目标框架及其置信度。
         
+        采用多维度评分机制：
+        1. 响应头匹配 (权重: 0.45)
+        2. 响应体通用模式匹配 (权重: 0.18)
+        3. URL路径模式匹配 (权重: 0.16)
+        4. 独有特征硬标记匹配 (权重: 0.55)
+        """
+        detected: List[FrameworkType] = []
+        confidences: Dict[FrameworkType, float] = {}
         body_lower = response_body.lower()
         header_text = str(response_headers).lower()
-        
-        # Check exclusion rules
+
+        for fw_type, sig in self._framework_signatures.items():
+            score = 0.0
+            # 1. 响应头匹配
+            for header_name, pattern in sig.headers.items():
+                header_value = response_headers.get(header_name)
+                if header_value and re.search(pattern, str(header_value), re.I):
+                    score += 0.45
+            
+            # 2. 响应体模式匹配
+            for pattern in sig.body_patterns:
+                if re.search(pattern, response_body, re.I):
+                    score += 0.18
+            
+            # 3. URL模式匹配
+            for pattern in sig.url_patterns:
+                if re.search(pattern, request_url, re.I):
+                    score += 0.16
+            
+            # 4. 独有特征标记匹配（最强证据）
+            for marker in sig.exclusive_signatures:
+                if marker.lower() in body_lower or marker.lower() in header_text:
+                    score += 0.55
+
+            if score >= 0.35:
+                detected.append(fw_type)
+                confidences[fw_type] = min(score, 1.0)
+
+        if not detected:
+            return [FrameworkType.UNKNOWN], {FrameworkType.UNKNOWN: 1.0}
+
+        # 按置信度排序
+        detected.sort(key=lambda item: confidences.get(item, 0.0), reverse=True)
+        return detected, confidences
+
+    def detect_version(
+        self,
+        framework: FrameworkType,
+        response_body: str,
+        response_headers: Dict[str, str],
+    ) -> Optional[str]:
+        """从响应中提取框架版本号"""
+        sig = self._framework_signatures.get(framework)
+        if not sig:
+            return None
+        combined = response_body + "\n" + str(response_headers)
+        for pattern in sig.version_patterns:
+            match = re.search(pattern, combined, re.I)
+            if match:
+                return match.group(1)
+        return None
+
+    def should_execute_plugin(
+        self,
+        plugin_id: str,
+        detected_frameworks: List[FrameworkType],
+        request_paths: List[str],
+    ) -> Tuple[bool, str]:
+        """
+        判定插件是否应该在当前目标上执行。
+        实现插件隔离，避免无关插件产生噪声。
+        """
+        rule = self._detection_rules.get(plugin_id)
+        if not rule or not rule.expected_frameworks:
+            return True, "未定义框架约束，允许执行"
+
+        target_frameworks = [fw for fw in detected_frameworks if fw != FrameworkType.UNKNOWN]
+        expected_set = set(rule.expected_frameworks)
+
+        if target_frameworks:
+            # 如果识别到了明确的框架，必须匹配其中之一
+            if any(fw in expected_set for fw in target_frameworks):
+                return True, "目标框架与插件期望匹配"
+            current = ",".join(fw.value for fw in target_frameworks)
+            expected = ",".join(fw.value for fw in rule.expected_frameworks)
+            return False, f"目标框架为 [{current}]，与插件期望 [{expected}] 不匹配"
+
+        # 如果框架未知
+        if not rule.allow_when_framework_unknown:
+            return False, "目标框架未知，且插件禁止在未知框架下执行"
+
+        # 检查请求路径是否符合该框架的典型路径
+        if self._paths_match_rule(request_paths, rule.required_path_patterns):
+            return True, "目标框架未知，但请求路径符合插件特征"
+
+        return False, "目标框架未知，且请求路径不符合插件特征"
+
+    def _paths_match_rule(self, request_paths: List[str], required_patterns: List[str]) -> bool:
+        if not required_patterns:
+            return True
+        for path in request_paths:
+            for pattern in required_patterns:
+                if re.search(pattern, path, re.I):
+                    return True
+        return False
+
+    def _response_framework_context(
+        self,
+        detected_frameworks: List[FrameworkType],
+        response_body: str,
+        response_headers: Dict[str, str],
+        request_url: str,
+    ) -> Tuple[List[FrameworkType], Dict[FrameworkType, float]]:
+        """获取响应中的框架上下文，结合初始探测结果"""
+        response_frameworks, response_confidence = self.detect_framework(
+            response_body=response_body,
+            response_headers=response_headers,
+            request_url=request_url,
+        )
+        # 合并已检测到的和响应中再次发现的
+        merged: List[FrameworkType] = []
+        for fw in list(detected_frameworks) + list(response_frameworks):
+            if fw not in merged:
+                merged.append(fw)
+        return merged, response_confidence
+
+    def validate_vulnerability(
+        self,
+        plugin_id: str,
+        detected_frameworks: List[FrameworkType],
+        response_body: str,
+        response_headers: Dict[str, str],
+        request_url: str,
+        matched_keywords: Optional[List[str]] = None,
+        framework_versions: Optional[Dict[FrameworkType, Optional[str]]] = None,
+    ) -> Tuple[bool, str]:
+        """
+        多重验证漏洞判定逻辑：
+        1. 排除规则检查 (Exclusion Rules) - 彻底解决循环误报的关键
+        2. 框架严格性校验 (Validation Level)
+        3. 路径特征验证
+        4. 版本比对确认
+        5. 证据强度校验
+        """
+        rule = self._detection_rules.get(plugin_id)
+        if not rule:
+            return True, "未定义检测规则，默认通过"
+
+        matched_keywords = matched_keywords or []
+        combined_frameworks, _ = self._response_framework_context(
+            detected_frameworks=detected_frameworks,
+            response_body=response_body,
+            response_headers=response_headers,
+            request_url=request_url,
+        )
+
+        body_lower = response_body.lower()
+        header_text = str(response_headers).lower()
+        expected_set = set(rule.expected_frameworks)
+        known_combined = {fw for fw in combined_frameworks if fw != FrameworkType.UNKNOWN}
+
+        # 1. 排除规则检查 (最核心的防误报机制)
         for ex_id in rule.exclusion_rules:
             ex_rule = self._exclusion_rules.get(ex_id)
             if not ex_rule: continue
             
             if ex_rule.condition == "framework_mismatch":
-                triggered = any(re.search(p, body_lower + header_text, re.I) for p in ex_rule.exclusion_patterns)
-                if triggered:
-                    # If current framework is expected, it's NOT an exclusion
-                    if not any(fw in rule.expected_frameworks for fw in detected_frameworks):
-                        return False, f"Exclusion triggered: {ex_rule.description}"
-        
-        # Check framework mismatch for STRICT level
-        if rule.validation_level == ValidationLevel.STRICT:
-            if not any(fw in rule.expected_frameworks for fw in detected_frameworks):
-                return False, f"Framework mismatch for STRICT rule (expected {rule.expected_frameworks})"
-                
-        return True, "Valid"
+                # 如果响应中出现了其他框架的独有特征，且该插件不是针对那个框架的，则判定为误报
+                triggered = any(re.search(pattern, body_lower + "\n" + header_text, re.I) for pattern in ex_rule.exclusion_patterns)
+                if triggered and not any(fw in expected_set for fw in known_combined):
+                    return False, f"触发排除规则: {ex_rule.description}"
 
-    def adjust_confidence(self, plugin_id: str, base_confidence: float, detected_frameworks: List[FrameworkType], response_body: str, response_headers: Dict[str, str], request_url: str, matched_keywords: List[str]) -> Tuple[float, List[str]]:
-        rule = self._detection_rules.get(plugin_id)
-        if not rule: return base_confidence, []
+        # 2. 框架匹配校验
+        if rule.validation_level == ValidationLevel.STRICT and rule.expected_frameworks:
+            if not any(fw in expected_set for fw in known_combined):
+                current = ",".join(fw.value for fw in known_combined) if known_combined else "unknown"
+                expected = ",".join(fw.value for fw in rule.expected_frameworks)
+                return False, f"框架不匹配 (当前: {current}, 期望: {expected})"
+
+        # 3. 路径验证
+        if rule.required_path_patterns:
+            if not self._paths_match_rule([request_url], rule.required_path_patterns):
+                return False, "请求路径未通过插件路径指纹验证"
+
+        # 4. 版本比对
+        version_reason = self._validate_version(rule, combined_frameworks, response_body, response_headers, framework_versions)
+        if version_reason is not None:
+            return False, version_reason
+
+        # 5. 证据强度 (LOOSE 级别除外)
+        if rule.validation_level != ValidationLevel.LOOSE and not matched_keywords:
+            return False, "未提取到有效的漏洞特征证据"
+
+        return True, "验证通过"
+
+    def _validate_version(
+        self,
+        rule: DetectionRule,
+        frameworks: List[FrameworkType],
+        response_body: str,
+        response_headers: Dict[str, str],
+        framework_versions: Optional[Dict[FrameworkType, Optional[str]]],
+    ) -> Optional[str]:
+        """验证提取到的版本号是否在漏洞受影响范围内"""
+        if not rule.version_constraints or not rule.expected_frameworks:
+            return None
+
+        version_map = framework_versions or {}
+        for framework in rule.expected_frameworks:
+            # 优先使用已探测到的版本，否则实时检测
+            version = version_map.get(framework) or self.detect_version(framework, response_body, response_headers)
+            if not version: continue
+            
+            # 如果命中任何一个约束，则认为在影响范围内
+            match_any = False
+            for constraint in rule.version_constraints:
+                if self._version_matches(version, constraint):
+                    match_any = True
+                    break
+            
+            if not match_any:
+                return f"版本比对未通过: {framework.value} v{version} 不在受影响范围内"
         
+        return None
+
+    def _version_matches(self, version: str, constraint: VersionConstraint) -> bool:
+        """检查单个版本号是否符合约束"""
+        normalized = self._normalize_version(version)
+        if normalized is None: return False
+
+        def cmp(other: Optional[str]) -> Optional[int]:
+            other_normalized = self._normalize_version(other) if other else None
+            if other_normalized is None: return None
+            
+            # 补齐长度进行比较 (例如 5.0 和 5.0.24)
+            max_len = max(len(normalized), len(other_normalized))
+            left = normalized + (0,) * (max_len - len(normalized))
+            right = other_normalized + (0,) * (max_len - len(other_normalized))
+            
+            if left < right: return -1
+            if left > right: return 1
+            return 0
+
+        # 检查所有边界
+        checks = [
+            (constraint.min_inclusive, lambda v: v is None or v >= 0),
+            (constraint.min_exclusive, lambda v: v is None or v > 0),
+            (constraint.max_inclusive, lambda v: v is None or v <= 0),
+            (constraint.max_exclusive, lambda v: v is None or v < 0),
+        ]
+        
+        for boundary, predicate in checks:
+            if boundary and not predicate(cmp(boundary)):
+                return False
+        return True
+
+    def _normalize_version(self, value: Optional[str]) -> Optional[Tuple[int, ...]]:
+        if not value: return None
+        parts = re.findall(r"\d+", str(value))
+        if not parts: return None
+        return tuple(int(part) for part in parts)
+
+    def adjust_confidence(
+        self,
+        plugin_id: str,
+        base_confidence: float,
+        detected_frameworks: List[FrameworkType],
+        response_body: str,
+        response_headers: Dict[str, str],
+        request_url: str,
+        matched_keywords: Optional[List[str]] = None,
+    ) -> Tuple[float, List[Dict[str, Any]]]:
+        """
+        动态调整置信度评分。
+        根据目标上下文（框架、路径、响应特征）进行加权或惩罚。
+        """
+        rule = self._detection_rules.get(plugin_id)
+        if not rule:
+            return base_confidence, []
+
+        matched_keywords = matched_keywords or []
         confidence = base_confidence
-        details = []
+        details: List[Dict[str, Any]] = []
         body_lower = response_body.lower()
         header_text = str(response_headers).lower()
         
+        combined_frameworks, response_confidence = self._response_framework_context(
+            detected_frameworks=detected_frameworks,
+            response_body=response_body,
+            response_headers=response_headers,
+            request_url=request_url,
+        )
+        expected_set = set(rule.expected_frameworks)
+
         for adj in rule.confidence_adjustments:
             triggered = False
+            # 条件判断逻辑
             if adj.condition == "target_is_thinkphp":
                 triggered = FrameworkType.THINKPHP in detected_frameworks
             elif adj.condition == "target_is_not_thinkphp":
@@ -417,32 +675,50 @@ class RuleEngine:
                 triggered = FrameworkType.DRUPAL in detected_frameworks
             elif adj.condition == "target_is_django":
                 triggered = FrameworkType.DJANGO in detected_frameworks
+            elif adj.condition == "response_is_expected_framework":
+                triggered = any(fw in expected_set for fw in combined_frameworks if fw != FrameworkType.UNKNOWN)
             elif adj.condition == "response_has_thinkphp_exclusive_sig":
-                thinkphp_sig = self._framework_signatures.get(FrameworkType.THINKPHP)
-                if thinkphp_sig:
-                    triggered = any(es.lower() in body_lower or es.lower() in header_text for es in thinkphp_sig.exclusive_signatures)
+                triggered = self._has_exclusive_signature(FrameworkType.THINKPHP, body_lower, header_text)
             elif adj.condition == "response_has_drupal_exclusive_sig":
-                drupal_sig = self._framework_signatures.get(FrameworkType.DRUPAL)
-                if drupal_sig:
-                    triggered = any(es.lower() in body_lower or es.lower() in header_text for es in drupal_sig.exclusive_signatures)
+                triggered = self._has_exclusive_signature(FrameworkType.DRUPAL, body_lower, header_text)
             elif adj.condition == "response_has_django_exclusive_sig":
-                django_sig = self._framework_signatures.get(FrameworkType.DJANGO)
-                if django_sig:
-                    triggered = any(es.lower() in body_lower or es.lower() in header_text for es in django_sig.exclusive_signatures)
+                triggered = self._has_exclusive_signature(FrameworkType.DJANGO, body_lower, header_text)
             elif adj.condition == "response_has_sql_error":
                 triggered = any(err.lower() in body_lower for err in GENERIC_SQL_ERRORS)
             elif adj.condition == "response_has_other_framework_sig":
-                expected = set(rule.expected_frameworks)
-                for fw in detected_frameworks:
-                    if fw not in expected and fw != FrameworkType.UNKNOWN:
-                        triggered = True
-                        break
-            
+                triggered = any(fw not in expected_set and fw != FrameworkType.UNKNOWN for fw in combined_frameworks)
+
             if triggered:
                 confidence += adj.adjustment
-                details.append(f"{adj.factor_name}: {adj.adjustment:+.2f} ({adj.description})")
-                
+                details.append({
+                    "factor_name": adj.factor_name,
+                    "adjustment": adj.adjustment,
+                    "description": adj.description,
+                    "triggered": True
+                })
+
+        # 基础校验加分
+        if rule.required_path_patterns and self._paths_match_rule([request_url], rule.required_path_patterns):
+            confidence += 0.08
+            details.append({"factor_name": "path_validation", "adjustment": 0.08, "description": "请求路径符合插件路径特征", "triggered": True})
+
+        if matched_keywords and any(kw.lower() in body_lower for kw in matched_keywords):
+            confidence += 0.05
+            details.append({"factor_name": "payload_response_match", "adjustment": 0.05, "description": "响应中包含命中的关键特征", "triggered": True})
+
+        # 响应框架加分
+        for fw, val in response_confidence.items():
+            if fw in expected_set and val >= 0.6:
+                confidence += 0.05
+                details.append({"factor_name": "response_framework_confidence", "adjustment": 0.05, "description": f"响应框架识别置信度较高: {fw.value}={val:.2f}", "triggered": True})
+                break
+
         return max(0.0, min(1.0, confidence)), details
+
+    def _has_exclusive_signature(self, framework: FrameworkType, body_lower: str, header_text: str) -> bool:
+        sig = self._framework_signatures.get(framework)
+        if not sig: return False
+        return any(marker.lower() in body_lower or marker.lower() in header_text for marker in sig.exclusive_signatures)
 
     def get_min_confidence(self, plugin_id: str) -> float:
         rule = self._detection_rules.get(plugin_id)

@@ -323,9 +323,35 @@ class ScannerEngine:
             tasks = []
         
         for plugin in self.plugins:
+            plugin_id = plugin.get("id", "unknown")
             requests_list = plugin.get("requests", [])
             # 兼容 sequential_requests (top-level)
             sequential = bool(plugin.get("sequential_requests"))
+            flattened_paths = [
+                path_item
+                for req in requests_list
+                for path_item in req.get("path", [])
+                if isinstance(path_item, str)
+            ]
+            can_execute, execute_reason = self._rule_engine.should_execute_plugin(
+                plugin_id=plugin_id,
+                detected_frameworks=self._detected_frameworks,
+                request_paths=flattened_paths,
+            )
+            self._log_judgment(
+                phase="plugin_gate",
+                plugin_id=plugin_id,
+                action="framework_scope_check",
+                details={
+                    "detected_frameworks": [fw.value for fw in self._detected_frameworks],
+                    "request_paths": flattened_paths[:10],
+                    "reason": execute_reason,
+                },
+                result="allow" if can_execute else "skip",
+            )
+            if not can_execute:
+                logger.info(f"⏭️ 跳过插件 {plugin_id}: {execute_reason}")
+                continue
             
             if sequential:
                 await _gather_pending()
@@ -413,6 +439,7 @@ class ScannerEngine:
                                     response_headers=dict(resp.headers),
                                     request_url=url,
                                     matched_keywords=matched_keywords,
+                                    framework_versions=self._framework_versions,
                                 )
                                 
                                 base_confidence = self._calculate_confidence(resp, matchers, plugin)
@@ -446,6 +473,10 @@ class ScannerEngine:
                                     "framework_confidence": {
                                         fw.value: round(self._framework_confidence.get(fw, 0), 3)
                                         for fw in self._detected_frameworks
+                                    },
+                                    "request_path_validated": True,
+                                    "framework_versions": {
+                                        fw.value: v for fw, v in self._framework_versions.items()
                                     },
                                     "response_status": resp.status_code,
                                     "response_length": len(resp.content),
@@ -628,14 +659,21 @@ class ScannerEngine:
         )
         
         # 1. 尝试提取 Drupal form_build_id (用于表单提交)
+        # 支持 HTML 和 AJAX JSON 响应
         form_build_match = re.search(r'name="form_build_id"\s+value="([^"]+)"', normalized_content)
+        if not form_build_match:
+            form_build_match = re.search(r'"form_build_id"\s*:\s*"([^"]+)"', normalized_content)
+            
         if form_build_match:
             form_build_id = form_build_match.group(1)
             self._plugin_vars_cache[plugin_id]["FormBuildId"] = form_build_id
             logger.info(f"📋 提取到 form_build_id: {form_build_id}")
         
-        # 2. 尝试提取 Drupal form_token (用于表单提交)
+        # 2. 尝试提取 Drupal form_token
         form_token_match = re.search(r'name="form_token"\s+value="([^"]+)"', normalized_content)
+        if not form_token_match:
+            form_token_match = re.search(r'"form_token"\s*:\s*"([^"]+)"', normalized_content)
+            
         if form_token_match:
             form_token = form_token_match.group(1)
             self._plugin_vars_cache[plugin_id]["FormToken"] = form_token
@@ -672,6 +710,7 @@ class ScannerEngine:
     def _extract_upload_path(self, content: str) -> str:
         if not content:
             return ""
+        candidates: List[str] = []
 
         absolute_or_relative_paths = re.findall(
             r'(https?://[^\s"\']+|/?sites/default/files/[^\s"\'>,]+)',
@@ -682,14 +721,64 @@ class ScannerEngine:
             parsed = urlparse(raw_match)
             candidate = parsed.path if parsed.scheme else raw_match
             candidate = candidate.lstrip("/")
-            if candidate.lower().startswith("sites/default/files/"):
-                return candidate
+            if candidate.lower().startswith("sites/default/files/") and self._is_probable_upload_path(candidate):
+                candidates.append(candidate)
 
-        public_uri_match = re.search(r'public://([^\s"\'>,]+)', content, flags=re.IGNORECASE)
-        if public_uri_match:
-            return f"sites/default/files/{public_uri_match.group(1).lstrip('/')}"
+        public_uri_matches = re.findall(r'public://([^\s"\'>,]+)', content, flags=re.IGNORECASE)
+        for match in public_uri_matches:
+            candidate = f"sites/default/files/{match.lstrip('/')}"
+            if self._is_probable_upload_path(candidate):
+                candidates.append(candidate)
+
+        if candidates:
+            candidates.sort(key=len)
+            return candidates[0]
 
         return ""
+
+    def _is_probable_upload_path(self, candidate: str) -> bool:
+        normalized = candidate.split("?", 1)[0].lower()
+        if not normalized.startswith("sites/default/files/"):
+            return False
+
+        # 排除静态资源目录和文件
+        non_upload_markers = [
+            "/css/",
+            "/js/",
+            "/styles/",
+            "/translations/",
+            "/advagg_css/",
+            "/advagg_js/",
+            ".css",
+            ".js",
+            ".map",
+            ".json",
+        ]
+        if any(marker in normalized for marker in non_upload_markers):
+            return False
+
+        # 必须包含典型的上传目录或文件扩展名
+        upload_markers = [
+            "/pictures/",
+            "/inline-images/",
+            "/uploads/",
+            "/files/",
+            ".gif",
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".svg",
+            ".html",
+            ".htm",
+            ".txt",
+            ".pdf",
+        ]
+        
+        # 排除掉只有目录名的情况
+        if normalized.endswith("/"):
+            return False
+            
+        return any(marker in normalized for marker in upload_markers)
 
     async def _discovery_scan(self, client: httpx.AsyncClient) -> None:
         """对发现的路径进行扫描"""

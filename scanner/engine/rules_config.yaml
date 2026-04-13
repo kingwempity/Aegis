@@ -1,0 +1,195 @@
+framework_signatures:
+  thinkphp:
+    headers:
+      X-Powered-By: "ThinkPHP"
+    body_patterns:
+      - "十年磨一剑"
+      - "ThinkPHP"
+      - "think_session"
+      - "Var_Pathinfo"
+      - "think-error"
+      - "thinkphp_show_page_trace"
+    url_patterns:
+      - "s=/index/index"
+      - "public/static"
+      - "\\?s="
+      - "/index\\.php"
+    exclusive_signatures:
+      - "X-Powered-By: ThinkPHP"
+      - "Think\\\\Db\\\\Exception"
+      - "Think\\\\Exception"
+      - "thinkphp_show_page_trace"
+      - "十年磨一剑"
+    version_patterns:
+      - "ThinkPHP\\s*[Vv/]?([0-9]+(?:\\.[0-9]+)+)"
+
+  drupal:
+    headers:
+      X-Generator: "Drupal"
+      X-Drupal-Cache: ".*"
+    body_patterns:
+      - "Drupal\\.settings"
+      - "sites/default/files"
+      - "drupal\\.js"
+      - "name=\"form_build_id\""
+      - "jQuery\\.extend\\(Drupal\\.settings"
+    url_patterns:
+      - "sites/default/files"
+      - "node/add"
+      - "user/register"
+      - "q=user"
+    exclusive_signatures:
+      - "X-Generator: Drupal"
+      - "Drupal.settings"
+      - "form_build_id"
+      - "_drupal_ajax"
+      - "sites/default/files"
+    version_patterns:
+      - "Drupal\\s*([0-9]+(?:\\.[0-9]+)+)"
+      - "Drupal\\s+([0-9]+)"
+
+  django:
+    headers:
+      X-Frame-Options: "DENY"
+      Server: "WSGIServer"
+    body_patterns:
+      - "csrfmiddlewaretoken"
+      - "django\\.js"
+      - "It worked!"
+      - "Django debug page"
+    url_patterns:
+      - "/admin/login/"
+      - "/static/admin/"
+      - "csrfmiddlewaretoken"
+    exclusive_signatures:
+      - "csrfmiddlewaretoken"
+      - "IntegrityError"
+      - "UNIQUE constraint failed"
+      - "django.jQuery"
+    version_patterns:
+      - "Django\\s*([0-9]+(?:\\.[0-9]+)+)"
+
+exclusion_rules:
+  response_has_thinkphp_exclusive_sig:
+    rule_id: "response_has_thinkphp_exclusive_sig"
+    condition: "framework_mismatch"
+    exclusion_patterns:
+      - "X-Powered-By:\\s*ThinkPHP"
+      - "Think\\\\Db\\\\Exception"
+      - "Var_Pathinfo"
+    description: "当响应包含ThinkPHP独有特征时，排除非ThinkPHP漏洞误报"
+
+  response_has_drupal_exclusive_sig:
+    rule_id: "response_has_drupal_exclusive_sig"
+    condition: "framework_mismatch"
+    exclusion_patterns:
+      - "X-Generator:\\s*Drupal"
+      - "Drupal\\.settings"
+      - "sites/default/files"
+    description: "当响应包含Drupal独有特征时，排除非Drupal漏洞误报"
+
+  response_has_django_exclusive_sig:
+    rule_id: "response_has_django_exclusive_sig"
+    condition: "framework_mismatch"
+    exclusion_patterns:
+      - "csrfmiddlewaretoken"
+      - "IntegrityError"
+      - "UNIQUE constraint failed"
+    description: "当响应包含Django独有特征时，排除非Django漏洞误报"
+
+detection_rules:
+  thinkphp-sqli:
+    plugin_id: "thinkphp-sqli"
+    expected_frameworks: ["thinkphp"]
+    validation_level: "strict"
+    min_confidence: 0.45
+    required_evidence_count: 2
+    exclusion_rules: ["response_has_drupal_exclusive_sig", "response_has_django_exclusive_sig"]
+    allow_when_framework_unknown: true
+    required_path_patterns:
+      - "/index\\.php"
+      - "[?&]s="
+      - "ids\\["
+      - "where\\["
+      - "order\\["
+      - "having\\["
+    version_constraints:
+      - min_inclusive: "5.0.0"
+        max_exclusive: "5.0.24"
+      - min_inclusive: "5.1.0"
+        max_exclusive: "5.1.31"
+    confidence_adjustments:
+      - factor_name: "framework_match"
+        condition: "target_is_thinkphp"
+        adjustment: 0.20
+        description: "目标确认是ThinkPHP框架，提升置信度"
+      - factor_name: "framework_mismatch"
+        condition: "target_is_not_thinkphp"
+        adjustment: -0.25
+        description: "目标不是ThinkPHP框架，降低置信度"
+      - factor_name: "response_expected_framework"
+        condition: "response_is_expected_framework"
+        adjustment: 0.20
+        description: "响应再次确认目标框架匹配"
+      - factor_name: "thinkphp_exclusive_hit"
+        condition: "response_has_thinkphp_exclusive_sig"
+        adjustment: 0.25
+        description: "响应包含ThinkPHP独有特征"
+      - factor_name: "sql_error_match"
+        condition: "response_has_sql_error"
+        adjustment: 0.15
+        description: "响应包含通用SQL错误特征"
+
+  drupal-cve-2019-6341:
+    plugin_id: "drupal-cve-2019-6341"
+    expected_frameworks: ["drupal"]
+    validation_level: "strict"
+    min_confidence: 0.35
+    required_evidence_count: 2
+    exclusion_rules: ["response_has_thinkphp_exclusive_sig", "response_has_django_exclusive_sig"]
+    allow_when_framework_unknown: true
+    required_path_patterns:
+      - "/user/register"
+      - "[?&]q=user/register"
+      - "_wrapper_format=drupal_ajax"
+      - "element_parents=user_picture"
+      - "sites/default/files"
+    confidence_adjustments:
+      - factor_name: "framework_match"
+        condition: "target_is_drupal"
+        adjustment: 0.20
+        description: "目标确认是Drupal框架，提升置信度"
+      - factor_name: "response_expected_framework"
+        condition: "response_is_expected_framework"
+        adjustment: 0.20
+        description: "响应再次确认目标框架匹配"
+      - factor_name: "drupal_exclusive_hit"
+        condition: "response_has_drupal_exclusive_sig"
+        adjustment: 0.25
+        description: "响应包含Drupal独有特征"
+
+  django-cve-2017-12794:
+    plugin_id: "django-cve-2017-12794"
+    expected_frameworks: ["django"]
+    validation_level: "moderate"
+    min_confidence: 0.25
+    required_evidence_count: 1
+    exclusion_rules: ["response_has_thinkphp_exclusive_sig", "response_has_drupal_exclusive_sig"]
+    allow_when_framework_unknown: true
+    required_path_patterns:
+      - "/create_user/"
+      - "IntegrityError"
+      - "UNIQUE constraint failed"
+    confidence_adjustments:
+      - factor_name: "framework_match"
+        condition: "target_is_django"
+        adjustment: 0.20
+        description: "目标确认是Django框架，提升置信度"
+      - factor_name: "response_expected_framework"
+        condition: "response_is_expected_framework"
+        adjustment: 0.20
+        description: "响应再次确认目标框架匹配"
+      - factor_name: "django_exclusive_hit"
+        condition: "response_has_django_exclusive_sig"
+        adjustment: 0.25
+        description: "响应包含Django独有特征"

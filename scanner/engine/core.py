@@ -276,6 +276,13 @@ class ScannerEngine:
                     request_url=self.target,
                 )
             )
+
+            if self._detected_frameworks == [FrameworkType.UNKNOWN]:
+                fallback_frameworks, fallback_confidence, fallback_versions = await self._fallback_framework_probe(client)
+                if fallback_frameworks and fallback_frameworks != [FrameworkType.UNKNOWN]:
+                    self._detected_frameworks = fallback_frameworks
+                    self._framework_confidence = fallback_confidence
+                    self._framework_versions.update(fallback_versions)
             
             # 同步 RuleEngine 检测结果到 AttackContext.detected_tech
             if self._context:
@@ -312,6 +319,80 @@ class ScannerEngine:
                 phase="initial_probe", plugin_id="N/A",
                 action="framework_detection", details={"error": str(e)}, result="failed",
             )
+
+    def _framework_probe_candidates(self) -> List[str]:
+        return [
+            self.target,
+            f"{self.target}/index.php",
+            f"{self.target}/?s=index/index/index",
+            f"{self.target}/index.php?s=/index/index/index",
+            f"{self.target}/user/register",
+            f"{self.target}/?q=user/register",
+            f"{self.target}/admin/login/",
+        ]
+
+    async def _fallback_framework_probe(
+        self,
+        client: httpx.AsyncClient,
+    ) -> Tuple[List[FrameworkType], Dict[FrameworkType, float], Dict[FrameworkType, Optional[str]]]:
+        """
+        当首页指纹不足时，补充访问少量高价值路径来识别框架。
+        这可以覆盖 ThinkPHP/Drupal 这类首页特征较弱、但框架路由特征明显的场景。
+        """
+        best_frameworks: List[FrameworkType] = [FrameworkType.UNKNOWN]
+        best_confidence: Dict[FrameworkType, float] = {FrameworkType.UNKNOWN: 1.0}
+        best_versions: Dict[FrameworkType, Optional[str]] = {}
+        best_score = 0.0
+
+        for candidate_url in self._framework_probe_candidates():
+            try:
+                resp = await self._request_in_scope(client, "GET", candidate_url)
+            except Exception as exc:
+                self._log_judgment(
+                    phase="initial_probe",
+                    plugin_id="N/A",
+                    action="framework_fallback_probe",
+                    details={"url": candidate_url, "error": str(exc)},
+                    result="failed",
+                )
+                continue
+
+            frameworks, confidence = self._rule_engine.detect_framework(
+                response_body=resp.text,
+                response_headers=dict(resp.headers),
+                request_url=candidate_url,
+            )
+            known_frameworks = [fw for fw in frameworks if fw != FrameworkType.UNKNOWN]
+            if not known_frameworks:
+                continue
+
+            score = max(confidence.get(fw, 0.0) for fw in known_frameworks)
+            if score <= best_score:
+                continue
+
+            best_frameworks = frameworks
+            best_confidence = confidence
+            best_versions = {
+                fw: self._rule_engine.detect_version(fw, resp.text, dict(resp.headers))
+                for fw in known_frameworks
+            }
+            best_score = score
+
+            self._log_judgment(
+                phase="initial_probe",
+                plugin_id="N/A",
+                action="framework_fallback_probe",
+                details={
+                    "url": candidate_url,
+                    "detected_frameworks": [fw.value for fw in best_frameworks],
+                    "framework_confidence": {
+                        fw.value: round(best_confidence.get(fw, 0.0), 3) for fw in best_frameworks
+                    },
+                },
+                result="success",
+            )
+
+        return best_frameworks, best_confidence, best_versions
     
     async def _execute_plugins(self, client: httpx.AsyncClient) -> None:
         """执行所有插件的扫描任务"""

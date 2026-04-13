@@ -178,6 +178,12 @@ HIGH_SPECIFICITY_SQLI_KEYWORDS = [
     "SQLSTATE[HY000]",
 ]
 
+THINKPHP_EXCLUSIVE_SQLI_KEYWORDS = [
+    "Think\\Db\\Exception",
+    "Think\\Exception",
+    "thinkphp_show_page_trace",
+]
+
 GENERIC_SQL_ERRORS = [
     "sql syntax",
     "mysql_fetch",

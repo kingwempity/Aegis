@@ -322,6 +322,10 @@ class ScannerEngine:
                     content_type = current_headers.get("Content-Type", "")
                     if content_type.startswith("multipart/form-data"):
                         boundary = self._infer_multipart_boundary(current_body or "")
+                        if not boundary:
+                            boundary = "----AegisBoundary" + ''.join(
+                                random.choices(string.ascii_letters + string.digits, k=16)
+                            )
                         if boundary and "boundary=" not in content_type:
                             current_headers["Content-Type"] = f"{content_type}; boundary={boundary}"
                     

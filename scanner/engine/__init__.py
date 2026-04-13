@@ -57,6 +57,7 @@ from scanner.engine.attack import (
 )
 
 from scanner.engine.parser import TemplateParser
+from scanner.engine.rules import THINKPHP_EXCLUSIVE_SQLI_KEYWORDS
 
 # 导入模板化攻击脚本生成器（新模块）
 from scanner.engine.template_generator import (
@@ -161,4 +162,7 @@ __all__ = [
     
     # 解析器
     "TemplateParser",
+    
+    # 规则常量
+    "THINKPHP_EXCLUSIVE_SQLI_KEYWORDS",
 ]

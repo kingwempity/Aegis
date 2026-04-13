@@ -421,6 +421,7 @@ class ContextAwareEngine:
             "_drupal_ajax",
             "user_register_form",
             "drupal.js",
+            "sites/default/files",
         ],
         "thinkphp": [
             "X-Powered-By: ThinkPHP",
@@ -428,6 +429,13 @@ class ContextAwareEngine:
             "Think\\Exception",
             "Var_Pathinfo",
             "thinkphp_show_page_trace",
+        ],
+        "django": [
+            "csrfmiddlewaretoken",
+            "django.js",
+            "X-Frame-Options: DENY",
+            "IntegrityError",
+            "UNIQUE constraint failed",
         ],
     }
     
@@ -443,13 +451,8 @@ class ContextAwareEngine:
     def detect_technologies(cls, response_body: str, response_headers: Dict[str, str]) -> List[str]:
         """
         检测目标使用的技术栈（增强版：含互斥逻辑和置信度评分）。
-        
-        互斥规则：
-        - 当Drupal独有特征命中时，移除thinkphp（避免误判）
-        - 当ThinkPHP独有特征命中时，移除drupal（避免误判）
-        - "s=/" 和 "十年磨一剑" 等弱特征不再作为thinkphp的判定依据
         """
-        detected = []
+        detected = set()
         detected_with_exclusive = set()
         
         combined_text = response_body.lower() + " ".join(str(v) for v in response_headers.values()).lower()
@@ -457,7 +460,7 @@ class ContextAwareEngine:
         for tech, signatures in cls.TECH_SIGNATURES.items():
             for sig in signatures:
                 if sig.lower() in combined_text:
-                    detected.append(tech)
+                    detected.add(tech)
                     break
         
         for tech, exclusive_sigs in cls.TECH_EXCLUSIVE_SIGNATURES.items():
@@ -466,15 +469,20 @@ class ContextAwareEngine:
                     detected_with_exclusive.add(tech)
                     break
         
-        if "drupal" in detected_with_exclusive and "thinkphp" in detected:
-            detected.remove("thinkphp")
-            logger.info(f"🔍 技术栈互斥: 检测到Drupal独有特征，移除thinkphp判定")
+        # 互斥逻辑优化
+        if "drupal" in detected_with_exclusive:
+            if "thinkphp" in detected: detected.remove("thinkphp")
+            if "django" in detected: detected.add("drupal") # Ensure drupal is there
         
-        if "thinkphp" in detected_with_exclusive and "drupal" in detected:
-            detected.remove("drupal")
-            logger.info(f"🔍 技术栈互斥: 检测到ThinkPHP独有特征，移除drupal判定")
+        if "thinkphp" in detected_with_exclusive:
+            if "drupal" in detected: detected.remove("drupal")
+            if "django" in detected: detected.remove("django")
+            
+        if "django" in detected_with_exclusive:
+            if "thinkphp" in detected: detected.remove("thinkphp")
+            if "drupal" in detected: detected.remove("drupal")
         
-        return detected
+        return list(detected)
     
     @classmethod
     def extract_input_fields(cls, response_body: str) -> List[Dict[str, str]]:

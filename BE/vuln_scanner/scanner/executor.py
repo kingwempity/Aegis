@@ -4,11 +4,14 @@
 """
 import threading
 import time
+import json
+import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from scans.models import ScanTask
 from .engine import VulnerabilityScanner
+from scanner.engine.core import ScannerEngine
 import logging
 
 logger = logging.getLogger(__name__)
@@ -74,9 +77,36 @@ class ScanTaskExecutor:
         try:
             logger.info(f"开始执行任务: {task.task_id}")
 
-            # 创建扫描器并执行
+            # 创建基础扫描器并执行（爬虫和基础漏洞）
             scanner = VulnerabilityScanner(task)
             scanner.scan()
+
+            # 执行高级插件扫描（针对特定 CVE）
+            try:
+                logger.info(f"开始执行高级插件扫描: {task.task_id}")
+                plugin_engine = ScannerEngine(target=task.target_url)
+                # 将发现的漏洞保存到数据库 (ScannerEngine.run 是 async 方法)
+                results = asyncio.run(plugin_engine.run())
+                for res in results:
+                    from scans.models import Vulnerability
+                    # 映射 ScannerEngine 的结果字段到数据库模型
+                    Vulnerability.objects.create(
+                        task=task,
+                        name=res.get("vuln_name", "Unknown Plugin Vulnerability"),
+                        type=res.get("plugin_id", "plugin"),
+                        url=res.get("url", task.target_url),
+                        method=res.get("request", {}).get("method", "GET"),
+                        parameter=res.get("parameter", ""),
+                        payload=res.get("payload", ""),
+                        evidence=json.dumps(res.get("evidence", {})) if isinstance(res.get("evidence"), dict) else str(res.get("evidence", "")),
+                        cvss_score=8.0 if res.get("severity") == "high" else 5.0,
+                        risk_level=res.get("severity", "medium").lower(),
+                        description=f"Detected by plugin: {res.get('plugin_id')}",
+                        remediation="Please refer to CVE details for remediation steps.",
+                    )
+                logger.info(f"高级插件扫描完成，发现 {len(results)} 个漏洞")
+            except Exception as pe:
+                logger.error(f"高级插件扫描异常: {str(pe)}")
 
             logger.info(f"任务 {task.task_id} 执行完成")
 

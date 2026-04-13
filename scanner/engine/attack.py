@@ -658,18 +658,32 @@ class AttackScriptGenerator:
         # 2. 确定payload类型
         payload_type = self._detect_payload_type(plugin)
         
-        # 3. 为每个基础payload生成变体
+        # 3. 检测是否为 multipart/form-data 请求
+        #    multipart body 中的 payload 不应被 URL 编码，否则会破坏文件内容
+        is_multipart = False
+        content_type = request_def.get("headers", {}).get("Content-Type", "")
+        body = request_def.get("body", "") or ""
+        if "multipart" in content_type.lower() or "multipart" in body.lower() or "Content-Disposition" in body:
+            is_multipart = True
+        
+        # 4. 为每个基础payload生成变体
         for payload in base_payloads:
-            # 根据策略决定是否生成变体
-            if self.strategy == "aggressive":
+            # multipart 请求不生成变体，保持 payload 原样
+            if is_multipart:
+                variants = [payload]
+            elif self.strategy == "aggressive":
                 variants = PayloadMutator.generate_variants(payload, payload_type)[:self.max_variants]
             else:
                 variants = [payload]
             
-            # 4. 确定编码方式
-            encodings = self._determine_encodings(payload_type)
+            # 5. 确定编码方式
+            #    multipart 请求仅使用 NONE 编码，避免破坏文件内容
+            if is_multipart:
+                encodings = [EncodingType.NONE]
+            else:
+                encodings = self._determine_encodings(payload_type)
             
-            # 5. 生成编码后的变体
+            # 6. 生成编码后的变体
             for variant in variants:
                 for encoding in encodings:
                     encoded = PayloadEncoder.encode(variant, encoding)

@@ -16,6 +16,7 @@ import asyncio
 import time
 import datetime
 import random
+import re
 import string
 from urllib.parse import urljoin, urlparse
 from typing import List, Dict, Any, Optional, Tuple
@@ -393,7 +394,10 @@ class ScannerEngine:
                     filename = random.choice(fn_variants)
             self._plugin_vars_cache[plugin_id] = {
                 "filename": filename,
-                "ExtractedPath": "" # 初始为空
+                "ExtractedPath": "",
+                "FormBuildId": "",
+                "FormToken": "",
+                "UploadedFilename": "",
             }
         
         cached_vars = self._plugin_vars_cache[plugin_id]
@@ -406,6 +410,9 @@ class ScannerEngine:
             "payload": payload,
             "filename": cached_vars["filename"],
             "ExtractedPath": cached_vars.get("ExtractedPath", ""),
+            "FormBuildId": cached_vars.get("FormBuildId", ""),
+            "FormToken": cached_vars.get("FormToken", ""),
+            "UploadedFilename": cached_vars.get("UploadedFilename", ""),
             "RandomInt": str(random.randint(1000, 9999)),
             "RandomString": ''.join(random.choices(string.ascii_lowercase, k=8)),
         }
@@ -427,18 +434,37 @@ class ScannerEngine:
         if plugin_id not in self._plugin_vars_cache:
             self._plugin_vars_cache[plugin_id] = {}
             
-        # 尝试提取路径 (常见于 Drupal 上传后的 JSON 响应或重定向)
-        import re
         content = resp.text
         
-        # 1. 尝试提取 Drupal 典型的 sites/default/files/... 路径
+        # 1. 尝试提取 Drupal form_build_id (用于表单提交)
+        form_build_match = re.search(r'name="form_build_id"\s+value="([^"]+)"', content)
+        if form_build_match:
+            form_build_id = form_build_match.group(1)
+            self._plugin_vars_cache[plugin_id]["FormBuildId"] = form_build_id
+            logger.info(f"📋 提取到 form_build_id: {form_build_id}")
+        
+        # 2. 尝试提取 Drupal form_token (用于表单提交)
+        form_token_match = re.search(r'name="form_token"\s+value="([^"]+)"', content)
+        if form_token_match:
+            form_token = form_token_match.group(1)
+            self._plugin_vars_cache[plugin_id]["FormToken"] = form_token
+            logger.info(f"🔐 提取到 form_token: {form_token}")
+        
+        # 3. 尝试提取 Drupal 典型的 sites/default/files/... 路径
         path_match = re.search(r'sites/default/files/[^"\'>\s]+', content)
         if path_match:
             extracted_path = path_match.group(0)
             self._plugin_vars_cache[plugin_id]["ExtractedPath"] = extracted_path
             logger.info(f"✨ 从响应中提取到动态路径: {extracted_path}")
-            
-        # 2. 尝试提取 CSRF Token (如果响应包含)
+        
+        # 4. 尝试提取上传后的文件名 (Drupal AJAX 响应)
+        filename_match = re.search(r'"filename"\s*:\s*"([^"]+)"', content)
+        if filename_match:
+            uploaded_filename = filename_match.group(1)
+            self._plugin_vars_cache[plugin_id]["UploadedFilename"] = uploaded_filename
+            logger.info(f"📎 提取到上传文件名: {uploaded_filename}")
+        
+        # 5. 尝试提取 CSRF Token (如果响应包含)
         csrf_match = re.search(r'"csrf_token"\s*:\s*"([^"]+)"', content)
         if csrf_match:
             token = csrf_match.group(1)

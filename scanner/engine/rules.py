@@ -252,8 +252,8 @@ DETECTION_RULES: Dict[str, DetectionRule] = {
         plugin_id="thinkphp-sqli",
         expected_frameworks=[FrameworkType.THINKPHP, FrameworkType.GENERIC_PHP],
         validation_level=ValidationLevel.MODERATE,
-        min_confidence=0.35,
-        required_evidence_count=2,
+        min_confidence=0.25,
+        required_evidence_count=1,
         exclusion_rules=["thinkphp_on_drupal"],
         confidence_adjustments=[
             ConfidenceAdjustment(
@@ -265,7 +265,7 @@ DETECTION_RULES: Dict[str, DetectionRule] = {
             ConfidenceAdjustment(
                 factor_name="framework_mismatch",
                 condition="target_is_not_thinkphp",
-                adjustment=-0.30,
+                adjustment=-0.20,
                 description="目标不是ThinkPHP框架，降低置信度",
             ),
             ConfidenceAdjustment(
@@ -277,13 +277,13 @@ DETECTION_RULES: Dict[str, DetectionRule] = {
             ConfidenceAdjustment(
                 factor_name="cross_framework_exclusion",
                 condition="response_has_other_framework_sig",
-                adjustment=-0.50,
+                adjustment=-0.40,
                 description="响应包含其他框架独有特征，大幅降低置信度",
             ),
             ConfidenceAdjustment(
                 factor_name="generic_error_only",
                 condition="only_generic_error_keywords",
-                adjustment=-0.20,
+                adjustment=-0.15,
                 description="仅匹配通用错误关键词，降低置信度",
             ),
             ConfidenceAdjustment(
@@ -298,8 +298,8 @@ DETECTION_RULES: Dict[str, DetectionRule] = {
         plugin_id="drupal-cve-2019-6341",
         expected_frameworks=[FrameworkType.DRUPAL],
         validation_level=ValidationLevel.STRICT,
-        min_confidence=0.40,
-        required_evidence_count=2,
+        min_confidence=0.30,
+        required_evidence_count=1,
         exclusion_rules=["drupal_on_thinkphp"],
         confidence_adjustments=[
             ConfidenceAdjustment(
@@ -311,7 +311,7 @@ DETECTION_RULES: Dict[str, DetectionRule] = {
             ConfidenceAdjustment(
                 factor_name="framework_mismatch",
                 condition="target_is_not_drupal",
-                adjustment=-0.40,
+                adjustment=-0.30,
                 description="目标不是Drupal框架，大幅降低置信度",
             ),
             ConfidenceAdjustment(
@@ -323,10 +323,46 @@ DETECTION_RULES: Dict[str, DetectionRule] = {
             ConfidenceAdjustment(
                 factor_name="cross_framework_exclusion",
                 condition="response_has_other_framework_sig",
-                adjustment=-0.50,
+                adjustment=-0.40,
                 description="响应包含其他框架独有特征，大幅降低置信度",
             ),
         ],
+    ),
+    "xss-reflected": DetectionRule(
+        plugin_id="xss-reflected",
+        expected_frameworks=[],
+        validation_level=ValidationLevel.RELAXED,
+        min_confidence=0.20,
+        required_evidence_count=1,
+        exclusion_rules=[],
+        confidence_adjustments=[],
+    ),
+    "sqli-probe": DetectionRule(
+        plugin_id="sqli-probe",
+        expected_frameworks=[],
+        validation_level=ValidationLevel.RELAXED,
+        min_confidence=0.20,
+        required_evidence_count=1,
+        exclusion_rules=[],
+        confidence_adjustments=[],
+    ),
+    "git-config-leak": DetectionRule(
+        plugin_id="git-config-leak",
+        expected_frameworks=[],
+        validation_level=ValidationLevel.RELAXED,
+        min_confidence=0.15,
+        required_evidence_count=1,
+        exclusion_rules=[],
+        confidence_adjustments=[],
+    ),
+    "django-cve-2017-12794": DetectionRule(
+        plugin_id="django-cve-2017-12794",
+        expected_frameworks=[FrameworkType.DJANGO],
+        validation_level=ValidationLevel.MODERATE,
+        min_confidence=0.25,
+        required_evidence_count=1,
+        exclusion_rules=[],
+        confidence_adjustments=[],
     ),
 }
 

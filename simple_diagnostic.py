@@ -70,6 +70,20 @@ def check_rules_config():
     print(f"\n  跨框架排除规则: {len(matches)} 个")
     for rule_id in matches:
         print(f"    - {rule_id}")
+    
+    print("\n  检查关键方法:")
+    methods_to_check = [
+        ("def should_exclude", "跨框架排除方法"),
+        ("def validate_vulnerability", "漏洞验证方法"),
+        ("def adjust_confidence", "置信度调整方法"),
+        ("def get_min_confidence", "获取最低置信度方法"),
+        ("def get_required_evidence_count", "获取证据数方法"),
+    ]
+    for method, desc in methods_to_check:
+        if method in content:
+            print(f"    ✓ {desc}")
+        else:
+            print(f"    ✗ {desc} 缺失")
 
 
 def check_core_judgment_logic():
@@ -85,13 +99,13 @@ def check_core_judgment_logic():
         content = f.read()
     
     checks = [
-        ("rule_min_confidence", "最低置信度检查"),
-        ("rule_required_evidence", "证据数检查"),
-        ("validate_vulnerability", "漏洞验证"),
-        ("should_exclude", "跨框架排除"),
-        ("adjust_confidence", "置信度调整"),
-        ("_count_evidence", "证据计数"),
-        ("_extract_matched_keywords", "关键词提取"),
+        ("rule_min_confidence", "最低置信度检查变量"),
+        ("rule_required_evidence", "证据数检查变量"),
+        ("validate_vulnerability", "漏洞验证调用"),
+        ("adjust_confidence", "置信度调整调用"),
+        ("_count_evidence", "证据计数方法"),
+        ("_extract_matched_keywords", "关键词提取方法"),
+        ("final_report", "最终判定逻辑"),
     ]
     
     for keyword, desc in checks:
@@ -100,15 +114,11 @@ def check_core_judgment_logic():
         else:
             print(f"  ✗ {desc} ({keyword}) 缺失")
     
-    if "final_report = False" in content:
-        print("\n  ✓ 包含最终判定逻辑")
-    else:
-        print("\n  ✗ 缺少最终判定逻辑")
+    if "evidence_count < rule_required_evidence" in content:
+        print("\n  ⚠ 包含证据数比较逻辑 (可能导致漏洞被过滤)")
     
-    if "cross_framework_exclusion" in content.lower():
-        print("  ✓ 包含跨框架排除逻辑")
-    else:
-        print("  ✗ 缺少跨框架排除逻辑")
+    if "adjusted_confidence < rule_min_confidence" in content:
+        print("  ⚠ 包含置信度比较逻辑 (可能导致漏洞被过滤)")
 
 
 def analyze_thinkphp_plugin():
@@ -200,8 +210,11 @@ def check_potential_issues():
         with open(core_file, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        if "rule_required_evidence" in content and "> 1" in content:
-            issues.append("证据数要求 > 1 可能导致部分插件无法报告漏洞")
+        if "required_evidence_count=2" in content or "required_evidence_count = 2" in content:
+            issues.append("证据数要求 = 2 可能导致部分插件无法报告漏洞")
+        
+        if "min_confidence=0.35" in content or "min_confidence = 0.35" in content:
+            issues.append("置信度阈值 0.35 可能过高")
     
     if issues:
         for issue in issues:
@@ -226,10 +239,13 @@ def main():
     print("诊断完成")
     print("=" * 70)
     
-    print("\n建议:")
-    print("1. 确保所有插件都在规则引擎中有配置")
-    print("2. 检查证据数要求是否过高")
-    print("3. 确认置信度阈值是否合理")
+    print("\n建议操作:")
+    print("1. 如果规则引擎缺少插件配置，请更新 rules.py")
+    print("2. 如果证据数要求过高，请降低到 1")
+    print("3. 如果置信度阈值过高，请降低到 0.20-0.25")
+    print("4. 更新代码后，请重新构建Docker镜像:")
+    print("   docker-compose build --no-cache aegis-worker aegis-api")
+    print("   docker-compose up -d aegis-worker aegis-api")
 
 
 if __name__ == "__main__":

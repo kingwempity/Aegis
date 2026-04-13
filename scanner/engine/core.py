@@ -632,6 +632,10 @@ class ScannerEngine:
                 self._context.csrf_token = token
                 logger.info(f"🔑 提取到 CSRF Token: {token}")
 
+        # 6. 尝试提取 Django IntegrityError 信息
+        if "IntegrityError" in normalized_content or "UNIQUE constraint failed" in normalized_content:
+            logger.info("🎯 检测到 Django 数据库错误，可能触发 CVE-2017-12794")
+
     def _extract_upload_path(self, content: str) -> str:
         if not content:
             return ""
@@ -934,6 +938,7 @@ class ScannerEngine:
             "response": result.response,
             "scan_time": result.scan_time,
             "validation_log": result.validation_log,
+            "plugin_id": result.plugin_id,
         }
     
     def _extract_matched_keywords(self, resp: httpx.Response, matchers: List[Dict[str, Any]]) -> List[str]:

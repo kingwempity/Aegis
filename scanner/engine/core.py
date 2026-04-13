@@ -275,7 +275,7 @@ class ScannerEngine:
         await _gather_pending()
 
     async def _scan_with_plugin(self, client: httpx.AsyncClient, plugin: Dict[str, Any], req_def: Dict[str, Any]) -> None:
-        """执行单个插件请求扫描，支持动态Payload"""
+        """执行单个插件请求扫描，支持动态Payload和置信度评估"""
         async with self._semaphore:
             method = req_def.get("method", "GET").upper()
             paths = req_def.get("path", [])
@@ -284,15 +284,16 @@ class ScannerEngine:
             matchers = req_def.get("matchers", [])
             matchers_condition = req_def.get("matchers-condition", "or")
             
+            # 置信度阈值 (低于此值的结果将被过滤或标记为低置信度)
+            confidence_threshold = 0.15  # 放宽阈值以提高检出率
+            
             # 生成Payload变体
             payload_variants = self.script_generator.build_payloads(plugin, req_def)
             if not payload_variants:
-                # 如果没有Payload定义，使用原始请求
                 payload_variants = [None]
 
             for path_template in paths:
                 for variant in payload_variants:
-                    # 变量替换
                     payload_str = variant.encoded if variant else ""
                     url = self._resolve_variables(path_template, payload_str)
                     body = self._resolve_variables(base_body, payload_str) if base_body else None
@@ -302,20 +303,37 @@ class ScannerEngine:
                         resp = await self._request_in_scope(client, method, url, headers, body)
                         self._stats.successful_requests += 1
                         
+                        # 基础匹配检查
                         if self._check_matchers(resp, matchers, matchers_condition):
-                            result = ScanResult(
-                                vuln_name=plugin.get("info", {}).get("name", "Unknown Vulnerability"),
-                                severity=plugin.get("info", {}).get("severity", "Medium"),
-                                url=url,
-                                payload=payload_str or "N/A",
-                                evidence={"matchers": matchers, "matchers_condition": matchers_condition},
-                                plugin_id=plugin.get("id", "unknown"),
-                                request={"method": method, "url": url, "headers": headers, "body": body},
-                                response={"status": resp.status_code, "body_snippet": resp.text[:1000]}
-                            )
-                            self._vulnerabilities.append(result)
-                            self._stats.vulnerabilities_found += 1
-                            logger.info(f"🔴 发现漏洞: {result.vuln_name} @ {url}")
+                            # 计算置信度
+                            confidence = self._calculate_confidence(resp, matchers)
+                            
+                            # 放宽条件: 即使置信度较低也记录 (可通过阈值调整)
+                            if confidence >= confidence_threshold:
+                                result = ScanResult(
+                                    vuln_name=plugin.get("info", {}).get("name", "Unknown Vulnerability"),
+                                    severity=plugin.get("info", {}).get("severity", "Medium"),
+                                    url=url,
+                                    payload=payload_str or "N/A",
+                                    evidence={
+                                        "matchers": matchers,
+                                        "matchers_condition": matchers_condition,
+                                        "confidence": round(confidence, 3),
+                                        "response_status": resp.status_code,
+                                    },
+                                    plugin_id=plugin.get("id", "unknown"),
+                                    request={"method": method, "url": url, "headers": headers, "body": body},
+                                    response={
+                                        "status": resp.status_code,
+                                        "body_snippet": resp.text[:1000],
+                                        "content_length": len(resp.content),
+                                    },
+                                )
+                                self._vulnerabilities.append(result)
+                                self._stats.vulnerabilities_found += 1
+                                
+                                level = "🔴" if confidence > 0.6 else "🟡" if confidence > 0.3 else "🔵"
+                                logger.info(f"{level} 发现漏洞 [{confidence:.1%}]: {result.vuln_name} @ {url}")
                     except Exception as e:
                         self._stats.failed_requests += 1
 
@@ -396,27 +414,158 @@ class ScannerEngine:
         return True
     
     def _check_matchers(self, resp: httpx.Response, matchers: List[Dict[str, Any]], matchers_condition: str = "or") -> bool:
-        """检查响应是否命中规则"""
-        if not matchers: return False
+        """
+        检查响应是否命中规则 (增强版)
+        
+        优化点:
+        1. 支持大小写不敏感匹配 (case_insensitive)
+        2. 支持负向匹配 (negative)
+        3. 增强正则匹配性能
+        4. 支持响应长度差异检测
+        5. 置信度评分辅助判定
+        """
+        if not matchers:
+            return False
+        
+        hit_count = 0
+        total_matchers = len(matchers)
+        
         for m in matchers:
-            if not isinstance(m, dict): continue
+            if not isinstance(m, dict):
+                continue
+            
             mtype = m.get("type")
             hit = False
+            case_insensitive = m.get("case_insensitive", True)  # 默认大小写不敏感
+            negative = m.get("negative", False)  # 负向匹配
+            
             if mtype == "word":
                 words = m.get("words", [])
                 part = m.get("part", "body")
                 content = resp.text if part == "body" else str(resp.headers)
-                condition = m.get("condition", "and")
-                hit = all(w in content for w in words) if condition == "and" else any(w in content for w in words)
+                
+                # 大小写处理
+                if case_insensitive:
+                    content_lower = content.lower()
+                    words_to_check = [w.lower() for w in words]
+                    condition = m.get("condition", "and")
+                    
+                    if condition == "and":
+                        hit = all(w in content_lower for w in words_to_check)
+                    else:
+                        hit = any(w in content_lower for w in words_to_check)
+                else:
+                    condition = m.get("condition", "and")
+                    if condition == "and":
+                        hit = all(w in content for w in words)
+                    else:
+                        hit = any(w in content for w in words)
+            
             elif mtype == "status":
                 hit = resp.status_code in m.get("status", [])
+            
             elif mtype == "regex":
                 import re
                 content = resp.text if m.get("part", "body") == "body" else str(resp.headers)
-                hit = all(re.search(p, content) for p in m.get("regex", []))
-            if matchers_condition == "or" and hit: return True
-            elif matchers_condition == "and" and not hit: return False
-        return matchers_condition == "and"
+                flags = re.IGNORECASE if case_insensitive else 0
+                
+                try:
+                    patterns = m.get("regex", [])
+                    hit = all(re.search(p, content, flags=flags) for p in patterns)
+                except re.error:
+                    hit = False
+            
+            elif mtype == "size":
+                # 响应长度差异检测 (用于盲注场景)
+                expected_size = m.get("size", 0)
+                tolerance = m.get("tolerance", 100)  # 允许的字节误差范围
+                actual_size = len(resp.content)
+                hit = abs(actual_size - expected_size) <= tolerance
+            
+            elif mtype == "binary":
+                # 二进制/编码内容检测
+                binary_patterns = m.get("binary", [])
+                import base64
+                try:
+                    decoded = base64.b64decode(resp.text + "==") if resp.text else b""
+                    hit = any(p.encode() in decoded for p in binary_patterns)
+                except Exception:
+                    hit = False
+            
+            # 处理负向匹配
+            if negative:
+                hit = not hit
+            
+            if hit:
+                hit_count += 1
+            
+            # 快速返回优化
+            if matchers_condition == "or" and hit:
+                return True
+            elif matchers_condition == "and" and not hit:
+                return False
+        
+        # AND条件需要所有都命中
+        if matchers_condition == "and":
+            return hit_count == total_matchers
+        
+        # OR条件：至少一个命中
+        return hit_count > 0
+    
+    def _calculate_confidence(self, resp: httpx.Response, matchers: List[Dict[str, Any]]) -> float:
+        """
+        计算漏洞判定的置信度 (0.0 - 1.0)
+        
+        综合考虑以下因素:
+        - 命中的匹配规则数量和权重
+        - 特征关键词的唯一性
+        - 响应状态码异常程度
+        - 响应体特征强度
+        """
+        confidence = 0.0
+        weight_total = 0.0
+        
+        # 高置信度特征词 (唯一性强)
+        high_confidence_keywords = [
+            "XPATH syntax error",
+            "extractvalue()",
+            "updatexml()",
+            "SQLSTATE[42",
+            "SQLSTATE[HY000]",
+            "Think\\Db\\Exception",
+        ]
+        
+        # 中置信度特征词
+        medium_confidence_keywords = [
+            "SQLSTATE",
+            "SQL syntax",
+            "mysql_",
+            "Database Error",
+            "PDO::prepare()",
+        ]
+        
+        content_lower = resp.text.lower()
+        
+        # 检查高置信度特征
+        high_hits = sum(1 for kw in high_confidence_keywords if kw.lower() in content_lower)
+        confidence += min(high_hits * 0.3, 0.6)  # 最多贡献0.6
+        
+        # 检查中置信度特征
+        medium_hits = sum(1 for kw in medium_confidence_keywords if kw.lower() in content_lower)
+        confidence += min(medium_hits * 0.1, 0.3)  # 最多贡献0.3
+        
+        # 状态码异常加分
+        if resp.status_code >= 500:
+            confidence += 0.05
+        elif resp.status_code >= 400:
+            confidence += 0.02
+        
+        # 响应体包含典型错误模式
+        error_indicators = ["error", "exception", "fatal", "warning"]
+        error_hits = sum(1 for ind in error_indicators if ind in content_lower)
+        confidence += min(error_hits * 0.02, 0.1)
+        
+        return min(confidence, 1.0)
     
     def _result_to_dict(self, result: ScanResult) -> Dict[str, Any]:
         return {

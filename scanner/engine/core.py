@@ -313,6 +313,10 @@ class ScannerEngine:
                     current_headers = dict(headers)
                     current_body = self._resolve_variables(base_body, payload_str, plugin) if base_body else None
                     
+                    # 自动注入 CSRF 令牌（如果已获取）
+                    if self._context and self._context.csrf_token:
+                        current_headers["X-CSRF-Token"] = self._context.csrf_token
+                    
                     if current_headers.get("Content-Type") == "multipart/form-data":
                         if "------WebKitFormBoundary" in (current_body or ""):
                             boundary = "----AegisBoundary" + ''.join(random.choices(string.ascii_letters + string.digits, k=16))
@@ -323,6 +327,9 @@ class ScannerEngine:
                     try:
                         resp = await self._request_in_scope(client, method, url, current_headers, current_body)
                         self._stats.successful_requests += 1
+                        
+                        # 动态提取变量 (支持从响应中提取路径等)
+                        self._extract_dynamic_variables(resp, plugin)
                         
                         # 基础匹配检查
                         if self._check_matchers(resp, matchers, matchers_condition):
@@ -368,11 +375,12 @@ class ScannerEngine:
         - {{Year}}, {{Month}}, {{Day}}
         - {{filename}} (在同一插件生命周期内保持一致)
         - {{RandomInt}}, {{RandomString}}
+        - {{ExtractedPath}} (从前序响应中动态提取的路径)
         """
         if not template: return ""
         now = datetime.datetime.now()
         
-        # 在 ScannerEngine 实例级别缓存当前插件的 filename，以保证 sequential 步骤间一致
+        # 在 ScannerEngine 实例级别缓存当前插件的变量
         plugin_id = plugin.get("id") if plugin else "default"
         if not hasattr(self, "_plugin_vars_cache"):
             self._plugin_vars_cache = {}
@@ -383,7 +391,10 @@ class ScannerEngine:
                 fn_variants = plugin.get("filename_variants", [])
                 if fn_variants:
                     filename = random.choice(fn_variants)
-            self._plugin_vars_cache[plugin_id] = {"filename": filename}
+            self._plugin_vars_cache[plugin_id] = {
+                "filename": filename,
+                "ExtractedPath": "" # 初始为空
+            }
         
         cached_vars = self._plugin_vars_cache[plugin_id]
         
@@ -394,6 +405,7 @@ class ScannerEngine:
             "Day": now.strftime("%d"),
             "payload": payload,
             "filename": cached_vars["filename"],
+            "ExtractedPath": cached_vars.get("ExtractedPath", ""),
             "RandomInt": str(random.randint(1000, 9999)),
             "RandomString": ''.join(random.choices(string.ascii_lowercase, k=8)),
         }
@@ -402,6 +414,37 @@ class ScannerEngine:
         for k, v in vars.items():
             result = result.replace("{{" + k + "}}", v)
         return result
+
+    def _extract_dynamic_variables(self, resp: httpx.Response, plugin: Optional[Dict[str, Any]]) -> None:
+        """从响应中提取动态变量，如文件上传后的真实路径"""
+        if not plugin: return
+        plugin_id = plugin.get("id")
+        if not plugin_id: return
+        
+        if not hasattr(self, "_plugin_vars_cache"):
+            self._plugin_vars_cache = {}
+        
+        if plugin_id not in self._plugin_vars_cache:
+            self._plugin_vars_cache[plugin_id] = {}
+            
+        # 尝试提取路径 (常见于 Drupal 上传后的 JSON 响应或重定向)
+        import re
+        content = resp.text
+        
+        # 1. 尝试提取 Drupal 典型的 sites/default/files/... 路径
+        path_match = re.search(r'sites/default/files/[^"\'>\s]+', content)
+        if path_match:
+            extracted_path = path_match.group(0)
+            self._plugin_vars_cache[plugin_id]["ExtractedPath"] = extracted_path
+            logger.info(f"✨ 从响应中提取到动态路径: {extracted_path}")
+            
+        # 2. 尝试提取 CSRF Token (如果响应包含)
+        csrf_match = re.search(r'"csrf_token"\s*:\s*"([^"]+)"', content)
+        if csrf_match:
+            token = csrf_match.group(1)
+            if self._context:
+                self._context.csrf_token = token
+                logger.info(f"🔑 提取到 CSRF Token: {token}")
 
     async def _discovery_scan(self, client: httpx.AsyncClient) -> None:
         """对发现的路径进行扫描"""

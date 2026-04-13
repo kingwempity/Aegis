@@ -146,7 +146,7 @@ class ScannerEngine:
         self,
         target: str,
         strategy: str = "default",
-        plugin_dir: str = "/app/scanner/plugins",
+        plugin_dir: str = "scanner/plugins",
         enable_learning: bool = True,
         enable_discovery: bool = True,
         max_concurrent: int = 10,
@@ -162,9 +162,38 @@ class ScannerEngine:
         self.timeout = timeout
         self.max_depth = max_depth
         
-        resolved_plugin_dir = plugin_dir
+        # 优化插件路径解析：支持绝对路径和项目根目录相对路径
+        if os.path.isabs(plugin_dir):
+            resolved_plugin_dir = plugin_dir
+        else:
+            # 尝试相对于当前工作目录
+            base_path = os.getcwd()
+            resolved_plugin_dir = os.path.join(base_path, plugin_dir)
+            
+            # 如果不存在，尝试寻找 Aegis 根目录下的 scanner/plugins
+            if not os.path.exists(resolved_plugin_dir):
+                # 方案1: 如果在 BE 目录下运行 (Aegis/BE)
+                parent_path = os.path.dirname(base_path)
+                resolved_plugin_dir = os.path.join(parent_path, plugin_dir)
+                
+            # 方案2: 尝试脚本所在位置 (Aegis/scanner/engine/core.py)
+            if not os.path.exists(resolved_plugin_dir):
+                script_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                resolved_plugin_dir = os.path.join(script_dir, plugin_dir)
+
         if not os.path.exists(resolved_plugin_dir):
-            resolved_plugin_dir = os.path.join(os.getcwd(), "scanner", "plugins")
+            # 方案3: 最后的兜底方案，使用常见部署路径
+            fallbacks = [
+                "/home/ubuntu/Aegis/scanner/plugins",
+                "/app/scanner/plugins",
+                "./scanner/plugins"
+            ]
+            for fb in fallbacks:
+                if os.path.exists(fb):
+                    resolved_plugin_dir = fb
+                    break
+            else:
+                logger.error(f"❌ 插件目录无法定位: {plugin_dir}")
         
         logger.info(f"📂 插件目录: {resolved_plugin_dir}")
         
@@ -247,6 +276,10 @@ class ScannerEngine:
                     request_url=self.target,
                 )
             )
+            
+            # 同步 RuleEngine 检测结果到 AttackContext.detected_tech
+            if self._context:
+                self._context.detected_tech = [fw.value for fw in self._detected_frameworks if fw != FrameworkType.UNKNOWN]
             
             for fw in self._detected_frameworks:
                 version = self._rule_engine.detect_version(

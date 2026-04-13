@@ -74,22 +74,28 @@ class DetectionRule:
 FRAMEWORK_SIGNATURES: Dict[FrameworkType, FrameworkSignature] = {
     FrameworkType.THINKPHP: FrameworkSignature(
         framework=FrameworkType.THINKPHP,
-        headers={"X-Powered-By": r"ThinkPHP"},
+        headers={
+            "X-Powered-By": r"ThinkPHP",
+        },
         body_patterns=[
             r"十年磨一剑",
             r"ThinkPHP",
             r"think_session",
             r"Var_Pathinfo",
+            r"think-error",
+            r"thinkphp_show_page_trace",
         ],
         url_patterns=[
             r"s=/index/index",
             r"public/static",
+            r"\?s=",
         ],
         exclusive_signatures=[
             "X-Powered-By: ThinkPHP",
             "Think\\Db\\Exception",
             "Think\\Exception",
             "thinkphp_show_page_trace",
+            "十年磨一剑",
         ],
         version_patterns=[
             r"ThinkPHP\s*v?([0-9\.]+)",
@@ -97,21 +103,29 @@ FRAMEWORK_SIGNATURES: Dict[FrameworkType, FrameworkSignature] = {
     ),
     FrameworkType.DRUPAL: FrameworkSignature(
         framework=FrameworkType.DRUPAL,
-        headers={"X-Generator": r"Drupal"},
+        headers={
+            "X-Generator": r"Drupal",
+            "X-Drupal-Cache": r".*",
+        },
         body_patterns=[
             r"Drupal\.settings",
             r"sites/default/files",
             r"drupal\.js",
+            r'name="form_build_id"',
+            r"jQuery\.extend\(Drupal\.settings",
         ],
         url_patterns=[
             r"sites/default/files",
             r"node/add",
+            r"user/register",
+            r"q=user",
         ],
         exclusive_signatures=[
             "X-Generator: Drupal",
             "Drupal.settings",
             "form_build_id",
             "_drupal_ajax",
+            "sites/default/files",
         ],
         version_patterns=[
             r"Drupal\s*([0-9\.]+)",
@@ -119,21 +133,30 @@ FRAMEWORK_SIGNATURES: Dict[FrameworkType, FrameworkSignature] = {
     ),
     FrameworkType.DJANGO: FrameworkSignature(
         framework=FrameworkType.DJANGO,
-        headers={"X-Frame-Options": r"DENY"},
+        headers={
+            "X-Frame-Options": r"DENY",
+            "Server": r"WSGIServer",
+        },
         body_patterns=[
             r"csrfmiddlewaretoken",
             r"django\.js",
+            r"It worked!",
+            r"Django debug page",
         ],
         url_patterns=[
             r"/admin/login/",
             r"/static/admin/",
+            r"csrfmiddlewaretoken",
         ],
         exclusive_signatures=[
             "csrfmiddlewaretoken",
             "IntegrityError",
             "UNIQUE constraint failed",
+            "django.jQuery",
         ],
-        version_patterns=[],
+        version_patterns=[
+            r"Django\s*([0-9\.]+)",
+        ],
     ),
 }
 
@@ -182,8 +205,8 @@ DETECTION_RULES: Dict[str, DetectionRule] = {
     "thinkphp-sqli": DetectionRule(
         plugin_id="thinkphp-sqli",
         expected_frameworks=[FrameworkType.THINKPHP],
-        validation_level=ValidationLevel.STRICT,
-        min_confidence=0.45,
+        validation_level=ValidationLevel.MODERATE,
+        min_confidence=0.40,
         required_evidence_count=2,
         exclusion_rules=[
             "response_has_drupal_exclusive_sig",

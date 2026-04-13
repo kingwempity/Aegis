@@ -263,21 +263,27 @@ class ScannerEngine:
         
         for plugin in self.plugins:
             requests_list = plugin.get("requests", [])
+            # 兼容 sequential_requests (top-level)
             sequential = bool(plugin.get("sequential_requests"))
             
-            if sequential: await _gather_pending()
-            
-            for req in requests_list:
-                if not self._check_preconditions(req): continue
-                if sequential:
-                    await self._scan_with_plugin(client, plugin, req)
-                else:
+            if sequential:
+                await _gather_pending()
+                # 顺序模式下，如果某一步失败（未命中 matchers），则停止该插件后续请求
+                for req in requests_list:
+                    if not self._check_preconditions(req): continue
+                    success = await self._scan_with_plugin(client, plugin, req)
+                    if not success:
+                        logger.info(f"🛑 插件 {plugin.get('id')} 步骤未命中 matchers，中断后续请求")
+                        break
+            else:
+                for req in requests_list:
+                    if not self._check_preconditions(req): continue
                     tasks.append(self._scan_with_plugin(client, plugin, req))
                     if len(tasks) >= self.max_concurrent: await _gather_pending()
         
         await _gather_pending()
 
-    async def _scan_with_plugin(self, client: httpx.AsyncClient, plugin: Dict[str, Any], req_def: Dict[str, Any]) -> None:
+    async def _scan_with_plugin(self, client: httpx.AsyncClient, plugin: Dict[str, Any], req_def: Dict[str, Any]) -> bool:
         """执行单个插件请求扫描，支持动态Payload和置信度评估"""
         async with self._semaphore:
             method = req_def.get("method", "GET").upper()
@@ -294,20 +300,33 @@ class ScannerEngine:
             payload_variants = self.script_generator.build_payloads(plugin, req_def)
             if not payload_variants:
                 payload_variants = [None]
-
+            
+            any_success = False
             for path_template in paths:
                 for variant in payload_variants:
                     payload_str = variant.encoded if variant else ""
+                    
+                    # 使用当前选择的变量进行解析
                     url = self._resolve_variables(path_template, payload_str, plugin)
-                    body = self._resolve_variables(base_body, payload_str, plugin) if base_body else None
+                    
+                    # 准备请求头 (处理 multipart)
+                    current_headers = dict(headers)
+                    current_body = self._resolve_variables(base_body, payload_str, plugin) if base_body else None
+                    
+                    if current_headers.get("Content-Type") == "multipart/form-data":
+                        if "------WebKitFormBoundary" in (current_body or ""):
+                            boundary = "----AegisBoundary" + ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+                            current_headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
+                            current_body = current_body.replace("------WebKitFormBoundary", "--" + boundary)
                     
                     self._stats.total_requests += 1
                     try:
-                        resp = await self._request_in_scope(client, method, url, headers, body)
+                        resp = await self._request_in_scope(client, method, url, current_headers, current_body)
                         self._stats.successful_requests += 1
                         
                         # 基础匹配检查
                         if self._check_matchers(resp, matchers, matchers_condition):
+                            any_success = True
                             # 计算置信度
                             confidence = self._calculate_confidence(resp, matchers)
                             
@@ -325,7 +344,7 @@ class ScannerEngine:
                                         "response_status": resp.status_code,
                                     },
                                     plugin_id=plugin.get("id", "unknown"),
-                                    request={"method": method, "url": url, "headers": headers, "body": body},
+                                    request={"method": method, "url": url, "headers": current_headers, "body": current_body},
                                     response={
                                         "status": resp.status_code,
                                         "body_snippet": resp.text[:1000],
@@ -339,24 +358,34 @@ class ScannerEngine:
                                 logger.info(f"{level} 发现漏洞 [{confidence:.1%}]: {result.vuln_name} @ {url}")
                     except Exception as e:
                         self._stats.failed_requests += 1
+            
+            return any_success
 
     def _resolve_variables(self, template: str, payload: str = "", plugin: Optional[Dict[str, Any]] = None) -> str:
         """
         替换模板变量，支持:
         - {{BaseURL}}, {{payload}}
         - {{Year}}, {{Month}}, {{Day}}
-        - {{filename}} (从插件配置的 filename_variants 中随机选择)
+        - {{filename}} (在同一插件生命周期内保持一致)
         - {{RandomInt}}, {{RandomString}}
         """
         if not template: return ""
         now = datetime.datetime.now()
         
-        # 处理 filename 变体
-        filename = "test.gif"  # 默认值
-        if plugin:
-            fn_variants = plugin.get("filename_variants", [])
-            if fn_variants:
-                filename = random.choice(fn_variants)
+        # 在 ScannerEngine 实例级别缓存当前插件的 filename，以保证 sequential 步骤间一致
+        plugin_id = plugin.get("id") if plugin else "default"
+        if not hasattr(self, "_plugin_vars_cache"):
+            self._plugin_vars_cache = {}
+            
+        if plugin_id not in self._plugin_vars_cache:
+            filename = "test.gif"
+            if plugin:
+                fn_variants = plugin.get("filename_variants", [])
+                if fn_variants:
+                    filename = random.choice(fn_variants)
+            self._plugin_vars_cache[plugin_id] = {"filename": filename}
+        
+        cached_vars = self._plugin_vars_cache[plugin_id]
         
         vars = {
             "BaseURL": self.target,
@@ -364,7 +393,7 @@ class ScannerEngine:
             "Month": now.strftime("%m"),
             "Day": now.strftime("%d"),
             "payload": payload,
-            "filename": filename,
+            "filename": cached_vars["filename"],
             "RandomInt": str(random.randint(1000, 9999)),
             "RandomString": ''.join(random.choices(string.ascii_lowercase, k=8)),
         }

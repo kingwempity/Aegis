@@ -1,14 +1,59 @@
 id: git-config-leak
 info:
   name: Git Config Disclosure
-  severity: Medium
+  severity: High
+  description: |
+    检测.git目录泄露漏洞，当Web服务器未正确配置时，可能暴露.git配置文件，
+    导致源代码泄露。攻击者可利用此信息还原完整源代码。
+  tags:
+    - info-leak
+    - git
+    - source-code-disclosure
+  reference:
+    - https://owasp.org/www-community/attacks/Forced_browsing
+
 requests:
   - method: GET
     path:
       - "{{BaseURL}}/.git/config"
+      - "{{BaseURL}}/.git/HEAD"
+      - "{{BaseURL}}/.gitignore"
+    matchers-condition: or
     matchers:
       - type: word
         words:
           - "[core]"
           - "repositoryformatversion"
+          - "ref: refs/heads/"
+        condition: or
+        part: body
+      - type: word
+        words:
+          - "bare = false"
+          - "logallrefupdates"
+          - "[remote \"origin\"]"
+          - "[branch \""
+        condition: or
+        part: body
+      - type: status
+        status: [200]
+
+  - method: GET
+    path:
+      - "{{BaseURL}}/.git/index"
+      - "{{BaseURL}}/.git/objects/"
+      - "{{BaseURL}}/.git/refs/heads/"
+      - "{{BaseURL}}/.git/refs/tags/"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200, 403]
+      - type: word
+        words:
+          - "DIRC"
+          - "Index of"
+          - "tree"
+          - "parent"
+          - "object"
+        condition: or
         part: body

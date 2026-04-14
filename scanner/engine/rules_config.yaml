@@ -52,20 +52,41 @@ framework_signatures:
     headers:
       X-Frame-Options: "DENY"
       Server: "WSGIServer"
+      Set-Cookie: "csrftoken"
     body_patterns:
       - "csrfmiddlewaretoken"
       - "django\\.js"
       - "It worked!"
       - "Django debug page"
+      - "django\\.conf"
+      - "Report at"
+      - "Exception Type"
+      - "Exception Value"
+      - "Traceback \\(most recent call last\\)"
+      - "DJANGO_SETTINGS_MODULE"
+      - "django\\.core"
+      - "django\\.db"
+      - "django\\.views"
+      - "You're seeing this error because you have"
+      - "DEBUG = True"
+      - "SuspiciousOperation"
+      - "DisallowedHost"
+      - "PermissionDenied"
     url_patterns:
       - "/admin/login/"
       - "/static/admin/"
-      - "csrfmiddlewaretoken"
+      - "/admin/"
+      - "/static/django/"
     exclusive_signatures:
       - "csrfmiddlewaretoken"
       - "IntegrityError"
       - "UNIQUE constraint failed"
       - "django.jQuery"
+      - "DJANGO_SETTINGS_MODULE"
+      - "django.core.management"
+      - "Exception Type.*Django"
+      - "DisallowedHost"
+      - "Report at"
     version_patterns:
       - "Django\\s*([0-9]+(?:\\.[0-9]+)+)"
 
@@ -193,3 +214,98 @@ detection_rules:
         condition: "response_has_django_exclusive_sig"
         adjustment: 0.25
         description: "响应包含Django独有特征"
+
+  sqli-probe:
+    plugin_id: "sqli-probe"
+    expected_frameworks: []
+    validation_level: "moderate"
+    min_confidence: 0.30
+    required_evidence_count: 1
+    exclusion_rules: []
+    allow_when_framework_unknown: true
+    required_path_patterns: []
+    confidence_adjustments:
+      - factor_name: "sql_error_match"
+        condition: "response_has_sql_error"
+        adjustment: 0.25
+        description: "响应包含SQL错误特征，提升置信度"
+      - factor_name: "framework_mismatch_thinkphp"
+        condition: "target_is_thinkphp"
+        adjustment: -0.10
+        description: "ThinkPHP目标已有专用sqli插件，降低通用探测置信度"
+
+  xss-reflected:
+    plugin_id: "xss-reflected"
+    expected_frameworks: []
+    validation_level: "moderate"
+    min_confidence: 0.30
+    required_evidence_count: 1
+    exclusion_rules: []
+    allow_when_framework_unknown: true
+    required_path_patterns: []
+    confidence_adjustments:
+      - factor_name: "payload_reflected"
+        condition: "response_has_xss_payload"
+        adjustment: 0.30
+        description: "响应中包含未转义的XSS payload，提升置信度"
+
+  git-config-leak:
+    plugin_id: "git-config-leak"
+    expected_frameworks: []
+    validation_level: "strict"
+    min_confidence: 0.40
+    required_evidence_count: 2
+    exclusion_rules: []
+    allow_when_framework_unknown: true
+    required_path_patterns:
+      - "/\\.git/"
+    confidence_adjustments:
+      - factor_name: "git_config_found"
+        condition: "response_has_git_config"
+        adjustment: 0.30
+        description: "响应包含git配置内容，提升置信度"
+
+  path-traversal:
+    plugin_id: "path-traversal"
+    expected_frameworks: []
+    validation_level: "moderate"
+    min_confidence: 0.35
+    required_evidence_count: 1
+    exclusion_rules: []
+    allow_when_framework_unknown: true
+    required_path_patterns: []
+    confidence_adjustments:
+      - factor_name: "file_content_found"
+        condition: "response_has_file_content"
+        adjustment: 0.30
+        description: "响应包含敏感文件内容，提升置信度"
+
+  ssrf-probe:
+    plugin_id: "ssrf-probe"
+    expected_frameworks: []
+    validation_level: "moderate"
+    min_confidence: 0.30
+    required_evidence_count: 1
+    exclusion_rules: []
+    allow_when_framework_unknown: true
+    required_path_patterns: []
+    confidence_adjustments:
+      - factor_name: "internal_response_found"
+        condition: "response_has_internal_data"
+        adjustment: 0.30
+        description: "响应包含内网服务数据，提升置信度"
+
+  command-injection:
+    plugin_id: "command-injection"
+    expected_frameworks: []
+    validation_level: "strict"
+    min_confidence: 0.40
+    required_evidence_count: 2
+    exclusion_rules: []
+    allow_when_framework_unknown: true
+    required_path_patterns: []
+    confidence_adjustments:
+      - factor_name: "command_output_found"
+        condition: "response_has_command_output"
+        adjustment: 0.35
+        description: "响应包含命令执行输出，提升置信度"

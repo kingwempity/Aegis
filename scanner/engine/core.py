@@ -274,6 +274,7 @@ class ScannerEngine:
                     response_body=resp.text,
                     response_headers=dict(resp.headers),
                     request_url=self.target,
+                    response_status=resp.status_code,
                 )
             )
 
@@ -329,6 +330,13 @@ class ScannerEngine:
             f"{self.target}/user/register",
             f"{self.target}/?q=user/register",
             f"{self.target}/admin/login/",
+            f"{self.target}/admin/",
+            f"{self.target}/static/admin/css/base.css",
+            f"{self.target}/static/admin/css/login.css",
+            f"{self.target}/create_user/",
+            f"{self.target}/api/",
+            f"{self.target}/robots.txt",
+            f"{self.target}/sitemap.xml",
         ]
 
     async def _fallback_framework_probe(
@@ -361,6 +369,7 @@ class ScannerEngine:
                 response_body=resp.text,
                 response_headers=dict(resp.headers),
                 request_url=candidate_url,
+                response_status=resp.status_code,
             )
             known_frameworks = [fw for fw in frameworks if fw != FrameworkType.UNKNOWN]
             if not known_frameworks:
@@ -816,6 +825,28 @@ class ScannerEngine:
         if "IntegrityError" in normalized_content or "UNIQUE constraint failed" in normalized_content:
             logger.info("🎯 检测到 Django 数据库错误，可能触发 CVE-2017-12794")
 
+        # 7. 通用路径提取：从响应中提取所有可能的文件路径
+        if not extracted_path:
+            generic_path_patterns = [
+                r'(?:href|src|action|content)=["\']([^"\']+\.(?:gif|jpg|jpeg|png|svg|html|htm|txt|pdf|php|asp|jsp))["\']',
+                r'"(?:url|path|file|src|href)"\s*:\s*"([^"]+)"',
+                r'(?:src|href)=["\'](/(?:uploads|files|images|media|static|assets)/[^"\']+)["\']',
+            ]
+            for pattern in generic_path_patterns:
+                generic_matches = re.findall(pattern, normalized_content, re.I)
+                for gm in generic_matches:
+                    if gm.startswith("http"):
+                        parsed = urlparse(gm)
+                        gm = parsed.path
+                    if gm.startswith("/"):
+                        gm = gm.lstrip("/")
+                    if gm and len(gm) > 5 and not gm.endswith("/"):
+                        self._plugin_vars_cache[plugin_id]["ExtractedPath"] = gm
+                        logger.info(f"✨ 通用路径提取: {gm}")
+                        break
+                if extracted_path:
+                    break
+
     def _extract_upload_path(self, content: str) -> str:
         if not content:
             return ""
@@ -1071,6 +1102,7 @@ class ScannerEngine:
         - 特征关键词的唯一性
         - 响应状态码异常程度
         - 响应体特征强度
+        - 漏洞类型特异性
         """
         confidence = 0.0
         matched_count = 0
@@ -1104,25 +1136,6 @@ class ScannerEngine:
         if matched_count > 1:
             confidence += min((matched_count - 1) * 0.07, 0.21)
         
-        # 高置信度特征词 (唯一性强)
-        high_confidence_keywords = [
-            "XPATH syntax error",
-            "extractvalue()",
-            "updatexml()",
-            "SQLSTATE[42",
-            "SQLSTATE[HY000]",
-            "Think\\Db\\Exception",
-        ]
-        
-        # 中置信度特征词
-        medium_confidence_keywords = [
-            "SQLSTATE",
-            "SQL syntax",
-            "mysql_",
-            "Database Error",
-            "PDO::prepare()",
-        ]
-        
         content_lower = resp.text.lower()
         header_lower = str(resp.headers).lower()
         plugin_info = plugin.get("info", {}) if plugin else {}
@@ -1134,17 +1147,50 @@ class ScannerEngine:
                 " ".join(tags),
             ]
         ).lower()
-        
-        # 检查高置信度特征
+
+        # SQL注入特征评分
         if any(token in plugin_fingerprint for token in ["sql", "sqli", "injection"]):
+            high_confidence_keywords = [
+                "XPATH syntax error",
+                "extractvalue()",
+                "updatexml()",
+                "SQLSTATE[42",
+                "SQLSTATE[HY000]",
+                "Think\\Db\\Exception",
+                "ORA-01756",
+                "ORA-00933",
+                "ORA-00942",
+                "Unclosed quotation mark",
+            ]
+            medium_confidence_keywords = [
+                "SQLSTATE",
+                "SQL syntax",
+                "mysql_",
+                "Database Error",
+                "PDO::prepare()",
+                "IntegrityError",
+                "OperationalError",
+                "ProgrammingError",
+                "sqlalchemy.exc",
+                "sqlite3.OperationalError",
+                "SQLITE_ERROR",
+                "pg_query",
+                "pg_exec",
+                "PostgreSQL query failed",
+                "You have an error in your SQL syntax",
+                "Warning: mysql_",
+                "valid MySQL result",
+                "MySqlClient",
+                "ODBC SQL Server Driver",
+                "SqlException",
+                "check the manual that corresponds to your MySQL",
+            ]
             high_hits = sum(1 for kw in high_confidence_keywords if kw.lower() in content_lower)
             confidence += min(high_hits * 0.3, 0.6)
-        
-        # 检查中置信度特征
-        if any(token in plugin_fingerprint for token in ["sql", "sqli", "injection"]):
             medium_hits = sum(1 for kw in medium_confidence_keywords if kw.lower() in content_lower)
             confidence += min(medium_hits * 0.1, 0.3)
 
+        # XSS特征评分
         if "xss" in tags or "cross-site scripting" in plugin_fingerprint:
             xss_indicators = [
                 "<script",
@@ -1155,11 +1201,65 @@ class ScannerEngine:
                 "alert(",
                 "document.cookie",
                 "document.domain",
+                "ontoggle=",
+                "onstart=",
+                "<iframe",
+                "<marquee",
+                "<body onload",
+                "<img src=x",
             ]
             xss_hits = sum(1 for kw in xss_indicators if kw in content_lower)
             confidence += min(xss_hits * 0.08, 0.24)
             if "text/html" in header_lower:
                 confidence += 0.08
+
+        # 信息泄露特征评分
+        if any(token in plugin_fingerprint for token in ["info-leak", "disclosure", "git", "config"]):
+            leak_indicators = [
+                "[core]",
+                "repositoryformatversion",
+                "bare = false",
+                "ref: refs/heads/",
+                "[remote \"origin\"]",
+                "logallrefupdates",
+                "api_key",
+                "secret_key",
+                "private_key",
+                "password",
+                "credentials",
+            ]
+            leak_hits = sum(1 for kw in leak_indicators if kw.lower() in content_lower)
+            confidence += min(leak_hits * 0.15, 0.45)
+
+        # 文件上传特征评分
+        if any(token in plugin_fingerprint for token in ["file-upload", "upload"]):
+            upload_indicators = [
+                "sites/default/files",
+                "public://",
+                '"fid"',
+                '"uuid"',
+                '"uri"',
+                "upload",
+                "filename",
+            ]
+            upload_hits = sum(1 for kw in upload_indicators if kw.lower() in content_lower)
+            confidence += min(upload_hits * 0.1, 0.3)
+
+        # Django调试页面特征评分
+        if any(token in plugin_fingerprint for token in ["django", "debug"]):
+            django_indicators = [
+                "DJANGO_SETTINGS_MODULE",
+                "django.core",
+                "django.db",
+                "django.views",
+                "Exception Type",
+                "Exception Value",
+                "Traceback (most recent call last)",
+                "DEBUG = True",
+                "You're seeing this error because you have",
+            ]
+            django_hits = sum(1 for kw in django_indicators if kw.lower() in content_lower)
+            confidence += min(django_hits * 0.1, 0.3)
         
         # 状态码异常加分
         if resp.status_code >= 500:
@@ -1232,6 +1332,7 @@ class ScannerEngine:
     def _count_evidence(self, resp: httpx.Response, matchers: List[Dict[str, Any]]) -> int:
         """计算命中的证据数量（匹配器数量 + 关键词特异性加权）"""
         evidence = 0
+        content_lower = resp.text.lower()
         for matcher in matchers:
             if self._match_single_matcher(resp, matcher):
                 evidence += 1
@@ -1250,10 +1351,35 @@ class ScannerEngine:
                                 evidence += 1
                             if any(ekw.lower() == check_w for ekw in THINKPHP_EXCLUSIVE_SQLI_KEYWORDS):
                                 evidence += 1
+                            xss_high_specificity = [
+                                "aegismarker<script",
+                                "aegismarker<svg",
+                                "aegismarker<img",
+                                "aegismarker\"'><script",
+                            ]
+                            if any(kw.lower() == check_w for kw in xss_high_specificity):
+                                evidence += 1
+                            git_high_specificity = [
+                                "[core]",
+                                "repositoryformatversion",
+                                "bare = false",
+                                "ref: refs/heads/",
+                            ]
+                            if any(kw.lower() == check_w for kw in git_high_specificity):
+                                evidence += 1
+                            django_high_specificity = [
+                                "djang_settings_module",
+                                "integrityerror",
+                                "unique constraint failed",
+                            ]
+                            if any(kw.lower() == check_w for kw in django_high_specificity):
+                                evidence += 1
                 elif mtype == "regex":
                     evidence += 1
                 elif mtype == "time":
                     evidence += 1
+        if resp.status_code >= 500:
+            evidence += 1
         return evidence
     
     def _log_judgment(

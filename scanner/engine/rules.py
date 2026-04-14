@@ -176,6 +176,15 @@ HIGH_SPECIFICITY_SQLI_KEYWORDS = [
     "updatexml()",
     "SQLSTATE[42",
     "SQLSTATE[HY000]",
+    "Think\\Db\\Exception",
+    "SQLSTATE[08001",
+    "SQLSTATE[28000",
+    "ORA-01756",
+    "ORA-00933",
+    "ORA-00942",
+    "Microsoft OLE DB Provider",
+    "Unclosed quotation mark",
+    "SQLSERVER_ERROR",
 ]
 
 THINKPHP_EXCLUSIVE_SQLI_KEYWORDS = [
@@ -188,9 +197,26 @@ GENERIC_SQL_ERRORS = [
     "sql syntax",
     "mysql_fetch",
     "mysql_error",
+    "mysql_num_rows",
     "syntax error",
     "ora-01756",
     "unclosed quotation mark",
+    "sqlstate",
+    "sqlite_error",
+    "sqlite3.operationalerror",
+    "integrityerror",
+    "operationalerror",
+    "programmingerror",
+    "postgresql query failed",
+    "pg_query",
+    "pg_exec",
+    "odbc sql server driver",
+    "sqlexception",
+    "valid mysql result",
+    "check the manual that corresponds to your mysql",
+    "you have an error in your sql syntax",
+    "warning: mysql_",
+    "sqlalchemy.exc",
 ]
 
 
@@ -372,6 +398,7 @@ class RuleEngine:
         response_body: str,
         response_headers: Dict[str, str],
         request_url: str,
+        response_status: int = 200,
     ) -> Tuple[List[FrameworkType], Dict[FrameworkType, float]]:
         """
         检测目标框架及其置信度。
@@ -379,13 +406,14 @@ class RuleEngine:
         采用多维度评分机制：
         1. 响应头匹配 (权重: 0.45)
         2. 响应体通用模式匹配 (权重: 0.18)
-        3. URL路径模式匹配 (权重: 0.16)
+        3. URL路径模式匹配 (权重: 0.16) — 仅在响应成功时计分
         4. 独有特征硬标记匹配 (权重: 0.55)
         """
         detected: List[FrameworkType] = []
         confidences: Dict[FrameworkType, float] = {}
         body_lower = response_body.lower()
         header_text = str(response_headers).lower()
+        is_success_response = 200 <= response_status < 400
 
         for fw_type, sig in self._framework_signatures.items():
             score = 0.0
@@ -400,10 +428,11 @@ class RuleEngine:
                 if re.search(pattern, response_body, re.I):
                     score += 0.18
             
-            # 3. URL模式匹配
-            for pattern in sig.url_patterns:
-                if re.search(pattern, request_url, re.I):
-                    score += 0.16
+            # 3. URL模式匹配 — 仅在响应成功(2xx/3xx)时计分，避免404页面误判
+            if is_success_response:
+                for pattern in sig.url_patterns:
+                    if re.search(pattern, request_url, re.I):
+                        score += 0.16
             
             # 4. 独有特征标记匹配（最强证据）
             for marker in sig.exclusive_signatures:
@@ -691,6 +720,21 @@ class RuleEngine:
                 triggered = self._has_exclusive_signature(FrameworkType.DJANGO, body_lower, header_text)
             elif adj.condition == "response_has_sql_error":
                 triggered = any(err.lower() in body_lower for err in GENERIC_SQL_ERRORS)
+            elif adj.condition == "response_has_xss_payload":
+                xss_markers = ["<script", "<svg", "onerror=", "onload=", "javascript:", "alert("]
+                triggered = any(marker in body_lower for marker in xss_markers)
+            elif adj.condition == "response_has_git_config":
+                git_markers = ["[core]", "repositoryformatversion", "bare = false", "ref: refs/heads/"]
+                triggered = any(marker in body_lower for marker in git_markers)
+            elif adj.condition == "response_has_file_content":
+                file_markers = ["root:x:0:0:", "[extensions]", "[fonts]", "[boot]", "for 16-bit app support"]
+                triggered = any(marker in body_lower for marker in file_markers)
+            elif adj.condition == "response_has_internal_data":
+                internal_markers = ["ami-id", "instance-id", "meta-data", "computeMetadata", "SSH-2.0-", "mysql_native_password"]
+                triggered = any(marker in body_lower for marker in internal_markers)
+            elif adj.condition == "response_has_command_output":
+                cmd_markers = ["uid=", "gid=", "groups=", "www-data", "NT AUTHORITY"]
+                triggered = any(marker in body_lower for marker in cmd_markers)
             elif adj.condition == "response_has_other_framework_sig":
                 triggered = any(fw not in expected_set and fw != FrameworkType.UNKNOWN for fw in combined_frameworks)
 

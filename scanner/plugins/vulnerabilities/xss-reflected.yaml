@@ -4,6 +4,7 @@ info:
   severity: High
   description: |
     检测反射型XSS漏洞，通过注入测试payload并检查响应中是否包含未转义的payload。
+    覆盖多种注入点、编码方式和上下文。
   tags:
     - xss
     - injection
@@ -12,7 +13,6 @@ info:
     - https://owasp.org/www-community/attacks/xss/
 
 requests:
-  # GET参数注入测试
   - method: GET
     preconditions:
       methods: [GET]
@@ -27,40 +27,71 @@ requests:
       - "{{BaseURL}}/?url={{payload}}"
       - "{{BaseURL}}/?redirect={{payload}}"
       - "{{BaseURL}}/?next={{payload}}"
+      - "{{BaseURL}}/?keyword={{payload}}"
+      - "{{BaseURL}}/?user={{payload}}"
+      - "{{BaseURL}}/?uid={{payload}}"
+      - "{{BaseURL}}/?cat={{payload}}"
+      - "{{BaseURL}}/?category={{payload}}"
+      - "{{BaseURL}}/?item={{payload}}"
+      - "{{BaseURL}}/?msg={{payload}}"
+      - "{{BaseURL}}/?message={{payload}}"
+      - "{{BaseURL}}/?content={{payload}}"
+      - "{{BaseURL}}/?text={{payload}}"
+      - "{{BaseURL}}/?value={{payload}}"
+      - "{{BaseURL}}/?data={{payload}}"
+      - "{{BaseURL}}/?file={{payload}}"
+      - "{{BaseURL}}/?path={{payload}}"
+      - "{{BaseURL}}/?return={{payload}}"
+      - "{{BaseURL}}/?callback={{payload}}"
+      - "{{BaseURL}}/?action={{payload}}"
     payload_sets:
       default:
-        - "<script>alert(1)</script>"
-        - "<svg onload=alert(1)>"
-        - "<img src=x onerror=alert(1)>"
+        - "aegismarker<script>alert(1)</script>"
+        - "aegismarker<svg onload=alert(1)>"
+        - "aegismarker<img src=x onerror=alert(1)>"
       aggressive:
-        - "<script>alert(1)</script>"
-        - "<svg onload=alert(1)>"
-        - "<img src=x onerror=alert(1)>"
-        - "\"'><script>alert(1)</script>"
-        - "javascript:alert(1)"
-        - "<body onload=alert(1)>"
-        - "<iframe src=javascript:alert(1)>"
-        - "<details open ontoggle=alert(1)>"
-        - "<audio src=x onerror=alert(1)>"
-        - "<video><source onerror=alert(1)>"
+        - "aegismarker<script>alert(1)</script>"
+        - "aegismarker<svg onload=alert(1)>"
+        - "aegismarker<img src=x onerror=alert(1)>"
+        - "aegismarker\"'><script>alert(1)</script>"
+        - "aegismarkerjavascript:alert(1)"
+        - "aegismarker<body onload=alert(1)>"
+        - "aegismarker<iframe src=javascript:alert(1)>"
+        - "aegismarker<details open ontoggle=alert(1)>"
+        - "aegismarker<audio src=x onerror=alert(1)>"
+        - "aegismarker<video><source onerror=alert(1)>"
+        - "aegismarker<marquee onstart=alert(1)>"
+        - "aegismarker<isindex action=javascript:alert(1)>"
+        - "aegismarker\"><script>alert(1)</script>"
+        - "aegismarker'><script>alert(1)</script>"
+        - "aegismarker</script><script>alert(1)</script>"
       stealthy:
-        - "aegis_probe"
+        - "aegismarker"
+    matchers-condition: and
     matchers:
       - type: word
         words:
-          - "<script>alert(1)</script>"
-          - "<svg onload=alert(1)>"
-          - "<img src=x onerror=alert(1)>"
+          - "aegismarker"
         part: body
-        condition: or
       - type: regex
         regex:
-          - "<script[^>]*>[^<]*alert\\s*\\("
-          - "onerror\\s*=\\s*[\"']?alert"
-          - "onload\\s*=\\s*[\"']?alert"
+          - "aegismarker<script[^>]*>"
+          - "aegismarker<svg[^>]*onload\\s*="
+          - "aegismarker<img[^>]*onerror\\s*="
+          - "aegismarker.*?onerror\\s*=\\s*[\"']?alert"
+          - "aegismarker.*?onload\\s*=\\s*[\"']?alert"
+          - "aegismarker.*?ontoggle\\s*="
+          - "aegismarker.*?onstart\\s*="
+          - "aegismarker<iframe"
+          - "aegismarker<body[^>]*onload"
+          - "aegismarker<marquee"
+          - "aegismarker\"'><script"
+          - "aegismarker'><script"
+          - "aegismarker\"><script"
+          - "aegismarker</script><script"
         part: body
+        condition: or
 
-  # POST表单注入测试
   - method: POST
     preconditions:
       methods: [POST]
@@ -69,39 +100,66 @@ requests:
       - "{{BaseURL}}/submit"
       - "{{BaseURL}}/api/search"
       - "{{BaseURL}}/api/query"
+      - "{{BaseURL}}/login"
+      - "{{BaseURL}}/register"
+      - "{{BaseURL}}/contact"
+      - "{{BaseURL}}/feedback"
+      - "{{BaseURL}}/comment"
     headers:
       Content-Type: "application/x-www-form-urlencoded"
     body: "q={{payload}}&submit=Search"
     payload_sets:
       default:
-        - "<script>alert(1)</script>"
-        - "<svg onload=alert(1)>"
+        - "aegismarker<script>alert(1)</script>"
+        - "aegismarker<svg onload=alert(1)>"
+      aggressive:
+        - "aegismarker<script>alert(1)</script>"
+        - "aegismarker<svg onload=alert(1)>"
+        - "aegismarker<img src=x onerror=alert(1)>"
+        - "aegismarker\"'><script>alert(1)</script>"
+    matchers-condition: and
     matchers:
       - type: word
         words:
-          - "<script>alert(1)</script>"
-          - "<svg onload=alert(1)>"
+          - "aegismarker"
+        part: body
+      - type: regex
+        regex:
+          - "aegismarker<script[^>]*>"
+          - "aegismarker<svg[^>]*onload\\s*="
+          - "aegismarker<img[^>]*onerror\\s*="
+          - "aegismarker.*?onerror\\s*=\\s*[\"']?alert"
+          - "aegismarker.*?onload\\s*=\\s*[\"']?alert"
+          - "aegismarker\"'><script"
         part: body
         condition: or
 
-  # JSON API注入测试
   - method: POST
     preconditions:
       methods: [POST]
     path:
       - "{{BaseURL}}/api/v1/search"
       - "{{BaseURL}}/api/v2/query"
+      - "{{BaseURL}}/api/search"
+      - "{{BaseURL}}/api/query"
+      - "{{BaseURL}}/graphql"
     headers:
       Content-Type: "application/json"
     body: '{"query": "{{payload}}", "limit": 10}'
     payload_sets:
       default:
-        - "<script>alert(1)</script>"
-        - "<img src=x onerror=alert(1)>"
+        - "aegismarker<script>alert(1)</script>"
+        - "aegismarker<img src=x onerror=alert(1)>"
+    matchers-condition: and
     matchers:
       - type: word
         words:
-          - "<script>alert(1)</script>"
-          - "<img src=x onerror=alert(1)>"
+          - "aegismarker"
+        part: body
+      - type: regex
+        regex:
+          - "aegismarker<script[^>]*>"
+          - "aegismarker<img[^>]*onerror\\s*="
+          - "aegismarker.*?onerror\\s*=\\s*[\"']?alert"
         part: body
         condition: or

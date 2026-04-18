@@ -550,6 +550,7 @@ class RuleEngine:
         request_url: str,
         matched_keywords: Optional[List[str]] = None,
         framework_versions: Optional[Dict[FrameworkType, Optional[str]]] = None,
+        request_payload: Optional[str] = None,
     ) -> Tuple[bool, str]:
         """
         多重验证漏洞判定逻辑：
@@ -608,7 +609,93 @@ class RuleEngine:
         if rule.validation_level != ValidationLevel.LOOSE and not matched_keywords:
             return False, "未提取到有效的漏洞特征证据"
 
+        plugin_specific_reason = self._validate_plugin_specific_signal(
+            plugin_id=plugin_id,
+            response_body=response_body,
+            response_headers=response_headers,
+            request_url=request_url,
+            request_payload=request_payload,
+            matched_keywords=matched_keywords,
+        )
+        if plugin_specific_reason is not None:
+            return False, plugin_specific_reason
+
         return True, "验证通过"
+
+    def _validate_plugin_specific_signal(
+        self,
+        plugin_id: str,
+        response_body: str,
+        response_headers: Dict[str, str],
+        request_url: str,
+        request_payload: Optional[str],
+        matched_keywords: List[str],
+    ) -> Optional[str]:
+        body = response_body or ""
+        body_lower = body.lower()
+        url_lower = request_url.lower()
+
+        if plugin_id == "git-config-leak":
+            strong_git_markers = [
+                "[core]",
+                "repositoryformatversion",
+                "bare = false",
+                "logallrefupdates",
+                "[remote \"origin\"]",
+                "[branch \"",
+                "ref: refs/heads/",
+                "dirc",
+                "index of",
+            ]
+            if not any(marker in body_lower for marker in strong_git_markers):
+                return "响应缺少强 Git 仓库特征，疑似错误页或占位响应"
+
+            if "/.git/objects/" in url_lower or "/.git/refs/" in url_lower:
+                if "index of" not in body_lower and "<title>index of" not in body_lower and "dirc" not in body_lower:
+                    return "目录路径仅出现弱关键词，未发现可证实的 Git 目录索引或索引文件特征"
+
+            forbidden_markers = [
+                "forbidden",
+                "you don't have permission",
+                "access denied",
+                "403 forbidden",
+                "permission denied",
+            ]
+            if any(marker in body_lower for marker in forbidden_markers) and "index of" not in body_lower:
+                return "响应更像访问被拒绝页面，而非 Git 文件泄露"
+
+        if plugin_id == "ssrf-probe":
+            canonical_payload = (request_payload or "").strip().lower()
+            sanitized_body = body_lower
+            if canonical_payload:
+                sanitized_body = sanitized_body.replace(canonical_payload, "")
+                sanitized_body = sanitized_body.replace(canonical_payload.rstrip("/"), "")
+
+            reflected_only_markers = [
+                "169.254.169.254/latest/meta-data/",
+                "169.254.169.254/latest/user-data/",
+                "metadata.google.internal/computeMetadata/v1/".lower(),
+            ]
+            for marker in reflected_only_markers:
+                sanitized_body = sanitized_body.replace(marker, "")
+
+            strong_ssrf_markers = [
+                "ami-id",
+                "instance-id",
+                "reservation-id",
+                "ami-launch-index",
+                "local-ipv4",
+                "public-ipv4",
+                "ssh-2.0-",
+                "mysql_native_password",
+                "metadata-flavor",
+            ]
+            if not any(marker in sanitized_body for marker in strong_ssrf_markers):
+                if re.search(r"\bami-[a-z0-9]+\b", sanitized_body) or re.search(r"\bi-[a-f0-9]+\b", sanitized_body):
+                    return None
+                return "响应更像是 payload 回显，未发现来自内网资源的独立内容"
+
+        return None
 
     def _validate_version(
         self,
@@ -686,6 +773,7 @@ class RuleEngine:
         response_headers: Dict[str, str],
         request_url: str,
         matched_keywords: Optional[List[str]] = None,
+        request_payload: Optional[str] = None,
     ) -> Tuple[float, List[Dict[str, Any]]]:
         """
         动态调整置信度评分。
@@ -772,6 +860,32 @@ class RuleEngine:
                 confidence += 0.05
                 details.append({"factor_name": "response_framework_confidence", "adjustment": 0.05, "description": f"响应框架识别置信度较高: {fw.value}={val:.2f}", "triggered": True})
                 break
+
+        if plugin_id == "git-config-leak":
+            forbidden_markers = ["forbidden", "you don't have permission", "access denied", "403 forbidden"]
+            if any(marker in body_lower for marker in forbidden_markers) and "index of" not in body_lower:
+                confidence -= 0.35
+                details.append({
+                    "factor_name": "forbidden_page_penalty",
+                    "adjustment": -0.35,
+                    "description": "响应疑似访问被拒绝页面，降低 Git 泄露置信度",
+                    "triggered": True,
+                })
+
+        if plugin_id == "ssrf-probe":
+            canonical_payload = (request_payload or "").strip().lower()
+            sanitized_body = body_lower
+            if canonical_payload:
+                sanitized_body = sanitized_body.replace(canonical_payload, "")
+                sanitized_body = sanitized_body.replace(canonical_payload.rstrip("/"), "")
+            if "meta-data" in body_lower and "meta-data" not in sanitized_body:
+                confidence -= 0.30
+                details.append({
+                    "factor_name": "payload_reflection_penalty",
+                    "adjustment": -0.30,
+                    "description": "元数据关键词仅出现在回显的 payload URL 中，降低 SSRF 置信度",
+                    "triggered": True,
+                })
 
         return max(0.0, min(1.0, confidence)), details
 

@@ -47,7 +47,7 @@ requests:
     matchers-condition: and
     matchers:
       - type: status
-        status: [200, 403]
+        status: [200]
       - type: word
         words:
           - "DIRC"

@@ -589,6 +589,7 @@ class ScannerEngine:
                                     request_url=url,
                                     matched_keywords=matched_keywords,
                                     framework_versions=self._framework_versions,
+                                    request_payload=payload_str,
                                 )
                                 
                                 base_confidence = self._calculate_confidence(resp, matchers, plugin)
@@ -601,6 +602,7 @@ class ScannerEngine:
                                     response_headers=dict(resp.headers),
                                     request_url=url,
                                     matched_keywords=matched_keywords,
+                                    request_payload=payload_str,
                                 )
                                 
                                 evidence_count = self._count_evidence(resp, matchers)

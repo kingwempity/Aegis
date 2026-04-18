@@ -587,18 +587,47 @@
                         {% if v.attack_path %}
                         <div class="attack-path-section">
                             <div class="attack-path-title">模拟攻击路径</div>
+                            {% if v.attack_path.status or v.attack_path.final_reason %}
+                            <div class="detail-section" style="margin-bottom: 15px;">
+                                <h4>攻击链结论</h4>
+                                <p>
+                                    {% if v.attack_path.status %}状态: <strong>{{ v.attack_path.status }}</strong>{% endif %}
+                                    {% if v.attack_path.final_reason %}<br>结论: {{ v.attack_path.final_reason }}{% endif %}
+                                </p>
+                            </div>
+                            {% endif %}
                             <div class="attack-chain">
                                 {% if v.attack_path.steps %}
                                     {% for step in v.attack_path.steps %}
-                                    <div class="attack-step">
-                                        <div class="step-number">{{ loop.index }}</div>
-                                        <div class="step-content">
-                                            <div>
-                                                <span class="method">{{ step.method or 'GET' }}</span>
-                                                <span class="url">{{ step.url }}</span>
-                                            </div>
+                                        <div class="attack-step">
+                                            <div class="step-number">{{ loop.index }}</div>
+                                            <div class="step-content">
+                                                <div>
+                                                    <strong>{{ step.stage_title or step.stage_name or step.stage_id }}</strong><br>
+                                                    <span class="method">{{ step.method or 'GET' }}</span>
+                                                    <span class="url">{{ step.url }}</span>
+                                                </div>
+                                            {% if step.stage_goal %}
+                                            <p style="margin-top: 5px; font-size: 13px; color: #555;">目标: {{ step.stage_goal }}</p>
+                                             {% endif %}
                                             {% if step.description %}
                                             <p style="margin-top: 5px; font-size: 13px; color: #666;">{{ step.description }}</p>
+                                             {% endif %}
+                                             {% if step.matched_conditions %}
+                                             <p style="margin-top: 5px; font-size: 12px; color: #888;">
+                                                 命中特征: {{ step.matched_conditions | join(', ') }}
+                                             </p>
+                                             {% endif %}
+                                             {% if step.artifacts %}
+                                             <p style="margin-top: 5px; font-size: 12px; color: #0f766e;">
+                                                 阶段产物:
+                                                 {% for artifact in step.artifacts %}
+                                                 <span style="margin-right: 8px;">{{ artifact.name }}</span>
+                                                 {% endfor %}
+                                             </p>
+                                             {% endif %}
+                                            {% if step.duration_ms %}
+                                            <p style="margin-top: 3px; font-size: 12px; color: #aaa;">耗时: {{ step.duration_ms }} ms</p>
                                             {% endif %}
                                         </div>
                                     </div>
@@ -616,6 +645,19 @@
                                     </div>
                                 {% endif %}
                             </div>
+                            {% if v.attack_path.artifacts %}
+                            <div class="detail-section" style="margin-top: 15px;">
+                                <h4>关键产物</h4>
+                                {% for artifact in v.attack_path.artifacts %}
+                                <p style="font-size: 13px; margin-bottom: 6px;">
+                                    <strong>{{ artifact.name }}</strong>
+                                    {% if artifact.source_stage %} <span style="color: #999;">@ {{ artifact.source_stage }}</span>{% endif %}
+                                    <br>
+                                    <span style="font-family: monospace; word-break: break-all;">{{ artifact.value }}</span>
+                                </p>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
                         </div>
                         {% endif %}
                         
@@ -668,6 +710,10 @@
 {% if v.evidence.mutation_type %}变异类型: {{ v.evidence.mutation_type }}
 {% endif %}
 {% if v.evidence.response_status %}响应状态码: {{ v.evidence.response_status }}
+{% endif %}
+{% if v.evidence.attack_stage_count %}攻击阶段数: {{ v.evidence.attack_stage_count }}
+{% endif %}
+{% if v.evidence.attack_artifacts %}关键产物数: {{ v.evidence.attack_artifacts | length }}
 {% endif %}
 {% if v.evidence.body_snippet %}
 响应片段:

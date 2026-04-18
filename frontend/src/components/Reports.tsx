@@ -161,6 +161,35 @@ const VulnerabilityBadge: React.FC<VulnerabilityBadgeProps> = ({ present, label,
   );
 };
 
+const ATTACK_STATUS_LABELS: Record<string, string> = {
+  validated: '已验证',
+  exploitable: '可利用',
+  partial: '部分完成',
+  observed: '已观察',
+  blocked: '已阻断',
+  running: '执行中',
+};
+
+const AttackStatusBadge: React.FC<{ status?: string }> = ({ status }) => {
+  if (!status) return null;
+  const normalized = status.toLowerCase();
+  const colorClass = normalized === 'validated'
+    ? 'bg-emerald-100 text-emerald-700'
+    : normalized === 'exploitable'
+      ? 'bg-orange-100 text-[#c25b00]'
+      : normalized === 'partial'
+        ? 'bg-yellow-100 text-yellow-700'
+        : normalized === 'blocked'
+          ? 'bg-red-100 text-red-600'
+          : 'bg-gray-100 text-gray-600';
+
+  return (
+    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${colorClass}`}>
+      {ATTACK_STATUS_LABELS[normalized] || status}
+    </span>
+  );
+};
+
 interface ReportPreviewModalProps {
   preview: ReportPreview;
   visibleVulnCount: number;
@@ -273,6 +302,32 @@ const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
                 <div className="mt-1 font-bold text-[#2d3343]">{preview.summary.total}</div>
               </div>
             </div>
+            <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+              <div className="rounded-xl bg-emerald-50 px-3 py-3 text-center">
+                <div className="text-xs text-gray-400">已验证攻击链</div>
+                <div className="mt-1 font-bold text-emerald-700">
+                  {preview.attack_simulation_summary?.validated_attack_paths ?? 0}
+                </div>
+              </div>
+              <div className="rounded-xl bg-slate-50 px-3 py-3 text-center">
+                <div className="text-xs text-gray-400">关键产物</div>
+                <div className="mt-1 font-bold text-[#2d3343]">
+                  {preview.attack_simulation_summary?.artifact_count ?? 0}
+                </div>
+              </div>
+              <div className="rounded-xl bg-orange-50 px-3 py-3 text-center">
+                <div className="text-xs text-gray-400">攻击载荷</div>
+                <div className="mt-1 font-bold text-[#c25b00]">
+                  {preview.attack_simulation_summary?.payload_count ?? 0}
+                </div>
+              </div>
+              <div className="rounded-xl bg-blue-50 px-3 py-3 text-center">
+                <div className="text-xs text-gray-400">攻击路径</div>
+                <div className="mt-1 font-bold text-blue-600">
+                  {preview.attack_simulation_summary?.attack_path_count ?? 0}
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="rounded-2xl border border-gray-100 p-5">
@@ -308,6 +363,15 @@ const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
                             {vuln.parameter ? ` · 参数 ${vuln.parameter}` : ''}
                             {vuln.cvss_score ? ` · CVSS ${vuln.cvss_score}` : ''}
                           </div>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <AttackStatusBadge status={vuln.attack_status} />
+                            {typeof vuln.attack_stage_count === 'number' && vuln.attack_stage_count > 0 && (
+                              <span className="text-xs font-semibold text-gray-500">{vuln.attack_stage_count} 个阶段</span>
+                            )}
+                            {typeof vuln.attack_artifact_count === 'number' && vuln.attack_artifact_count > 0 && (
+                              <span className="text-xs font-semibold text-gray-500">{vuln.attack_artifact_count} 个关键产物</span>
+                            )}
+                          </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <VulnerabilityBadge present={vuln.payload_present} label="攻击载荷" colorClass="bg-orange-100 text-[#c25b00]" />
@@ -316,6 +380,54 @@ const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
                         </div>
                       </div>
                       <p className="mt-3 text-sm text-gray-500">{vuln.description || '暂无详细验证摘要。'}</p>
+                      {vuln.attack_final_reason && (
+                        <p className="mt-2 text-xs text-gray-500">结论: {vuln.attack_final_reason}</p>
+                      )}
+                      {vuln.attack_steps && vuln.attack_steps.length > 0 && (
+                        <div className="mt-4 rounded-xl border border-gray-100 bg-white p-3">
+                          <div className="text-xs font-bold uppercase tracking-wide text-gray-400">攻击阶段</div>
+                          <div className="mt-3 space-y-2">
+                            {vuln.attack_steps.slice(0, 3).map((step, index) => (
+                              <div key={`${vuln.id}-${step.stage_id || index}`} className="rounded-lg bg-gray-50 px-3 py-2">
+                                <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#2d3343]">
+                                  <span>{step.step ?? index + 1}.</span>
+                                  <span>{step.stage_title || step.stage_name || step.stage_id || '阶段'}</span>
+                                  {step.method && <span className="rounded bg-[#2d3343] px-2 py-0.5 text-xs text-white">{step.method}</span>}
+                                </div>
+                                {step.stage_goal && <div className="mt-1 text-xs text-slate-600">目标: {step.stage_goal}</div>}
+                                {step.url && <div className="mt-1 break-all text-xs text-gray-500">{step.url}</div>}
+                                {step.description && <div className="mt-1 text-xs text-gray-500">{step.description}</div>}
+                                {step.artifacts && step.artifacts.length > 0 && (
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {step.artifacts.slice(0, 3).map((artifact, artifactIndex) => (
+                                      <span
+                                        key={`${vuln.id}-${step.stage_id || index}-artifact-${artifactIndex}`}
+                                        className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700"
+                                        title={String(artifact.value)}
+                                      >
+                                        {artifact.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {vuln.attack_artifacts && vuln.attack_artifacts.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {vuln.attack_artifacts.slice(0, 4).map((artifact, index) => (
+                            <span
+                              key={`${vuln.id}-artifact-${index}`}
+                              className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600"
+                              title={String(artifact.value)}
+                            >
+                              {artifact.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
 

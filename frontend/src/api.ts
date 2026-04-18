@@ -124,6 +124,38 @@ export interface ReportPreviewVulnerability {
   payload_present: boolean;
   attack_path_present: boolean;
   evidence_present: boolean;
+  attack_status?: string;
+  attack_stage_count?: number;
+  attack_artifact_count?: number;
+  attack_final_reason?: string;
+  attack_steps?: Array<{
+    step?: number;
+    stage_id?: string;
+    stage_name?: string;
+    stage_title?: string;
+    stage_goal?: string;
+    method?: string;
+    url?: string;
+    description?: string;
+    matched_conditions?: string[];
+    artifacts?: Array<{
+      name: string;
+      value: string;
+      source_stage?: string;
+      artifact_type?: string;
+      confidence?: number;
+    }>;
+    extracted?: Record<string, unknown>;
+    success?: boolean;
+    duration_ms?: number;
+  }>;
+  attack_artifacts?: Array<{
+    name: string;
+    value: string;
+    source_stage?: string;
+    artifact_type?: string;
+    confidence?: number;
+  }>;
 }
 
 export interface ReportPreview {
@@ -144,6 +176,8 @@ export interface ReportPreview {
     validated_findings: number;
     payload_count: number;
     attack_path_count: number;
+    validated_attack_paths?: number;
+    artifact_count?: number;
   };
   vulnerabilities: ReportPreviewVulnerability[];
 }

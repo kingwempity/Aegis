@@ -14,6 +14,9 @@ info:
 
 requests:
   - method: GET
+    stage: ssrf_query_probe
+    stage_title: SSRF Query Parameter Probe
+    stage_goal: 识别通过查询参数触发的服务端请求，并验证是否返回内网资源特征。
     path:
       - "{{BaseURL}}/?url={{payload}}"
       - "{{BaseURL}}/?redirect={{payload}}"
@@ -76,6 +79,9 @@ requests:
         part: body
 
   - method: POST
+    stage: ssrf_api_probe
+    stage_title: SSRF API Endpoint Probe
+    stage_goal: 识别通过 JSON/API 接口触发的服务端请求，并验证是否返回内部服务或云元数据特征。
     path:
       - "{{BaseURL}}/api/fetch"
       - "{{BaseURL}}/api/proxy"

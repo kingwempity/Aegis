@@ -14,6 +14,9 @@ info:
 
 requests:
   - method: GET
+    stage: git_metadata_probe
+    stage_title: Git Metadata Exposure Probe
+    stage_goal: 验证 Git 仓库元数据文件是否可直接访问，并确认响应具备真实 Git 特征。
     path:
       - "{{BaseURL}}/.git/config"
       - "{{BaseURL}}/.git/HEAD"
@@ -39,6 +42,9 @@ requests:
         status: [200]
 
   - method: GET
+    stage: git_repository_index_probe
+    stage_title: Git Repository Index Probe
+    stage_goal: 验证 Git 索引或引用目录是否可访问，并确认返回内容不是普通错误页。
     path:
       - "{{BaseURL}}/.git/index"
       - "{{BaseURL}}/.git/objects/"

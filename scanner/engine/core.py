@@ -89,7 +89,10 @@ class AttackStageRecord:
     stage_name: str
     request: Dict[str, Any]
     response: Dict[str, Any]
+    stage_title: str = ""
+    stage_goal: str = ""
     extracted: Dict[str, Any] = field(default_factory=dict)
+    artifacts: List[Dict[str, Any]] = field(default_factory=list)
     matched_conditions: List[str] = field(default_factory=list)
     success: bool = False
     reason: str = ""
@@ -99,9 +102,12 @@ class AttackStageRecord:
         return {
             "stage_id": self.stage_id,
             "stage_name": self.stage_name,
+            "stage_title": self.stage_title,
+            "stage_goal": self.stage_goal,
             "request": self.request,
             "response": self.response,
             "extracted": self.extracted,
+            "artifacts": self.artifacts,
             "matched_conditions": self.matched_conditions,
             "success": self.success,
             "reason": self.reason,
@@ -638,10 +644,18 @@ class ScannerEngine:
                         matcher_hit = self._check_matchers(resp, matchers, matchers_condition)
                         if not matcher_hit and is_sequential:
                             miss_reason = self._explain_sequential_miss(plugin, req_def, resp, url)
+                            stage_artifacts = self._register_stage_artifacts(
+                                plugin,
+                                stage_name,
+                                self._extract_stage_artifacts(
+                                    plugin, req_def, resp, payload_str, stage_name, []
+                                ),
+                            )
                             if miss_reason:
                                 self._append_stage_record(
                                     plugin=plugin,
                                     stage_name=stage_name,
+                                    req_def=req_def,
                                     request=request_snapshot,
                                     response=response_snapshot,
                                     matched_conditions=[],
@@ -649,6 +663,7 @@ class ScannerEngine:
                                     reason=miss_reason,
                                     duration_ms=round(request_elapsed_ms, 2),
                                     extracted=extracted,
+                                    artifacts=stage_artifacts,
                                 )
                                 self._record_sequential_step_result(
                                     plugin_id=plugin_id,
@@ -663,6 +678,18 @@ class ScannerEngine:
 
                         if matcher_hit:
                             matched_keywords = self._extract_matched_keywords(resp, matchers)
+                            stage_artifacts = self._register_stage_artifacts(
+                                plugin,
+                                stage_name,
+                                self._extract_stage_artifacts(
+                                    plugin,
+                                    req_def,
+                                    resp,
+                                    payload_str,
+                                    stage_name,
+                                    matched_keywords,
+                                ),
+                            )
                             if is_sequential:
                                 step_valid, step_reason = self._validate_sequential_step(
                                     plugin=plugin,
@@ -674,6 +701,7 @@ class ScannerEngine:
                                 self._append_stage_record(
                                     plugin=plugin,
                                     stage_name=stage_name,
+                                    req_def=req_def,
                                     request=request_snapshot,
                                     response=response_snapshot,
                                     matched_conditions=matched_keywords[:10],
@@ -681,6 +709,7 @@ class ScannerEngine:
                                     reason=step_reason,
                                     duration_ms=round(request_elapsed_ms, 2),
                                     extracted=extracted,
+                                    artifacts=stage_artifacts,
                                 )
                                 self._record_sequential_step_result(
                                     plugin_id=plugin_id,
@@ -791,6 +820,7 @@ class ScannerEngine:
                                         self._append_stage_record(
                                             plugin=plugin,
                                             stage_name=stage_name,
+                                            req_def=req_def,
                                             request=request_snapshot,
                                             response=response_snapshot,
                                             matched_conditions=matched_keywords[:10],
@@ -798,6 +828,7 @@ class ScannerEngine:
                                             reason=final_reason,
                                             duration_ms=round(request_elapsed_ms, 2),
                                             extracted=extracted,
+                                            artifacts=stage_artifacts,
                                         )
                                     attack_execution = self._get_attack_execution(plugin)
                                     attack_status = "validated" if is_sequential else "exploitable"
@@ -862,6 +893,7 @@ class ScannerEngine:
                                     self._append_stage_record(
                                         plugin=plugin,
                                         stage_name=stage_name,
+                                        req_def=req_def,
                                         request=request_snapshot,
                                         response=response_snapshot,
                                         matched_conditions=matched_keywords[:10],
@@ -869,12 +901,14 @@ class ScannerEngine:
                                         reason=final_reason,
                                         duration_ms=round(request_elapsed_ms, 2),
                                         extracted=extracted,
+                                        artifacts=stage_artifacts,
                                     )
                     except Exception as e:
                         self._stats.failed_requests += 1
                         self._append_stage_record(
                             plugin=plugin,
                             stage_name=stage_name,
+                            req_def=req_def,
                             request={"method": method, "url": url, "headers": current_headers, "body": current_body},
                             response={"status": 0, "headers": {}, "body_snippet": "", "content_length": 0},
                             matched_conditions=[],
@@ -882,6 +916,7 @@ class ScannerEngine:
                             reason=str(e),
                             duration_ms=0.0,
                             extracted={},
+                            artifacts=[],
                         )
                         self._log_judgment(
                             phase="scan_request", plugin_id=plugin_id,
@@ -943,6 +978,15 @@ class ScannerEngine:
             self._attack_executions[plugin_id] = execution
         return execution
 
+    def _derive_stage_title(self, req_def: Dict[str, Any], stage_name: str) -> str:
+        configured = req_def.get("stage_title")
+        if configured:
+            return configured
+        return stage_name.replace("_", " ").strip().title()
+
+    def _derive_stage_goal(self, req_def: Dict[str, Any]) -> str:
+        return req_def.get("stage_goal", "")
+
     def _build_attack_path_from_execution(self, execution: AttackExecution) -> Dict[str, Any]:
         steps = []
         for index, stage in enumerate(execution.stage_records, start=1):
@@ -953,12 +997,17 @@ class ScannerEngine:
                     "step": index,
                     "stage_id": stage.stage_id,
                     "stage_name": stage.stage_name,
+                    "stage_title": stage.stage_title,
+                    "stage_goal": stage.stage_goal,
                     "method": stage.request.get("method", "GET"),
                     "url": stage.request.get("url", ""),
                     "description": stage.reason,
                     "matched_conditions": stage.matched_conditions,
                     "success": stage.success,
                     "duration_ms": stage.duration_ms,
+                    "response_status": stage.response.get("status"),
+                    "extracted": stage.extracted,
+                    "artifacts": stage.artifacts,
                 }
             )
 
@@ -1001,10 +1050,119 @@ class ScannerEngine:
             execution.shared_state = after_state
         return extracted
 
+    def _register_stage_artifacts(
+        self,
+        plugin: Dict[str, Any],
+        stage_name: str,
+        artifacts: List[AttackArtifact],
+    ) -> List[Dict[str, Any]]:
+        if not artifacts:
+            return []
+
+        execution = self._get_attack_execution(plugin)
+        registered: List[Dict[str, Any]] = []
+        for artifact in artifacts:
+            if not artifact.source_stage:
+                artifact.source_stage = stage_name
+            exists = any(
+                existing.name == artifact.name
+                and existing.value == artifact.value
+                and existing.source_stage == artifact.source_stage
+                for existing in execution.artifacts
+            )
+            if not exists:
+                execution.artifacts.append(artifact)
+            registered.append(artifact.to_dict())
+        return registered
+
+    def _extract_stage_artifacts(
+        self,
+        plugin: Dict[str, Any],
+        req_def: Dict[str, Any],
+        resp: httpx.Response,
+        payload_str: str,
+        stage_name: str,
+        matched_keywords: Optional[List[str]] = None,
+    ) -> List[AttackArtifact]:
+        plugin_id = plugin.get("id", "unknown")
+        body = resp.text or ""
+        body_lower = body.lower()
+        artifacts: List[AttackArtifact] = []
+
+        if plugin_id == "ssrf-probe":
+            metadata_markers = {
+                "aws_identity": ["ami-id", "instance-id", "reservation-id", "ami-launch-index"],
+                "network_metadata": ["local-ipv4", "public-ipv4", "hostname"],
+                "cloud_metadata_api": ["meta-data", "user-data", "computemetadata", "metadata-flavor"],
+                "internal_protocol_banner": ["ssh-2.0-", "mysql_native_password", "http/1.1 200"],
+            }
+            matched_categories = [
+                category
+                for category, markers in metadata_markers.items()
+                if any(marker in body_lower for marker in markers)
+            ]
+            if matched_categories:
+                artifacts.append(
+                    AttackArtifact(
+                        name="internal_resource_type",
+                        value=", ".join(matched_categories),
+                        source_stage=stage_name,
+                        artifact_type="response_indicator",
+                        confidence=0.9,
+                    )
+                )
+
+            regex_artifacts = {
+                "aws_ami_id": r"\bami-[a-z0-9]+\b",
+                "aws_instance_id": r"\bi-[a-f0-9]+\b",
+                "aws_reservation_id": r"\br-[a-f0-9]+\b",
+            }
+            for name, pattern in regex_artifacts.items():
+                match = re.search(pattern, body_lower)
+                if match:
+                    artifacts.append(
+                        AttackArtifact(
+                            name=name,
+                            value=match.group(0),
+                            source_stage=stage_name,
+                            artifact_type="response_identifier",
+                            confidence=0.95,
+                        )
+                    )
+
+            if payload_str and payload_str.lower() not in body_lower and matched_keywords:
+                artifacts.append(
+                    AttackArtifact(
+                        name="server_side_fetch_signal",
+                        value=", ".join(matched_keywords[:5]),
+                        source_stage=stage_name,
+                        artifact_type="behavior",
+                        confidence=0.85,
+                    )
+                )
+
+        if plugin_id == "git-config-leak":
+            git_markers = ["[core]", "repositoryformatversion", "ref: refs/heads/", "dirc"]
+            for marker in git_markers:
+                if marker in body_lower:
+                    artifacts.append(
+                        AttackArtifact(
+                            name="git_signature",
+                            value=marker,
+                            source_stage=stage_name,
+                            artifact_type="file_signature",
+                            confidence=0.9,
+                        )
+                    )
+                    break
+
+        return artifacts
+
     def _append_stage_record(
         self,
         plugin: Dict[str, Any],
         stage_name: str,
+        req_def: Optional[Dict[str, Any]],
         request: Dict[str, Any],
         response: Dict[str, Any],
         matched_conditions: List[str],
@@ -1012,15 +1170,19 @@ class ScannerEngine:
         reason: str,
         duration_ms: float,
         extracted: Optional[Dict[str, Any]] = None,
+        artifacts: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         execution = self._get_attack_execution(plugin)
         execution.stage_records.append(
             AttackStageRecord(
                 stage_id=stage_name,
                 stage_name=stage_name,
+                stage_title=self._derive_stage_title(req_def or {}, stage_name),
+                stage_goal=self._derive_stage_goal(req_def or {}),
                 request=request,
                 response=response,
                 extracted=extracted or {},
+                artifacts=artifacts or [],
                 matched_conditions=matched_conditions,
                 success=success,
                 reason=reason,

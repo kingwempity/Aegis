@@ -260,6 +260,14 @@ def preview_report(task_id: int, db: Session = Depends(get_db)):
         cvss_score = getattr(vuln, 'cvss_score', None)
         description = getattr(vuln, 'description', None)
         remediation = getattr(vuln, 'remediation', None)
+        attack_path = getattr(vuln, "attack_path", None) or {}
+        attack_steps = attack_path.get("steps", []) if isinstance(attack_path, dict) else []
+        attack_artifacts = attack_path.get("artifacts", []) if isinstance(attack_path, dict) else []
+        attack_status = None
+        final_reason = None
+        if isinstance(attack_path, dict):
+            attack_status = attack_path.get("status")
+            final_reason = attack_path.get("final_reason")
         
         vulnerabilities.append({
             "id": vuln.id,
@@ -274,11 +282,27 @@ def preview_report(task_id: int, db: Session = Depends(get_db)):
             "payload_present": bool(getattr(vuln, "payload", None)),
             "attack_path_present": bool(getattr(vuln, "attack_path", None)),
             "evidence_present": bool(getattr(vuln, "evidence", None)),
+            "attack_status": attack_status,
+            "attack_stage_count": len(attack_steps),
+            "attack_artifact_count": len(attack_artifacts),
+            "attack_final_reason": final_reason,
+            "attack_steps": attack_steps,
+            "attack_artifacts": attack_artifacts,
         })
 
     payload_count = len([v for v in task.vulnerabilities if getattr(v, "payload", None)])
     attack_path_count = len([v for v in task.vulnerabilities if getattr(v, "attack_path", None)])
     validated_findings = len([v for v in task.vulnerabilities if getattr(v, "evidence", None)])
+    validated_attack_paths = len([
+        v for v in task.vulnerabilities
+        if isinstance(getattr(v, "attack_path", None), dict)
+        and getattr(v, "attack_path", {}).get("status") == "validated"
+    ])
+    artifact_count = sum([
+        len((getattr(v, "attack_path", None) or {}).get("artifacts", []))
+        for v in task.vulnerabilities
+        if isinstance(getattr(v, "attack_path", None), dict)
+    ])
     
     report_data = {
         "task_id": task.id,
@@ -291,6 +315,8 @@ def preview_report(task_id: int, db: Session = Depends(get_db)):
             "validated_findings": validated_findings,
             "payload_count": payload_count,
             "attack_path_count": attack_path_count,
+            "validated_attack_paths": validated_attack_paths,
+            "artifact_count": artifact_count,
         },
         "vulnerabilities": vulnerabilities
     }

@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from scans.models import Vulnerability
+import json
 
 
 class VulnerabilityDetailView(APIView):
@@ -91,66 +92,89 @@ class VulnerabilityEvidenceView(APIView):
                 task__created_by=request.user
             )
 
-            # 构建请求数据（基于漏洞信息重建）
+            attack_steps = vulnerability.attack_steps or []
+            evidence = vulnerability.evidence
+            if isinstance(evidence, str):
+                try:
+                    evidence = json.loads(evidence)
+                except Exception:
+                    evidence = {"raw": evidence}
+            elif evidence is None:
+                evidence = {}
+
             request_data = {
                 'method': vulnerability.method,
                 'url': vulnerability.url,
                 'headers': {
                     'Content-Type': 'application/x-www-form-urlencoded',
-                    'User-Agent': 'VulnScanner/1.0'
+                    'User-Agent': 'Aegis-Security-Scanner/2.0'
                 },
                 'timestamp': vulnerability.detected_at.isoformat()
             }
-
-            # 根据漏洞类型构建请求体
-            if vulnerability.method == 'POST' and vulnerability.parameter:
-                if vulnerability.type == 'sql_injection':
-                    request_data['body'] = f"{vulnerability.parameter}={vulnerability.payload}&password=test"
-                elif vulnerability.type == 'xss':
-                    request_data['body'] = f"{vulnerability.parameter}={vulnerability.payload}"
-                else:
-                    request_data['body'] = f"{vulnerability.parameter}={vulnerability.payload}"
-            elif vulnerability.method == 'GET' and vulnerability.parameter:
-                request_data['body'] = None
-
-            # 构建响应数据
             response_data = {
-                'status_code': 200,
-                'headers': {
-                    'Content-Type': 'text/html; charset=utf-8'
-                },
-                'response_time_ms': 150,
-                'timestamp': vulnerability.detected_at.isoformat()
+                'status_code': None,
+                'headers': {},
+                'response_time_ms': None,
+                'timestamp': vulnerability.detected_at.isoformat(),
+                'body': ''
             }
-
-            # 根据漏洞类型设置响应体
-            if vulnerability.type == 'sql_injection':
-                response_data['body'] = f"<html>...{vulnerability.evidence}...</html>"
-            elif vulnerability.type == 'xss':
-                response_data['body'] = f"<html>...{vulnerability.payload}...</html>"
-            else:
-                response_data['body'] = f"<html>...{vulnerability.evidence}...</html>"
-
-            # 构建利用结果
             exploitation_result = {
-                'successful': True,
+                'successful': bool(attack_steps or evidence),
                 'data_extracted': '',
-                'tables_discovered': []
+                'tables_discovered': [],
+                'attack_status': None,
+                'artifacts': [],
             }
 
-            if vulnerability.type == 'sql_injection':
-                exploitation_result['data_extracted'] = 'Database name: example_db'
-                exploitation_result['tables_discovered'] = ['users', 'products', 'orders']
-            elif vulnerability.type == 'file_upload':
-                exploitation_result['data_extracted'] = 'File uploaded successfully'
-            elif vulnerability.type == 'path_traversal':
-                exploitation_result['data_extracted'] = 'System file accessed'
+            if attack_steps:
+                final_step = attack_steps[-1]
+                request_data = {
+                    'method': final_step.get('method') or vulnerability.method,
+                    'url': final_step.get('url') or vulnerability.url,
+                    'headers': final_step.get('request_headers') or request_data['headers'],
+                    'body': final_step.get('request_body'),
+                    'timestamp': vulnerability.detected_at.isoformat(),
+                }
+                response_data = {
+                    'status_code': final_step.get('response_code'),
+                    'headers': final_step.get('response_headers') or {},
+                    'response_time_ms': final_step.get('response_time_ms'),
+                    'timestamp': vulnerability.detected_at.isoformat(),
+                    'body': final_step.get('response_body') or final_step.get('response_snippet') or '',
+                }
+                exploitation_result['data_extracted'] = " -> ".join([
+                    step.get('action') or step.get('stage_name') or f"阶段 {idx + 1}"
+                    for idx, step in enumerate(attack_steps)
+                ])
+                exploitation_result['artifacts'] = [
+                    step.get('extracted', {})
+                    for step in attack_steps
+                    if step.get('extracted')
+                ]
+                if evidence.get('framework_validation'):
+                    exploitation_result['attack_status'] = (
+                        'validated' if evidence['framework_validation'].get('is_valid') else 'suppressed'
+                    )
+            else:
+                if vulnerability.method == 'POST' and vulnerability.parameter:
+                    request_data['body'] = f"{vulnerability.parameter}={vulnerability.payload}"
+                response_data['status_code'] = evidence.get('response_status')
+                response_data['response_time_ms'] = evidence.get('response_time_ms')
+                response_data['body'] = evidence.get('body_snippet', '')
+
+            if evidence.get('attack_artifacts'):
+                exploitation_result['artifacts'] = evidence.get('attack_artifacts', [])
+            if evidence.get('framework_validation'):
+                exploitation_result['attack_status'] = (
+                    'validated' if evidence['framework_validation'].get('is_valid') else 'suppressed'
+                )
 
             data = {
                 'vulnerability_id': vulnerability.vulnerability_id,
                 'request': request_data,
                 'response': response_data,
-                'exploitation_result': exploitation_result
+                'exploitation_result': exploitation_result,
+                'attack_chain': attack_steps,
             }
 
             return Response({

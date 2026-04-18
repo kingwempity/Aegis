@@ -537,6 +537,7 @@ class ScanReportExportView(APIView):
     def _export_html_report(self, scan_task, include_evidence, include_screenshots):
         """导出HTML报告"""
         from django.http import HttpResponse
+        import html
 
         vulnerabilities = Vulnerability.objects.filter(task=scan_task)
 
@@ -550,6 +551,18 @@ class ScanReportExportView(APIView):
             "pages_scanned": scan_task.pages_scanned,
             "modules_executed": len(scan_task.custom_modules) if scan_task.custom_modules else 5
         }
+
+        def _escape(value):
+            if value is None:
+                return ""
+            return html.escape(str(value))
+
+        def _format_headers(headers):
+            if not headers:
+                return ""
+            return "<br>".join(
+                f"{_escape(key)}: {_escape(value)}" for key, value in headers.items()
+            )
 
         # 生成HTML内容
         html_content = f"""
@@ -572,6 +585,18 @@ class ScanReportExportView(APIView):
                 table {{ width: 100%; border-collapse: collapse; margin-bottom: 20px; }}
                 th, td {{ border: 1px solid #dee2e6; padding: 8px; text-align: left; }}
                 th {{ background: #f8f9fa; }}
+                .timeline {{ margin-top: 16px; border-top: 1px dashed #d0d7de; padding-top: 16px; }}
+                .stage {{ background: #fafbfc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; margin-bottom: 12px; }}
+                .stage-header {{ display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }}
+                .stage-badge {{ display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: bold; }}
+                .stage-ok {{ background: #dcfce7; color: #166534; }}
+                .stage-fail {{ background: #fee2e2; color: #991b1b; }}
+                .stage-meta {{ color: #6b7280; font-size: 13px; margin-top: 6px; }}
+                .evidence-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-top: 12px; }}
+                .evidence-box {{ background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px; }}
+                .evidence-box h5 {{ margin: 0 0 8px 0; font-size: 13px; }}
+                .code-block {{ background: #111827; color: #f9fafb; padding: 10px; border-radius: 6px; font-family: Consolas, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; }}
+                .chip {{ display: inline-block; margin: 4px 6px 0 0; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; }}
             </style>
         </head>
         <body>
@@ -603,29 +628,76 @@ class ScanReportExportView(APIView):
             risk_class = vuln.risk_level.lower()
             html_content += f"""
             <div class="vulnerability {risk_class}">
-                <h3>{vuln.name} ({vuln.risk_level.upper()})</h3>
-                <p><strong>类型:</strong> {vuln.type}</p>
-                <p><strong>URL:</strong> {vuln.url}</p>
-                <p><strong>参数:</strong> {vuln.parameter or "N/A"}</p>
-                <p><strong>CVSS评分:</strong> {vuln.cvss_score}</p>
-                <p><strong>证据:</strong> {vuln.evidence}</p>
-                <p><strong>修复建议:</strong> {vuln.remediation}</p>
+                <h3>{_escape(vuln.name)} ({_escape(vuln.risk_level.upper())})</h3>
+                <p><strong>类型:</strong> {_escape(vuln.type)}</p>
+                <p><strong>URL:</strong> {_escape(vuln.url)}</p>
+                <p><strong>参数:</strong> {_escape(vuln.parameter or "N/A")}</p>
+                <p><strong>CVSS评分:</strong> {_escape(vuln.cvss_score)}</p>
+                <p><strong>证据:</strong> {_escape(vuln.evidence)}</p>
+                <p><strong>修复建议:</strong> {_escape(vuln.remediation)}</p>
         """
 
             attack_steps = getattr(vuln, "attack_steps", None)
             if include_evidence and attack_steps:
-                html_content += '<div><strong>攻击路径:</strong><ol>'
+                html_content += '<div class="timeline"><strong>攻击执行时间线:</strong>'
                 for step in attack_steps:
-                    action = step.get("action") or step.get("stage_name") or "执行攻击阶段"
+                    action = step.get("action") or step.get("stage_title") or step.get("stage_name") or "执行攻击阶段"
+                    stage_title = step.get("stage_title") or step.get("stage_name") or step.get("stage_id") or "阶段"
+                    stage_goal = step.get("stage_goal") or ""
                     method = step.get("method") or "GET"
                     url = step.get("url") or ""
                     code = step.get("response_code")
-                    html_content += (
-                        f"<li><code>{method}</code> {url}<br>"
-                        f"<span>{action}</span>"
-                        f"{f'（响应码: {code}）' if code is not None else ''}</li>"
-                    )
-                html_content += '</ol></div>'
+                    matched_conditions = step.get("matched_conditions") or []
+                    artifacts = step.get("artifacts") or []
+                    extracted = step.get("extracted") or {}
+                    request_headers = step.get("request_headers") or {}
+                    response_headers = step.get("response_headers") or {}
+                    request_body = step.get("request_body") or ""
+                    response_body = step.get("response_body") or ""
+                    response_time = step.get("response_time_ms")
+                    badge_class = "stage-ok" if step.get("success") else "stage-fail"
+                    badge_text = "成功" if step.get("success") else "未完成"
+                    html_content += f"""
+                    <div class="stage">
+                        <div class="stage-header">
+                            <strong>{_escape(stage_title)}</strong>
+                            <span class="stage-badge {badge_class}">{badge_text}</span>
+                            <span><code>{_escape(method)}</code></span>
+                        </div>
+                        <div>{_escape(action)}</div>
+                        {f'<div class="stage-meta">目标: {_escape(stage_goal)}</div>' if stage_goal else ''}
+                        <div class="stage-meta">URL: {_escape(url)}{f' | 响应码: {_escape(code)}' if code is not None else ''}{f' | 耗时: {_escape(response_time)}ms' if response_time is not None else ''}</div>
+                    """
+                    if matched_conditions:
+                        html_content += '<div class="stage-meta">命中特征: ' + " ".join(
+                            f'<span class="chip">{_escape(item)}</span>' for item in matched_conditions
+                        ) + '</div>'
+                    if artifacts:
+                        html_content += '<div class="stage-meta">阶段产物: ' + " ".join(
+                            f'<span class="chip">{_escape(item.get("name"))}</span>' for item in artifacts
+                        ) + '</div>'
+                    if extracted:
+                        html_content += '<div class="stage-meta">提取变量: ' + " ".join(
+                            f'<span class="chip">{_escape(key)}</span>' for key in extracted.keys()
+                        ) + '</div>'
+                    html_content += f"""
+                        <div class="evidence-grid">
+                            <div class="evidence-box">
+                                <h5>请求报文</h5>
+                                <div class="code-block">{_escape(method)} {_escape(url)}
+{_format_headers(request_headers)}
+{_escape(request_body) if request_body else ''}</div>
+                            </div>
+                            <div class="evidence-box">
+                                <h5>响应证据</h5>
+                                <div class="code-block">HTTP {_escape(code) if code is not None else ''}
+{_format_headers(response_headers)}
+{_escape(response_body) if response_body else ''}</div>
+                            </div>
+                        </div>
+                    </div>
+                    """
+                html_content += '</div>'
 
             # 如果需要包含截图信息
             if include_screenshots and getattr(vuln, "screenshots", None):

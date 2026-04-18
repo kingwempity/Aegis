@@ -125,6 +125,7 @@ class VulnerabilityEvidenceView(APIView):
                 'attack_status': None,
                 'artifacts': [],
             }
+            attack_chain = []
 
             if attack_steps:
                 final_step = attack_steps[-1]
@@ -151,6 +152,33 @@ class VulnerabilityEvidenceView(APIView):
                     for step in attack_steps
                     if step.get('extracted')
                 ]
+                attack_chain = [
+                    {
+                        'step': idx + 1,
+                        'stage_id': step.get('stage_id'),
+                        'stage_name': step.get('stage_name'),
+                        'stage_title': step.get('stage_title'),
+                        'stage_goal': step.get('stage_goal'),
+                        'action': step.get('action') or step.get('stage_title') or step.get('stage_name') or f'阶段 {idx + 1}',
+                        'success': step.get('success'),
+                        'matched_conditions': step.get('matched_conditions', []),
+                        'artifacts': step.get('artifacts', []),
+                        'extracted': step.get('extracted', {}),
+                        'request': {
+                            'method': step.get('method') or vulnerability.method,
+                            'url': step.get('url') or vulnerability.url,
+                            'headers': step.get('request_headers') or {},
+                            'body': step.get('request_body'),
+                        },
+                        'response': {
+                            'status_code': step.get('response_code'),
+                            'headers': step.get('response_headers') or {},
+                            'response_time_ms': step.get('response_time_ms'),
+                            'body': step.get('response_body') or step.get('response_snippet') or '',
+                        },
+                    }
+                    for idx, step in enumerate(attack_steps)
+                ]
                 if evidence.get('framework_validation'):
                     exploitation_result['attack_status'] = (
                         'validated' if evidence['framework_validation'].get('is_valid') else 'suppressed'
@@ -174,7 +202,7 @@ class VulnerabilityEvidenceView(APIView):
                 'request': request_data,
                 'response': response_data,
                 'exploitation_result': exploitation_result,
-                'attack_chain': attack_steps,
+                'attack_chain': attack_chain or attack_steps,
             }
 
             return Response({

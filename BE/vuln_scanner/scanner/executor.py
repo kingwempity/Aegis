@@ -92,24 +92,7 @@ class ScanTaskExecutor:
                     attack_execution = res.get("attack_execution") or {}
                     attack_path = res.get("attack_path") or {}
                     attack_steps = []
-                    if isinstance(attack_path, dict) and attack_path.get("steps"):
-                        for step in attack_path.get("steps", []):
-                            attack_steps.append({
-                                "step": step.get("step"),
-                                "stage_id": step.get("stage_id"),
-                                "stage_name": step.get("stage_name"),
-                                "stage_title": step.get("stage_title"),
-                                "stage_goal": step.get("stage_goal"),
-                                "action": step.get("description") or step.get("stage_title") or step.get("stage_name") or "执行攻击阶段",
-                                "method": step.get("method"),
-                                "url": step.get("url"),
-                                "response_code": step.get("response_status"),
-                                "response_time_ms": step.get("duration_ms"),
-                                "matched_conditions": step.get("matched_conditions", []),
-                                "artifacts": step.get("artifacts", []),
-                                "extracted": step.get("extracted", {}),
-                            })
-                    elif isinstance(attack_execution, dict):
+                    if isinstance(attack_execution, dict) and attack_execution.get("stage_records"):
                         for index, stage in enumerate(attack_execution.get("stage_records", []), start=1):
                             attack_steps.append({
                                 "step": index,
@@ -130,6 +113,24 @@ class ScanTaskExecutor:
                                 "response_headers": (stage.get("response") or {}).get("headers", {}),
                                 "response_body": (stage.get("response") or {}).get("body_snippet"),
                                 "success": stage.get("success"),
+                            })
+                    elif isinstance(attack_path, dict) and attack_path.get("steps"):
+                        for step in attack_path.get("steps", []):
+                            attack_steps.append({
+                                "step": step.get("step"),
+                                "stage_id": step.get("stage_id"),
+                                "stage_name": step.get("stage_name"),
+                                "stage_title": step.get("stage_title"),
+                                "stage_goal": step.get("stage_goal"),
+                                "action": step.get("description") or step.get("stage_title") or step.get("stage_name") or "执行攻击阶段",
+                                "method": step.get("method"),
+                                "url": step.get("url"),
+                                "response_code": step.get("response_status"),
+                                "response_time_ms": step.get("duration_ms"),
+                                "matched_conditions": step.get("matched_conditions", []),
+                                "artifacts": step.get("artifacts", []),
+                                "extracted": step.get("extracted", {}),
+                                "success": step.get("success"),
                             })
                     # 映射 ScannerEngine 的结果字段到数据库模型
                     Vulnerability.objects.create(

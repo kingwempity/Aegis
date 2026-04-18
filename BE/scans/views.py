@@ -612,6 +612,21 @@ class ScanReportExportView(APIView):
                 <p><strong>修复建议:</strong> {vuln.remediation}</p>
         """
 
+            attack_steps = getattr(vuln, "attack_steps", None)
+            if include_evidence and attack_steps:
+                html_content += '<div><strong>攻击路径:</strong><ol>'
+                for step in attack_steps:
+                    action = step.get("action") or step.get("stage_name") or "执行攻击阶段"
+                    method = step.get("method") or "GET"
+                    url = step.get("url") or ""
+                    code = step.get("response_code")
+                    html_content += (
+                        f"<li><code>{method}</code> {url}<br>"
+                        f"<span>{action}</span>"
+                        f"{f'（响应码: {code}）' if code is not None else ''}</li>"
+                    )
+                html_content += '</ol></div>'
+
             # 如果需要包含截图信息
             if include_screenshots and getattr(vuln, "screenshots", None):
                 html_content += "<p><strong>截图/证据链接:</strong></p><ul>"

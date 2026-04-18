@@ -89,6 +89,37 @@ class ScanTaskExecutor:
                 results = asyncio.run(plugin_engine.run())
                 for res in results:
                     from scans.models import Vulnerability
+                    attack_execution = res.get("attack_execution") or {}
+                    attack_path = res.get("attack_path") or {}
+                    attack_steps = []
+                    if isinstance(attack_path, dict) and attack_path.get("steps"):
+                        for step in attack_path.get("steps", []):
+                            attack_steps.append({
+                                "step": step.get("step"),
+                                "stage_id": step.get("stage_id"),
+                                "stage_name": step.get("stage_name"),
+                                "action": step.get("description") or step.get("stage_name") or "执行攻击阶段",
+                                "method": step.get("method"),
+                                "url": step.get("url"),
+                                "response_code": step.get("response_status"),
+                                "response_time_ms": step.get("duration_ms"),
+                                "matched_conditions": step.get("matched_conditions", []),
+                            })
+                    elif isinstance(attack_execution, dict):
+                        for index, stage in enumerate(attack_execution.get("stage_records", []), start=1):
+                            attack_steps.append({
+                                "step": index,
+                                "stage_id": stage.get("stage_id"),
+                                "stage_name": stage.get("stage_name"),
+                                "action": stage.get("reason") or stage.get("stage_name") or "执行攻击阶段",
+                                "method": (stage.get("request") or {}).get("method"),
+                                "url": (stage.get("request") or {}).get("url"),
+                                "response_code": (stage.get("response") or {}).get("status"),
+                                "response_time_ms": stage.get("duration_ms"),
+                                "matched_conditions": stage.get("matched_conditions", []),
+                                "extracted": stage.get("extracted", {}),
+                                "success": stage.get("success"),
+                            })
                     # 映射 ScannerEngine 的结果字段到数据库模型
                     Vulnerability.objects.create(
                         task=task,
@@ -101,8 +132,12 @@ class ScanTaskExecutor:
                         evidence=json.dumps(res.get("evidence", {})) if isinstance(res.get("evidence"), dict) else str(res.get("evidence", "")),
                         cvss_score=8.0 if res.get("severity") == "high" else 5.0,
                         risk_level=res.get("severity", "medium").lower(),
-                        description=f"Detected by plugin: {res.get('plugin_id')}",
+                        description=(
+                            f"Detected by plugin: {res.get('plugin_id')} "
+                            f"(attack_status={((res.get('validation_log') or {}).get('attack_status') or attack_execution.get('status') or 'unknown')})"
+                        ),
                         remediation="Please refer to CVE details for remediation steps.",
+                        attack_steps=attack_steps or None,
                     )
                 logger.info(f"高级插件扫描完成，发现 {len(results)} 个漏洞")
             except Exception as pe:

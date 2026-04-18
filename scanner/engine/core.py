@@ -61,6 +61,78 @@ class ScanResult:
     response: Dict[str, Any] = field(default_factory=dict)
     context: Dict[str, Any] = field(default_factory=dict)
     validation_log: Dict[str, Any] = field(default_factory=dict)
+    attack_path: Dict[str, Any] = field(default_factory=dict)
+    attack_execution: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class AttackArtifact:
+    name: str
+    value: Any
+    source_stage: str
+    artifact_type: str = "state"
+    confidence: float = 1.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "value": self.value,
+            "source_stage": self.source_stage,
+            "artifact_type": self.artifact_type,
+            "confidence": self.confidence,
+        }
+
+
+@dataclass
+class AttackStageRecord:
+    stage_id: str
+    stage_name: str
+    request: Dict[str, Any]
+    response: Dict[str, Any]
+    extracted: Dict[str, Any] = field(default_factory=dict)
+    matched_conditions: List[str] = field(default_factory=list)
+    success: bool = False
+    reason: str = ""
+    duration_ms: float = 0.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "stage_id": self.stage_id,
+            "stage_name": self.stage_name,
+            "request": self.request,
+            "response": self.response,
+            "extracted": self.extracted,
+            "matched_conditions": self.matched_conditions,
+            "success": self.success,
+            "reason": self.reason,
+            "duration_ms": self.duration_ms,
+        }
+
+
+@dataclass
+class AttackExecution:
+    scenario_id: str
+    target: str
+    status: str = "pending"
+    started_at: float = field(default_factory=time.time)
+    finished_at: float = 0.0
+    shared_state: Dict[str, Any] = field(default_factory=dict)
+    stage_records: List[AttackStageRecord] = field(default_factory=list)
+    artifacts: List[AttackArtifact] = field(default_factory=list)
+    final_reason: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "scenario_id": self.scenario_id,
+            "target": self.target,
+            "status": self.status,
+            "started_at": self.started_at,
+            "finished_at": self.finished_at,
+            "shared_state": self.shared_state,
+            "stage_records": [record.to_dict() for record in self.stage_records],
+            "artifacts": [artifact.to_dict() for artifact in self.artifacts],
+            "final_reason": self.final_reason,
+        }
 
 
 @dataclass
@@ -221,6 +293,7 @@ class ScannerEngine:
         self._framework_versions: Dict[FrameworkType, Optional[str]] = {}
         
         self._judgment_log: List[Dict[str, Any]] = []
+        self._attack_executions: Dict[str, AttackExecution] = {}
     
     async def run(self) -> List[Dict[str, Any]]:
         """
@@ -442,6 +515,8 @@ class ScannerEngine:
             if not can_execute:
                 logger.info(f"⏭️ 跳过插件 {plugin_id}: {execute_reason}")
                 continue
+
+            self._get_attack_execution(plugin)
             
             if sequential:
                 await _gather_pending()
@@ -463,11 +538,17 @@ class ScannerEngine:
                             result="suppress",
                         )
                         logger.info(f"🛑 插件 {plugin_id} 阶段阻断: {block_reason}")
+                        self._finalize_attack_execution(plugin, "blocked", block_reason)
                         break
                     success = await self._scan_with_plugin(client, plugin, req)
                     if not success:
                         logger.info(f"🛑 插件 {plugin.get('id')} 步骤未命中 matchers，中断后续请求")
+                        self._finalize_attack_execution(plugin, "partial", self._get_plugin_state(plugin_id).get("LastSequentialFailure") or "阶段未完成")
                         break
+                else:
+                    current_execution = self._attack_executions.get(plugin_id)
+                    if current_execution and current_execution.status == "running":
+                        self._finalize_attack_execution(plugin, "validated", "攻击链验证完成")
             else:
                 for req in requests_list:
                     if not self._check_preconditions(req): continue
@@ -529,6 +610,7 @@ class ScannerEngine:
                     
                     self._stats.total_requests += 1
                     try:
+                        before_state = self._snapshot_plugin_state(plugin_id)
                         request_started_at = time.perf_counter()
                         resp = await self._request_in_scope(client, method, url, current_headers, current_body)
                         request_elapsed_ms = (time.perf_counter() - request_started_at) * 1000.0
@@ -539,10 +621,35 @@ class ScannerEngine:
                         self._stats.successful_requests += 1
                         
                         self._extract_dynamic_variables(resp, plugin)
+                        extracted = self._capture_state_changes(plugin_id, before_state, stage_name)
+                        request_snapshot = {
+                            "method": method,
+                            "url": url,
+                            "headers": current_headers,
+                            "body": current_body,
+                        }
+                        response_snapshot = {
+                            "status": resp.status_code,
+                            "headers": dict(resp.headers),
+                            "body_snippet": resp.text[:1000],
+                            "content_length": len(resp.content),
+                            "response_time_ms": round(request_elapsed_ms, 2),
+                        }
                         matcher_hit = self._check_matchers(resp, matchers, matchers_condition)
                         if not matcher_hit and is_sequential:
                             miss_reason = self._explain_sequential_miss(plugin, req_def, resp, url)
                             if miss_reason:
+                                self._append_stage_record(
+                                    plugin=plugin,
+                                    stage_name=stage_name,
+                                    request=request_snapshot,
+                                    response=response_snapshot,
+                                    matched_conditions=[],
+                                    success=False,
+                                    reason=miss_reason,
+                                    duration_ms=round(request_elapsed_ms, 2),
+                                    extracted=extracted,
+                                )
                                 self._record_sequential_step_result(
                                     plugin_id=plugin_id,
                                     stage_name=stage_name,
@@ -563,6 +670,17 @@ class ScannerEngine:
                                     resp=resp,
                                     url=url,
                                     matched_keywords=matched_keywords,
+                                )
+                                self._append_stage_record(
+                                    plugin=plugin,
+                                    stage_name=stage_name,
+                                    request=request_snapshot,
+                                    response=response_snapshot,
+                                    matched_conditions=matched_keywords[:10],
+                                    success=step_valid,
+                                    reason=step_reason,
+                                    duration_ms=round(request_elapsed_ms, 2),
+                                    extracted=extracted,
                                 )
                                 self._record_sequential_step_result(
                                     plugin_id=plugin_id,
@@ -669,6 +787,22 @@ class ScannerEngine:
                                 self._judgment_log.append(judgment_record)
                                 
                                 if final_report:
+                                    if not is_sequential:
+                                        self._append_stage_record(
+                                            plugin=plugin,
+                                            stage_name=stage_name,
+                                            request=request_snapshot,
+                                            response=response_snapshot,
+                                            matched_conditions=matched_keywords[:10],
+                                            success=True,
+                                            reason=final_reason,
+                                            duration_ms=round(request_elapsed_ms, 2),
+                                            extracted=extracted,
+                                        )
+                                    attack_execution = self._get_attack_execution(plugin)
+                                    attack_status = "validated" if is_sequential else "exploitable"
+                                    self._finalize_attack_execution(plugin, attack_status, final_reason)
+                                    attack_path = self._build_attack_path_from_execution(attack_execution)
                                     result = ScanResult(
                                         vuln_name=plugin.get("info", {}).get("name", "Unknown Vulnerability"),
                                         severity=plugin.get("info", {}).get("severity", "Medium"),
@@ -690,6 +824,8 @@ class ScannerEngine:
                                             "confidence_adjustments": [
                                                 a for a in adjustment_details if a.get("triggered")
                                             ],
+                                            "attack_stage_count": len(self._get_attack_execution(plugin).stage_records),
+                                            "attack_artifacts": [artifact.to_dict() for artifact in self._get_attack_execution(plugin).artifacts],
                                         },
                                         plugin_id=plugin_id,
                                         request={"method": method, "url": url, "headers": current_headers, "body": current_body},
@@ -705,7 +841,12 @@ class ScannerEngine:
                                                 fw.value: v for fw, v in self._framework_versions.items()
                                             },
                                             "judgment_reason": final_reason,
+                                            "attack_status": attack_status,
+                                            "attack_stage_count": len(attack_execution.stage_records),
+                                            "artifacts": [artifact.to_dict() for artifact in attack_execution.artifacts],
                                         },
+                                        attack_path=attack_path,
+                                        attack_execution=attack_execution.to_dict(),
                                     )
                                     self._vulnerabilities.append(result)
                                     self._stats.vulnerabilities_found += 1
@@ -717,8 +858,31 @@ class ScannerEngine:
                                     )
                                     if is_sequential:
                                         return True
+                                elif not is_sequential:
+                                    self._append_stage_record(
+                                        plugin=plugin,
+                                        stage_name=stage_name,
+                                        request=request_snapshot,
+                                        response=response_snapshot,
+                                        matched_conditions=matched_keywords[:10],
+                                        success=False,
+                                        reason=final_reason,
+                                        duration_ms=round(request_elapsed_ms, 2),
+                                        extracted=extracted,
+                                    )
                     except Exception as e:
                         self._stats.failed_requests += 1
+                        self._append_stage_record(
+                            plugin=plugin,
+                            stage_name=stage_name,
+                            request={"method": method, "url": url, "headers": current_headers, "body": current_body},
+                            response={"status": 0, "headers": {}, "body_snippet": "", "content_length": 0},
+                            matched_conditions=[],
+                            success=False,
+                            reason=str(e),
+                            duration_ms=0.0,
+                            extracted={},
+                        )
                         self._log_judgment(
                             phase="scan_request", plugin_id=plugin_id,
                             action="request_failed", details={"url": url, "error": str(e)}, result="failed",
@@ -726,6 +890,7 @@ class ScannerEngine:
 
             if is_sequential and not any_success:
                 failure_reason = self._get_plugin_state(plugin_id).get("LastSequentialFailure") or "未满足阶段成功条件"
+                self._finalize_attack_execution(plugin, "partial", failure_reason)
                 self._log_judgment(
                     phase="sequential_step",
                     plugin_id=plugin_id,
@@ -737,6 +902,12 @@ class ScannerEngine:
                     },
                     result="failed",
                 )
+            elif not is_sequential:
+                execution = self._attack_executions.get(plugin_id)
+                if execution and execution.status == "running":
+                    final_status = "exploitable" if any_success else "observed"
+                    final_reason = "已记录命中请求" if any_success else "未形成可验证攻击结果"
+                    self._finalize_attack_execution(plugin, final_status, final_reason)
             
             return any_success
 
@@ -758,6 +929,113 @@ class ScannerEngine:
                 "LastSequentialFailure": "",
             }
         return self._plugin_vars_cache[plugin_id]
+
+    def _get_attack_execution(self, plugin: Dict[str, Any]) -> AttackExecution:
+        plugin_id = plugin.get("id", "unknown")
+        execution = self._attack_executions.get(plugin_id)
+        if execution is None:
+            execution = AttackExecution(
+                scenario_id=plugin_id,
+                target=self.target,
+                status="running",
+                shared_state=self._snapshot_plugin_state(plugin_id),
+            )
+            self._attack_executions[plugin_id] = execution
+        return execution
+
+    def _build_attack_path_from_execution(self, execution: AttackExecution) -> Dict[str, Any]:
+        steps = []
+        for index, stage in enumerate(execution.stage_records, start=1):
+            if not stage.success:
+                continue
+            steps.append(
+                {
+                    "step": index,
+                    "stage_id": stage.stage_id,
+                    "stage_name": stage.stage_name,
+                    "method": stage.request.get("method", "GET"),
+                    "url": stage.request.get("url", ""),
+                    "description": stage.reason,
+                    "matched_conditions": stage.matched_conditions,
+                    "success": stage.success,
+                    "duration_ms": stage.duration_ms,
+                }
+            )
+
+        request_snapshot = {}
+        if execution.stage_records:
+            final_stage = execution.stage_records[-1]
+            request_snapshot = final_stage.request
+
+        return {
+            "scenario_id": execution.scenario_id,
+            "status": execution.status,
+            "steps": steps,
+            "request": request_snapshot,
+            "artifacts": [artifact.to_dict() for artifact in execution.artifacts],
+            "final_reason": execution.final_reason,
+        }
+
+    def _capture_state_changes(
+        self,
+        plugin_id: str,
+        before_state: Dict[str, Any],
+        stage_name: str,
+    ) -> Dict[str, Any]:
+        after_state = self._snapshot_plugin_state(plugin_id)
+        extracted: Dict[str, Any] = {}
+        for key, value in after_state.items():
+            if before_state.get(key) != value and value not in ("", None, False):
+                extracted[key] = value
+        execution = self._attack_executions.get(plugin_id)
+        if execution:
+            for key, value in extracted.items():
+                already_exists = any(
+                    artifact.name == key and artifact.value == value
+                    for artifact in execution.artifacts
+                )
+                if not already_exists:
+                    execution.artifacts.append(
+                        AttackArtifact(name=key, value=value, source_stage=stage_name)
+                    )
+            execution.shared_state = after_state
+        return extracted
+
+    def _append_stage_record(
+        self,
+        plugin: Dict[str, Any],
+        stage_name: str,
+        request: Dict[str, Any],
+        response: Dict[str, Any],
+        matched_conditions: List[str],
+        success: bool,
+        reason: str,
+        duration_ms: float,
+        extracted: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        execution = self._get_attack_execution(plugin)
+        execution.stage_records.append(
+            AttackStageRecord(
+                stage_id=stage_name,
+                stage_name=stage_name,
+                request=request,
+                response=response,
+                extracted=extracted or {},
+                matched_conditions=matched_conditions,
+                success=success,
+                reason=reason,
+                duration_ms=duration_ms,
+            )
+        )
+        execution.shared_state = self._snapshot_plugin_state(plugin.get("id", "unknown"))
+
+    def _finalize_attack_execution(self, plugin: Dict[str, Any], status: str, reason: str) -> None:
+        execution = self._get_attack_execution(plugin)
+        execution.status = status
+        execution.final_reason = reason
+        if not execution.finished_at:
+            execution.finished_at = time.time()
+        execution.shared_state = self._snapshot_plugin_state(plugin.get("id", "unknown"))
 
     def _snapshot_plugin_state(self, plugin_id: str) -> Dict[str, Any]:
         state = dict(self._get_plugin_state(plugin_id))
@@ -1543,6 +1821,8 @@ class ScannerEngine:
             "scan_time": result.scan_time,
             "validation_log": result.validation_log,
             "plugin_id": result.plugin_id,
+            "attack_path": result.attack_path,
+            "attack_execution": result.attack_execution,
         }
     
     def _extract_matched_keywords(self, resp: httpx.Response, matchers: List[Dict[str, Any]]) -> List[str]:

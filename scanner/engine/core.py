@@ -446,8 +446,24 @@ class ScannerEngine:
             if sequential:
                 await _gather_pending()
                 # 顺序模式下，如果某一步失败（未命中 matchers），则停止该插件后续请求
-                for req in requests_list:
-                    if not self._check_preconditions(req): continue
+                for index, req in enumerate(requests_list):
+                    if not self._check_preconditions(req):
+                        continue
+                    can_execute, block_reason = self._can_execute_sequential_step(plugin, req, index)
+                    if not can_execute:
+                        self._log_judgment(
+                            phase="sequential_step",
+                            plugin_id=plugin_id,
+                            action="stage_blocked",
+                            details={
+                                "stage": req.get("stage", f"step_{index + 1}"),
+                                "reason": block_reason,
+                                "state": self._snapshot_plugin_state(plugin_id),
+                            },
+                            result="suppress",
+                        )
+                        logger.info(f"🛑 插件 {plugin_id} 阶段阻断: {block_reason}")
+                        break
                     success = await self._scan_with_plugin(client, plugin, req)
                     if not success:
                         logger.info(f"🛑 插件 {plugin.get('id')} 步骤未命中 matchers，中断后续请求")
@@ -472,6 +488,8 @@ class ScannerEngine:
             should_report = req_def.get("report", True)
             
             plugin_id = plugin.get("id", "unknown")
+            is_sequential = bool(plugin.get("sequential_requests"))
+            stage_name = req_def.get("stage", f"{method.lower()}_{plugin_id}")
             
             rule_min_confidence = self._rule_engine.get_min_confidence(plugin_id)
             rule_required_evidence = self._rule_engine.get_required_evidence_count(plugin_id)
@@ -521,13 +539,48 @@ class ScannerEngine:
                         self._stats.successful_requests += 1
                         
                         self._extract_dynamic_variables(resp, plugin)
-                        
-                        if self._check_matchers(resp, matchers, matchers_condition):
+                        matcher_hit = self._check_matchers(resp, matchers, matchers_condition)
+                        if not matcher_hit and is_sequential:
+                            miss_reason = self._explain_sequential_miss(plugin, req_def, resp, url)
+                            if miss_reason:
+                                self._record_sequential_step_result(
+                                    plugin_id=plugin_id,
+                                    stage_name=stage_name,
+                                    url=url,
+                                    response=resp,
+                                    matched_keywords=[],
+                                    valid=False,
+                                    reason=miss_reason,
+                                )
+                            continue
+
+                        if matcher_hit:
+                            matched_keywords = self._extract_matched_keywords(resp, matchers)
+                            if is_sequential:
+                                step_valid, step_reason = self._validate_sequential_step(
+                                    plugin=plugin,
+                                    req_def=req_def,
+                                    resp=resp,
+                                    url=url,
+                                    matched_keywords=matched_keywords,
+                                )
+                                self._record_sequential_step_result(
+                                    plugin_id=plugin_id,
+                                    stage_name=stage_name,
+                                    url=url,
+                                    response=resp,
+                                    matched_keywords=matched_keywords,
+                                    valid=step_valid,
+                                    reason=step_reason,
+                                )
+                                if not step_valid:
+                                    continue
+
                             any_success = True
+                            if is_sequential and not should_report:
+                                return True
                             
                             if should_report:
-                                matched_keywords = self._extract_matched_keywords(resp, matchers)
-                                
                                 is_valid, validation_reason = self._rule_engine.validate_vulnerability(
                                     plugin_id=plugin_id,
                                     detected_frameworks=self._detected_frameworks,
@@ -610,6 +663,7 @@ class ScannerEngine:
                                 
                                 judgment_record["final_decision"] = "report" if final_report else "suppress"
                                 judgment_record["final_reason"] = final_reason
+                                judgment_record["suppressed_reason"] = final_reason if not final_report else ""
                                 self._judgment_log.append(judgment_record)
                                 
                                 if final_report:
@@ -659,14 +713,227 @@ class ScannerEngine:
                                         f"{level} 确认漏洞 [{adjusted_confidence:.1%}]: "
                                         f"{result.vuln_name} @ {url} (证据={evidence_count})"
                                     )
+                                    if is_sequential:
+                                        return True
                     except Exception as e:
                         self._stats.failed_requests += 1
                         self._log_judgment(
                             phase="scan_request", plugin_id=plugin_id,
                             action="request_failed", details={"url": url, "error": str(e)}, result="failed",
                         )
+
+            if is_sequential and not any_success:
+                failure_reason = self._get_plugin_state(plugin_id).get("LastSequentialFailure") or "未满足阶段成功条件"
+                self._log_judgment(
+                    phase="sequential_step",
+                    plugin_id=plugin_id,
+                    action="stage_failed",
+                    details={
+                        "stage": stage_name,
+                        "reason": failure_reason,
+                        "state": self._snapshot_plugin_state(plugin_id),
+                    },
+                    result="failed",
+                )
             
             return any_success
+
+    def _get_plugin_state(self, plugin_id: str) -> Dict[str, Any]:
+        if not hasattr(self, "_plugin_vars_cache"):
+            self._plugin_vars_cache = {}
+        if plugin_id not in self._plugin_vars_cache:
+            self._plugin_vars_cache[plugin_id] = {
+                "filename": "test.gif",
+                "ExtractedPath": "",
+                "FormBuildId": "",
+                "FormToken": "",
+                "UploadedFilename": "",
+                "ResourceCreated": False,
+                "ExceptionTriggered": False,
+                "FileAccessible": False,
+                "HasUploadEvidence": False,
+                "LastSuccessfulStage": "",
+                "LastSequentialFailure": "",
+            }
+        return self._plugin_vars_cache[plugin_id]
+
+    def _snapshot_plugin_state(self, plugin_id: str) -> Dict[str, Any]:
+        state = dict(self._get_plugin_state(plugin_id))
+        return {
+            "FormBuildId": state.get("FormBuildId", ""),
+            "FormToken": state.get("FormToken", ""),
+            "ExtractedPath": state.get("ExtractedPath", ""),
+            "UploadedFilename": state.get("UploadedFilename", ""),
+            "ResourceCreated": bool(state.get("ResourceCreated")),
+            "ExceptionTriggered": bool(state.get("ExceptionTriggered")),
+            "FileAccessible": bool(state.get("FileAccessible")),
+            "HasUploadEvidence": bool(state.get("HasUploadEvidence")),
+            "LastSuccessfulStage": state.get("LastSuccessfulStage", ""),
+            "LastSequentialFailure": state.get("LastSequentialFailure", ""),
+        }
+
+    def _can_execute_sequential_step(self, plugin: Dict[str, Any], req_def: Dict[str, Any], index: int) -> Tuple[bool, str]:
+        plugin_id = plugin.get("id", "unknown")
+        stage_name = req_def.get("stage", f"step_{index + 1}")
+        state = self._get_plugin_state(plugin_id)
+
+        missing = [key for key in req_def.get("requires_state", []) if not state.get(key)]
+        if missing:
+            return False, f"阶段 {stage_name} 缺少前置状态: {', '.join(missing)}"
+
+        if plugin_id == "drupal-cve-2019-6341" and stage_name == "drupal_file_fetch":
+            if not (state.get("ExtractedPath") or state.get("UploadedFilename")):
+                return False, "上传步骤未解析出可访问文件路径"
+
+        return True, "ok"
+
+    def _explain_sequential_miss(
+        self,
+        plugin: Dict[str, Any],
+        req_def: Dict[str, Any],
+        resp: httpx.Response,
+        url: str,
+    ) -> str:
+        plugin_id = plugin.get("id", "unknown")
+        stage_name = req_def.get("stage", "")
+        body = (resp.text or "").lower()
+
+        if plugin_id == "drupal-cve-2019-6341":
+            if stage_name == "drupal_upload" and resp.status_code >= 500:
+                return "上传接口返回异常，但未解析出可访问文件路径"
+            if stage_name == "drupal_file_fetch":
+                return "文件访问未命中唯一标记或不可访问"
+
+        if plugin_id == "django-cve-2017-12794":
+            if stage_name == "django_create_user" and resp.status_code >= 400:
+                return "首次请求未能确认用户创建成功"
+            if stage_name == "django_trigger_debug" and resp.status_code == 500:
+                if "<script>aegis_cve_12794</script>" not in body:
+                    return "二次请求未同时满足异常页、唯一约束错误和 payload 反射"
+                return "二次请求未命中调试异常页关键特征"
+
+        return ""
+
+    def _record_sequential_step_result(
+        self,
+        plugin_id: str,
+        stage_name: str,
+        url: str,
+        response: httpx.Response,
+        matched_keywords: List[str],
+        valid: bool,
+        reason: str,
+    ) -> None:
+        state = self._get_plugin_state(plugin_id)
+        if valid:
+            state["LastSuccessfulStage"] = stage_name
+            state["LastSequentialFailure"] = ""
+        else:
+            state["LastSequentialFailure"] = reason
+
+        self._log_judgment(
+            phase="sequential_step",
+            plugin_id=plugin_id,
+            action="stage_validation",
+            details={
+                "stage": stage_name,
+                "url": url,
+                "response_status": response.status_code,
+                "matched_keywords": matched_keywords[:10],
+                "state": self._snapshot_plugin_state(plugin_id),
+                "reason": reason,
+            },
+            result="success" if valid else "suppress",
+        )
+
+    def _validate_sequential_step(
+        self,
+        plugin: Dict[str, Any],
+        req_def: Dict[str, Any],
+        resp: httpx.Response,
+        url: str,
+        matched_keywords: List[str],
+    ) -> Tuple[bool, str]:
+        plugin_id = plugin.get("id", "unknown")
+        stage_name = req_def.get("stage", "")
+        state = self._get_plugin_state(plugin_id)
+        body = resp.text or ""
+        body_lower = body.lower()
+        request_url = str(resp.request.url) if getattr(resp, "request", None) else url
+
+        if plugin_id == "drupal-cve-2019-6341":
+            if stage_name == "drupal_register_probe":
+                missing = [key for key in ("FormBuildId", "FormToken") if not state.get(key)]
+                if missing:
+                    return False, f"入口存在但上下文不足，缺少: {', '.join(missing)}"
+                return True, "已提取注册表单上下文"
+
+            if stage_name == "drupal_upload":
+                upload_markers = [
+                    "public://",
+                    "sites/default/files/",
+                    '"fid"',
+                    '"uuid"',
+                    '"uri"',
+                ]
+                marker_hits = sum(1 for marker in upload_markers if marker in body)
+                has_accessible_path = bool(state.get("ExtractedPath") or state.get("UploadedFilename"))
+                if resp.status_code >= 500 and not has_accessible_path:
+                    return False, "上传接口返回异常，但未解析出可访问文件路径"
+                if marker_hits >= 2 and has_accessible_path:
+                    state["HasUploadEvidence"] = True
+                    state["ResourceCreated"] = True
+                    return True, "上传成功，已解析出可访问文件路径"
+                return False, "上传响应缺少可复现证据，无法确认文件已落地"
+
+            if stage_name == "drupal_file_fetch":
+                if resp.status_code == 200 and "Aegis-CVE-2019-6341" in body:
+                    state["FileAccessible"] = True
+                    return True, "已访问上传文件并命中唯一标记"
+                return False, "文件访问未命中唯一标记或不可访问"
+
+        if plugin_id == "django-cve-2017-12794":
+            if stage_name == "django_create_user":
+                error_markers = [
+                    "integrityerror",
+                    "unique constraint failed",
+                    "duplicate key",
+                    "traceback (most recent call last)",
+                    "exception type",
+                ]
+                has_error = any(marker in body_lower for marker in error_markers)
+                location = resp.headers.get("location", "")
+                success_markers = ["user created", "created", "success", "ok"]
+                success_hint = any(marker in body_lower for marker in success_markers) or bool(location)
+                if resp.status_code in (200, 302) and not has_error:
+                    state["ResourceCreated"] = True
+                    if success_hint:
+                        return True, "首次请求已成功创建用户"
+                    return True, "首次请求未触发错误，允许继续验证"
+                return False, "首次请求未能确认用户创建成功"
+
+            if stage_name == "django_trigger_debug":
+                debug_markers = [
+                    "traceback (most recent call last)",
+                    "exception type",
+                    "exception value",
+                    "report at",
+                    "django",
+                ]
+                exception_markers = [
+                    "integrityerror",
+                    "unique constraint failed",
+                    "duplicate key",
+                ]
+                payload_reflected = "<script>aegis_cve_12794</script>" in body_lower
+                has_debug_page = any(marker in body_lower for marker in debug_markers)
+                has_exception = any(marker in body_lower for marker in exception_markers)
+                if resp.status_code == 500 and has_debug_page and has_exception and payload_reflected:
+                    state["ExceptionTriggered"] = True
+                    return True, "二次请求触发调试异常页并反射 payload"
+                return False, "二次请求未同时满足异常页、唯一约束错误和 payload 反射"
+
+        return True, "顺序步骤验证通过"
 
     def _resolve_variables(self, template: str, payload: str = "", plugin: Optional[Dict[str, Any]] = None) -> str:
         """
@@ -682,24 +949,15 @@ class ScannerEngine:
         
         # 在 ScannerEngine 实例级别缓存当前插件的变量
         plugin_id = plugin.get("id") if plugin else "default"
-        if not hasattr(self, "_plugin_vars_cache"):
-            self._plugin_vars_cache = {}
-            
-        if plugin_id not in self._plugin_vars_cache:
-            filename = "test.gif"
-            if plugin:
-                fn_variants = plugin.get("filename_variants", [])
-                if fn_variants:
-                    filename = random.choice(fn_variants)
-            self._plugin_vars_cache[plugin_id] = {
-                "filename": filename,
-                "ExtractedPath": "",
-                "FormBuildId": "",
-                "FormToken": "",
-                "UploadedFilename": "",
-            }
-        
-        cached_vars = self._plugin_vars_cache[plugin_id]
+        cached_vars = self._get_plugin_state(plugin_id)
+        if plugin and (
+            not cached_vars.get("filename")
+            or cached_vars.get("filename") == "test.gif"
+        ):
+            fn_variants = plugin.get("filename_variants", [])
+            cached_vars["filename"] = random.choice(fn_variants) if fn_variants else "test.gif"
+        elif not cached_vars.get("filename"):
+            cached_vars["filename"] = "test.gif"
         
         vars = {
             "BaseURL": self.target,
@@ -742,13 +1000,7 @@ class ScannerEngine:
         if not plugin: return
         plugin_id = plugin.get("id")
         if not plugin_id: return
-        
-        if not hasattr(self, "_plugin_vars_cache"):
-            self._plugin_vars_cache = {}
-        
-        if plugin_id not in self._plugin_vars_cache:
-            self._plugin_vars_cache[plugin_id] = {}
-            
+        plugin_state = self._get_plugin_state(plugin_id)
         content = resp.text
         normalized_content = (
             content
@@ -773,6 +1025,8 @@ class ScannerEngine:
             resp.status_code < 400
             and any(marker in normalized_content for marker in upload_evidence_markers)
         )
+        if has_upload_evidence:
+            plugin_state["HasUploadEvidence"] = True
         
         # 1. 尝试提取 Drupal form_build_id (用于表单提交)
         # 支持 HTML 和 AJAX JSON 响应
@@ -783,7 +1037,7 @@ class ScannerEngine:
                 
             if form_build_match:
                 form_build_id = form_build_match.group(1)
-                self._plugin_vars_cache[plugin_id]["FormBuildId"] = form_build_id
+                plugin_state["FormBuildId"] = form_build_id
                 logger.info(f"📋 提取到 form_build_id: {form_build_id}")
         
         # 2. 尝试提取 Drupal form_token
@@ -794,24 +1048,24 @@ class ScannerEngine:
                 
             if form_token_match:
                 form_token = form_token_match.group(1)
-                self._plugin_vars_cache[plugin_id]["FormToken"] = form_token
+                plugin_state["FormToken"] = form_token
                 logger.info(f"🔐 提取到 form_token: {form_token}")
         
         # 3. 尝试提取 Drupal 典型的 sites/default/files/... 路径
         extracted_path = self._extract_upload_path(normalized_content) if has_upload_evidence else ""
         if extracted_path:
-            self._plugin_vars_cache[plugin_id]["ExtractedPath"] = extracted_path
+            plugin_state["ExtractedPath"] = extracted_path
             logger.info(f"✨ 从响应中提取到动态路径: {extracted_path}")
         
         # 4. 尝试提取上传后的文件名 (Drupal AJAX 响应)
         filename_match = re.search(r'"filename"\s*:\s*"([^"]+)"', normalized_content) if has_upload_evidence else None
         if filename_match:
             uploaded_filename = filename_match.group(1)
-            self._plugin_vars_cache[plugin_id]["UploadedFilename"] = uploaded_filename
+            plugin_state["UploadedFilename"] = uploaded_filename
             logger.info(f"📎 提取到上传文件名: {uploaded_filename}")
         elif extracted_path:
             uploaded_filename = extracted_path.rsplit("/", 1)[-1]
-            self._plugin_vars_cache[plugin_id]["UploadedFilename"] = uploaded_filename
+            plugin_state["UploadedFilename"] = uploaded_filename
         
         # 5. 尝试提取 CSRF Token (如果响应包含)
         csrf_match = re.search(r'"csrf_token"\s*:\s*"([^"]+)"', normalized_content)
@@ -841,7 +1095,7 @@ class ScannerEngine:
                     if gm.startswith("/"):
                         gm = gm.lstrip("/")
                     if gm and len(gm) > 5 and not gm.endswith("/"):
-                        self._plugin_vars_cache[plugin_id]["ExtractedPath"] = gm
+                        plugin_state["ExtractedPath"] = gm
                         logger.info(f"✨ 通用路径提取: {gm}")
                         break
                 if extracted_path:
@@ -1373,6 +1627,13 @@ class ScannerEngine:
                                 "unique constraint failed",
                             ]
                             if any(kw.lower() == check_w for kw in django_high_specificity):
+                                evidence += 1
+                            drupal_high_specificity = [
+                                "aegis-cve-2019-6341",
+                                "sites/default/files",
+                                "public://",
+                            ]
+                            if any(kw.lower() == check_w for kw in drupal_high_specificity):
                                 evidence += 1
                 elif mtype == "regex":
                     evidence += 1

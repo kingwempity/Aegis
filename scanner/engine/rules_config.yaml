@@ -165,8 +165,8 @@ detection_rules:
     plugin_id: "drupal-cve-2019-6341"
     expected_frameworks: ["drupal"]
     validation_level: "strict"
-    min_confidence: 0.35
-    required_evidence_count: 2
+    min_confidence: 0.45
+    required_evidence_count: 3
     exclusion_rules: ["response_has_thinkphp_exclusive_sig", "response_has_django_exclusive_sig"]
     allow_when_framework_unknown: true
     required_path_patterns:
@@ -192,15 +192,13 @@ detection_rules:
   django-cve-2017-12794:
     plugin_id: "django-cve-2017-12794"
     expected_frameworks: ["django"]
-    validation_level: "moderate"
-    min_confidence: 0.25
-    required_evidence_count: 1
+    validation_level: "strict"
+    min_confidence: 0.45
+    required_evidence_count: 3
     exclusion_rules: ["response_has_thinkphp_exclusive_sig", "response_has_drupal_exclusive_sig"]
     allow_when_framework_unknown: true
     required_path_patterns:
       - "/create_user/"
-      - "IntegrityError"
-      - "UNIQUE constraint failed"
     confidence_adjustments:
       - factor_name: "framework_match"
         condition: "target_is_django"

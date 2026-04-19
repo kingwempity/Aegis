@@ -53,6 +53,63 @@ from scanner.engine.rules import (
 from scanner.engine.recon import ReconEngine, TargetContext
 from scanner.engine.weaponizer import Weaponizer, WeaponizedPayload
 
+# Phase 2: 模拟攻击核心模块（可选导入）
+# 使用安全导入模式：导入失败时所有类设为None，并设置可用性标志
+# 后续使用时必须通过 PHASE2_AVAILABLE 和 is not None 双重检查
+try:
+    from scanner.engine.simulator import AttackSimulator, SimulationResult
+    from scanner.engine.exploitation import ExploitationEngine
+    from scanner.engine.intelligence import IntelligenceModule
+    PHASE2_AVAILABLE = True
+except ImportError as e:
+    logger.debug(f"⚠️ Phase 2 模块导入失败: {e}")
+    AttackSimulator = None
+    SimulationResult = None
+    ExploitationEngine = None
+    IntelligenceModule = None
+    PHASE2_AVAILABLE = False
+except Exception as e:
+    logger.warning(f"⚠️ Phase 2 模块加载异常: {e}")
+    AttackSimulator = None
+    SimulationResult = None
+    ExploitationEngine = None
+    IntelligenceModule = None
+    PHASE2_AVAILABLE = False
+
+# Phase 3: 智能学习模块（可选导入）
+# 同样使用安全导入模式，确保失败时优雅降级
+try:
+    from scanner.engine.learning import (
+        LearningEngine,
+        PatternLearner,
+        FeedbackSystem,
+        AdaptiveStrategyEngine,
+        AttackRecord,
+        OutcomeType,
+        StrategyProfile,
+    )
+    PHASE3_AVAILABLE = True
+except ImportError as e:
+    logger.debug(f"⚠️ Phase 3 模块导入失败: {e}")
+    LearningEngine = None
+    PatternLearner = None
+    FeedbackSystem = None
+    AdaptiveStrategyEngine = None
+    AttackRecord = None
+    OutcomeType = None
+    StrategyProfile = None
+    PHASE3_AVAILABLE = False
+except Exception as e:
+    logger.warning(f"⚠️ Phase 3 模块加载异常: {e}")
+    LearningEngine = None
+    PatternLearner = None
+    FeedbackSystem = None
+    AdaptiveStrategyEngine = None
+    AttackRecord = None
+    OutcomeType = None
+    StrategyProfile = None
+    PHASE3_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -343,6 +400,84 @@ class ScannerEngine:
             logger.info("✅ Phase 1 模拟攻击增强功能已启用")
         else:
             logger.info("ℹ️ 运行于兼容模式（使用原有扫描逻辑）")
+        
+        # Phase 2: 初始化高级模拟攻击模块（可选）
+        self._attack_simulator = None
+        self._exploitation_engine = None
+        self._intelligence_module = None
+        self._phase2_enabled = PHASE2_AVAILABLE
+        
+        if PHASE2_AVAILABLE:
+            try:
+                self._attack_simulator = AttackSimulator(
+                    target=self.target,
+                    strategy=strategy,
+                    max_concurrent=self.max_concurrent,
+                    timeout=self.timeout,
+                )
+                self._phase2_enabled = True
+                logger.info("🎯 攻击模拟器已初始化")
+            except Exception as e:
+                logger.warning(f"⚠️ 攻击模拟器初始化失败: {e}")
+                self._attack_simulator = None
+            
+            try:
+                self._exploitation_engine = ExploitationEngine(strategy=strategy)
+                logger.info("💥 利用引擎已初始化")
+            except Exception as e:
+                logger.warning(f"⚠️ 利用引擎初始化失败: {e}")
+            
+            try:
+                self._intelligence_module = IntelligenceModule()
+                logger.info("🧠 情报模块已初始化")
+            except Exception as e:
+                logger.warning(f"⚠️ 情报模块初始化失败: {e}")
+        
+        if self._phase2_enabled and self._attack_simulator:
+            logger.info("🚀 Phase 2 高级模拟攻击功能已启用")
+        else:
+            logger.debug("ℹ️ Phase 2 功能不可用，使用Phase 1能力")
+        
+        # Phase 3: 初始化智能学习模块（可选）
+        self._learning_engine = None
+        self._adaptive_strategy = None
+        self._phase3_enabled = PHASE3_AVAILABLE
+        
+        if PHASE3_AVAILABLE:
+            try:
+                self._learning_engine = LearningEngine(enable_persistence=True)
+                logger.info("📚 学习引擎已初始化（支持模式学习和策略优化）")
+                
+                # 安全连接学习引擎到攻击模拟器（双重空值保护）
+                # 检查1: 确保攻击模拟器存在且不为None
+                # 检查2: 确保学习引擎初始化成功
+                if (PHASE2_AVAILABLE and 
+                    hasattr(self, '_attack_simulator') and 
+                    self._attack_simulator is not None and 
+                    self._learning_engine is not None):
+                    
+                    # 尝试设置属性（可能攻击模拟器不支持该属性）
+                    try:
+                        self._attack_simulator.learning_engine = self._learning_engine
+                        logger.info("🔗 学习引擎已成功连接到攻击模拟器")
+                    except AttributeError:
+                        logger.debug("ℹ️ 攻击模拟器不支持learning_engine属性（正常降级）")
+                
+                elif self._attack_simulator is None:
+                    logger.debug("⏭️ 攻击模拟器未初始化，跳过连接")
+                else:
+                    logger.debug("⏭️ Phase 2 不可用或学习引擎未初始化")
+                
+                self._phase3_enabled = True
+                
+            except Exception as e:
+                logger.warning(f"⚠️ 学习引擎初始化失败: {e}")
+                self._learning_engine = None
+        
+        if self._phase3_enabled and self._learning_engine:
+            logger.info("🧠 Phase 3 智能学习功能已启用 - Aegis现在具备自我进化能力！")
+        else:
+            logger.debug("ℹ️ Phase 3 功能不可用，使用Phase 1-2能力")
     
     async def run(self) -> List[Dict[str, Any]]:
         """

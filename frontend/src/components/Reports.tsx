@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { api, getApiResourceUrl, type Report, type ReportPreview } from '../api';
+import { api, getApiResourceUrl, type Report, type ReportPreview, type ReportPreviewVulnerability } from '../api';
 import { getScanStrategyMeta } from '../utils/scanStrategy';
-import { Trash2, Download, ChevronDown, X } from './Icons';
+import { Trash2, Download, ChevronDown, X, ChevronRight, CheckCircle, XCircle, Clock, Zap, Target, Code, FileText, AlertTriangle } from './Icons';
 import ValidationWorkflow from './ValidationWorkflow';
+import AttackChainTimeline from './AttackChainTimeline';
 
 type ExportFormat = 'html' | 'pdf' | 'markdown' | 'excel' | 'json';
 
@@ -198,29 +199,46 @@ interface ReportPreviewModalProps {
   onShowAll: () => void;
 }
 
-const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
-  preview,
-  visibleVulnCount,
-  onClose,
-  onLoadMore,
-  onShowAll,
-}) => {
-  const strategy = getScanStrategyMeta(preview.scan_strategy);
-  const hasMore = visibleVulnCount < preview.vulnerabilities.length;
+interface VulnerabilityDetailPanelProps {
+  vuln: ReportPreviewVulnerability;
+  onClose: () => void;
+}
+
+const getSeverityColor = (severity?: string): string => {
+  if (!severity) return 'bg-gray-100 text-gray-600';
+  const s = severity.toLowerCase();
+  switch (s) {
+    case 'critical': return 'bg-red-100 text-red-700 border-red-200';
+    case 'high': return 'bg-orange-100 text-orange-700 border-orange-200';
+    case 'medium': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+    case 'low': return 'bg-green-100 text-green-700 border-green-200';
+    default: return 'bg-gray-100 text-gray-600 border-gray-200';
+  }
+};
+
+const VulnerabilityDetailPanel: React.FC<VulnerabilityDetailPanelProps> = ({ vuln, onClose }) => {
+  const [activeTab, setActiveTab] = useState<'overview' | 'timeline'>('timeline');
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4 py-8" onClick={onClose}>
       <div
-        className="flex flex-col max-h-[85vh] w-full max-w-4xl rounded-3xl bg-white shadow-2xl"
-        onClick={(event) => event.stopPropagation()}
+        className="flex flex-col max-h-[90vh] w-full max-w-5xl rounded-3xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between border-b border-gray-100 px-8 py-6 shrink-0">
-          <div>
-            <h3 className="text-2xl font-bold text-[#2d3343]">模拟攻击报告预览</h3>
-            <p className="mt-1 text-sm text-gray-400">{preview.target_url}</p>
+        <div className="flex items-start justify-between border-b border-gray-100 px-6 py-5 shrink-0 bg-gradient-to-r from-gray-50 to-white">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3">
+              <span className={`px-3 py-1 rounded-lg text-xs font-bold uppercase ${getSeverityColor(vuln.severity)}`}>
+                {vuln.severity || 'INFO'}
+              </span>
+              <AttackStatusBadge status={vuln.attack_status} />
+            </div>
+            <h3 className="mt-2 text-xl font-bold text-[#2d3343] truncate">{vuln.title}</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              {vuln.type || '通用 Web 漏洞'}
+              {vuln.parameter && <span className="ml-2">· 参数 {vuln.parameter}</span>}
+              {vuln.cvss_score && <span className="ml-2">· CVSS {vuln.cvss_score}</span>}
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -230,230 +248,445 @@ const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6" style={{ maxHeight: 'calc(85vh - 100px)' }}>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-            <div className="rounded-2xl bg-orange-50 p-4">
-              <div className="text-xs text-gray-400">验证模式</div>
-              <div className="mt-2 text-sm font-bold text-[#c25b00]">{strategy.label}</div>
-              <div className="mt-1 text-xs leading-5 text-[#9a5a20]">{strategy.intensity}</div>
-            </div>
-            <div className="rounded-2xl bg-gray-50 p-4">
-              <div className="text-xs text-gray-400">已验证攻击</div>
-              <div className="mt-2 text-lg font-bold text-[#2d3343]">
-                {preview.attack_simulation_summary?.validated_findings ?? 0}
-              </div>
-            </div>
-            <div className="rounded-2xl bg-gray-50 p-4">
-              <div className="text-xs text-gray-400">攻击载荷</div>
-              <div className="mt-2 text-lg font-bold text-[#2d3343]">
-                {preview.attack_simulation_summary?.payload_count ?? 0}
-              </div>
-            </div>
-            <div className="rounded-2xl bg-gray-50 p-4">
-              <div className="text-xs text-gray-400">攻击路径</div>
-              <div className="mt-2 text-lg font-bold text-[#2d3343]">
-                {preview.attack_simulation_summary?.attack_path_count ?? 0}
-              </div>
-            </div>
-          </div>
+        <div className="flex border-b border-gray-100 bg-white shrink-0">
+          <button
+            onClick={() => setActiveTab('timeline')}
+            className={`px-6 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'timeline'
+                ? 'text-[#ff6b00] border-b-2 border-[#ff6b00] bg-orange-50'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+              </svg>
+              攻击链时间线
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`px-6 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'overview'
+                ? 'text-[#ff6b00] border-b-2 border-[#ff6b00] bg-orange-50'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <FileText size={16} />
+              概览信息
+            </span>
+          </button>
+        </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <div className="rounded-2xl border border-gray-100 bg-white p-4">
-              <div className="text-xs text-gray-400">覆盖范围</div>
-              <div className="mt-2 text-sm font-bold text-[#2d3343]">{strategy.scope}</div>
-            </div>
-            <div className="rounded-2xl border border-gray-100 bg-white p-4">
-              <div className="text-xs text-gray-400">执行节奏</div>
-              <div className="mt-2 text-sm font-bold text-[#2d3343]">{strategy.speed}</div>
-            </div>
-            <div className="rounded-2xl border border-gray-100 bg-white p-4">
-              <div className="text-xs text-gray-400">适用场景</div>
-              <div className="mt-2 text-sm font-bold text-[#2d3343]">{strategy.useCase}</div>
-            </div>
-          </div>
+        <div className="flex-1 overflow-y-auto p-6" style={{ maxHeight: 'calc(90vh - 180px)' }}>
+          {activeTab === 'timeline' && (
+            <AttackChainTimeline
+              steps={vuln.attack_steps || []}
+              title="攻击阶段时间线"
+              summary={vuln.attack_chain_summary ? {
+                total_stages: vuln.attack_chain_summary.total_stages || vuln.attack_steps?.length || 0,
+                successful_stages: vuln.attack_chain_summary.successful_stages || 0,
+                failed_stages: vuln.attack_chain_summary.failed_stages || 0,
+                total_duration_ms: vuln.attack_chain_summary.total_duration_ms,
+                attack_vector: vuln.attack_chain_summary.attack_vector,
+                entry_point: vuln.attack_chain_summary.entry_point,
+              } : undefined}
+            />
+          )}
 
-          <div className="rounded-2xl border border-[#ffe1c7] bg-[#fff9f4] p-5">
-            <h4 className="text-sm font-bold text-[#2d3343]">模式解读</h4>
-            <p className="mt-3 text-sm leading-6 text-gray-600">{strategy.summary}</p>
-            <p className="mt-3 text-sm leading-6 text-[#9a5a20]">{strategy.disclaimer}</p>
-          </div>
-
-          <div className="rounded-2xl border border-gray-100 p-5">
-            <h4 className="text-sm font-bold text-[#2d3343]">风险摘要</h4>
-            <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
-              <div className="rounded-xl bg-red-50 px-3 py-3 text-center">
-                <div className="text-xs text-gray-400">严重</div>
-                <div className="mt-1 font-bold text-red-600">{preview.summary.critical}</div>
-              </div>
-              <div className="rounded-xl bg-orange-50 px-3 py-3 text-center">
-                <div className="text-xs text-gray-400">高危</div>
-                <div className="mt-1 font-bold text-orange-600">{preview.summary.high}</div>
-              </div>
-              <div className="rounded-xl bg-yellow-50 px-3 py-3 text-center">
-                <div className="text-xs text-gray-400">中危</div>
-                <div className="mt-1 font-bold text-yellow-600">{preview.summary.medium}</div>
-              </div>
-              <div className="rounded-xl bg-blue-50 px-3 py-3 text-center">
-                <div className="text-xs text-gray-400">低危</div>
-                <div className="mt-1 font-bold text-blue-600">{preview.summary.low}</div>
-              </div>
-              <div className="rounded-xl bg-gray-50 px-3 py-3 text-center">
-                <div className="text-xs text-gray-400">总计</div>
-                <div className="mt-1 font-bold text-[#2d3343]">{preview.summary.total}</div>
-              </div>
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-              <div className="rounded-xl bg-emerald-50 px-3 py-3 text-center">
-                <div className="text-xs text-gray-400">已验证攻击链</div>
-                <div className="mt-1 font-bold text-emerald-700">
-                  {preview.attack_simulation_summary?.validated_attack_paths ?? 0}
+          {activeTab === 'overview' && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="rounded-xl bg-gray-50 p-4">
+                  <div className="text-xs text-gray-400">漏洞类型</div>
+                  <div className="mt-1 text-sm font-semibold text-[#2d3343]">{vuln.type || 'N/A'}</div>
+                </div>
+                <div className="rounded-xl bg-gray-50 p-4">
+                  <div className="text-xs text-gray-400">风险等级</div>
+                  <div className="mt-1">
+                    <span className={`px-2 py-0.5 rounded text-xs font-bold ${getSeverityColor(vuln.severity)}`}>
+                      {vuln.severity?.toUpperCase() || 'N/A'}
+                    </span>
+                  </div>
+                </div>
+                <div className="rounded-xl bg-gray-50 p-4">
+                  <div className="text-xs text-gray-400">CVSS 评分</div>
+                  <div className="mt-1 text-sm font-semibold text-[#2d3343]">{vuln.cvss_score || 'N/A'}</div>
+                </div>
+                <div className="rounded-xl bg-gray-50 p-4">
+                  <div className="text-xs text-gray-400">攻击状态</div>
+                  <div className="mt-1"><AttackStatusBadge status={vuln.attack_status} /></div>
                 </div>
               </div>
-              <div className="rounded-xl bg-slate-50 px-3 py-3 text-center">
-                <div className="text-xs text-gray-400">关键产物</div>
-                <div className="mt-1 font-bold text-[#2d3343]">
-                  {preview.attack_simulation_summary?.artifact_count ?? 0}
+
+              {vuln.url && (
+                <div className="rounded-xl border border-gray-100 p-4">
+                  <div className="text-xs font-semibold text-gray-500 uppercase mb-2">触发 URL</div>
+                  <code className="text-sm text-gray-700 break-all">{vuln.url}</code>
+                </div>
+              )}
+
+              {vuln.description && (
+                <div className="rounded-xl border border-gray-100 p-4">
+                  <div className="text-xs font-semibold text-gray-500 uppercase mb-2">漏洞描述</div>
+                  <p className="text-sm text-gray-700 leading-relaxed">{vuln.description}</p>
+                </div>
+              )}
+
+              {vuln.attack_final_reason && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <div className="text-xs font-semibold text-emerald-600 uppercase mb-2">验证结论</div>
+                  <p className="text-sm text-emerald-700">{vuln.attack_final_reason}</p>
+                </div>
+              )}
+
+              {vuln.remediation && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                  <div className="text-xs font-semibold text-blue-600 uppercase mb-2">修复建议</div>
+                  <p className="text-sm text-blue-700">{vuln.remediation}</p>
+                </div>
+              )}
+
+              {vuln.attack_artifacts && vuln.attack_artifacts.length > 0 && (
+                <div className="rounded-xl border border-gray-100 p-4">
+                  <div className="text-xs font-semibold text-gray-500 uppercase mb-3">关键产物</div>
+                  <div className="flex flex-wrap gap-2">
+                    {vuln.attack_artifacts.map((artifact, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-700"
+                        title={String(artifact.value)}
+                      >
+                        <Zap size={12} />
+                        {artifact.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
+  preview,
+  visibleVulnCount,
+  onClose,
+  onLoadMore,
+  onShowAll,
+}) => {
+  const [selectedVuln, setSelectedVuln] = useState<ReportPreviewVulnerability | null>(null);
+  const [expandedVulns, setExpandedVulns] = useState<Set<number>>(new Set());
+
+  const strategy = getScanStrategyMeta(preview.scan_strategy);
+  const hasMore = visibleVulnCount < preview.vulnerabilities.length;
+
+  const toggleVulnExpand = (vulnId: number) => {
+    setExpandedVulns(prev => {
+      const next = new Set(prev);
+      if (next.has(vulnId)) {
+        next.delete(vulnId);
+      } else {
+        next.add(vulnId);
+      }
+      return next;
+    });
+  };
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8"
+        onClick={onClose}
+      >
+        <div
+          className="flex flex-col max-h-[85vh] w-full max-w-5xl rounded-3xl bg-white shadow-2xl"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="flex items-start justify-between border-b border-gray-100 px-8 py-6 shrink-0">
+            <div>
+              <h3 className="text-2xl font-bold text-[#2d3343]">模拟攻击报告预览</h3>
+              <p className="mt-1 text-sm text-gray-400">{preview.target_url}</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600"
+            >
+              <X size={22} />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6" style={{ maxHeight: 'calc(85vh - 100px)' }}>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+              <div className="rounded-2xl bg-orange-50 p-4">
+                <div className="text-xs text-gray-400">验证模式</div>
+                <div className="mt-2 text-sm font-bold text-[#c25b00]">{strategy.label}</div>
+                <div className="mt-1 text-xs leading-5 text-[#9a5a20]">{strategy.intensity}</div>
+              </div>
+              <div className="rounded-2xl bg-gray-50 p-4">
+                <div className="text-xs text-gray-400">已验证攻击</div>
+                <div className="mt-2 text-lg font-bold text-[#2d3343]">
+                  {preview.attack_simulation_summary?.validated_findings ?? 0}
                 </div>
               </div>
-              <div className="rounded-xl bg-orange-50 px-3 py-3 text-center">
+              <div className="rounded-2xl bg-gray-50 p-4">
                 <div className="text-xs text-gray-400">攻击载荷</div>
-                <div className="mt-1 font-bold text-[#c25b00]">
+                <div className="mt-2 text-lg font-bold text-[#2d3343]">
                   {preview.attack_simulation_summary?.payload_count ?? 0}
                 </div>
               </div>
-              <div className="rounded-xl bg-blue-50 px-3 py-3 text-center">
+              <div className="rounded-2xl bg-gray-50 p-4">
                 <div className="text-xs text-gray-400">攻击路径</div>
-                <div className="mt-1 font-bold text-blue-600">
+                <div className="mt-2 text-lg font-bold text-[#2d3343]">
                   {preview.attack_simulation_summary?.attack_path_count ?? 0}
                 </div>
               </div>
             </div>
-          </div>
 
-          <div className="rounded-2xl border border-gray-100 p-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <h4 className="text-sm font-bold text-[#2d3343]">典型漏洞与可利用性证明</h4>
-                <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-500">
-                  共 {preview.vulnerabilities.length} 项
-                  {hasMore && ` (已显示 ${visibleVulnCount})`}
-                </span>
-              </div>
-              <button
-                onClick={() => window.open(getApiResourceUrl(`/reports/${preview.task_id}/html`), '_blank')}
-                className="text-sm font-semibold text-[#ff6b00] transition-colors hover:text-[#e66000]"
-              >
-                打开完整 HTML 报告
-              </button>
-            </div>
-            <div className="mt-4 space-y-3">
-              {preview.vulnerabilities.length === 0 ? (
-                <div className="rounded-xl bg-gray-50 px-4 py-6 text-center text-sm text-gray-400">
-                  当前报告未发现可展示的漏洞验证记录。
+            <div className="rounded-2xl border border-gray-100 p-5">
+              <h4 className="text-sm font-bold text-[#2d3343]">风险摘要</h4>
+              <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
+                <div className="rounded-xl bg-red-50 px-3 py-3 text-center">
+                  <div className="text-xs text-gray-400">严重</div>
+                  <div className="mt-1 font-bold text-red-600">{preview.summary.critical}</div>
                 </div>
-              ) : (
-                <>
-                  {preview.vulnerabilities.slice(0, visibleVulnCount).map((vuln) => (
-                    <div key={vuln.id} className="rounded-2xl bg-gray-50 p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <div className="font-bold text-[#2d3343]">{vuln.title}</div>
-                          <div className="mt-1 text-sm text-gray-500">
-                            {vuln.type || '通用 Web 漏洞'}
-                            {vuln.parameter ? ` · 参数 ${vuln.parameter}` : ''}
-                            {vuln.cvss_score ? ` · CVSS ${vuln.cvss_score}` : ''}
-                          </div>
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <AttackStatusBadge status={vuln.attack_status} />
-                            {typeof vuln.attack_stage_count === 'number' && vuln.attack_stage_count > 0 && (
-                              <span className="text-xs font-semibold text-gray-500">{vuln.attack_stage_count} 个阶段</span>
-                            )}
-                            {typeof vuln.attack_artifact_count === 'number' && vuln.attack_artifact_count > 0 && (
-                              <span className="text-xs font-semibold text-gray-500">{vuln.attack_artifact_count} 个关键产物</span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <VulnerabilityBadge present={vuln.payload_present} label="攻击载荷" colorClass="bg-orange-100 text-[#c25b00]" />
-                          <VulnerabilityBadge present={vuln.attack_path_present} label="攻击路径" colorClass="bg-blue-100 text-blue-600" />
-                          <VulnerabilityBadge present={vuln.evidence_present} label="证据链" colorClass="bg-green-100 text-green-600" />
-                        </div>
-                      </div>
-                      <p className="mt-3 text-sm text-gray-500">{vuln.description || '暂无详细验证摘要。'}</p>
-                      {vuln.attack_final_reason && (
-                        <p className="mt-2 text-xs text-gray-500">结论: {vuln.attack_final_reason}</p>
-                      )}
-                      {vuln.attack_steps && vuln.attack_steps.length > 0 && (
-                        <div className="mt-4 rounded-xl border border-gray-100 bg-white p-3">
-                          <div className="text-xs font-bold uppercase tracking-wide text-gray-400">攻击阶段</div>
-                          <div className="mt-3 space-y-2">
-                            {vuln.attack_steps.slice(0, 3).map((step, index) => (
-                              <div key={`${vuln.id}-${step.stage_id || index}`} className="rounded-lg bg-gray-50 px-3 py-2">
-                                <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#2d3343]">
-                                  <span>{step.step ?? index + 1}.</span>
-                                  <span>{step.stage_title || step.stage_name || step.stage_id || '阶段'}</span>
-                                  {step.method && <span className="rounded bg-[#2d3343] px-2 py-0.5 text-xs text-white">{step.method}</span>}
+                <div className="rounded-xl bg-orange-50 px-3 py-3 text-center">
+                  <div className="text-xs text-gray-400">高危</div>
+                  <div className="mt-1 font-bold text-orange-600">{preview.summary.high}</div>
+                </div>
+                <div className="rounded-xl bg-yellow-50 px-3 py-3 text-center">
+                  <div className="text-xs text-gray-400">中危</div>
+                  <div className="mt-1 font-bold text-yellow-600">{preview.summary.medium}</div>
+                </div>
+                <div className="rounded-xl bg-blue-50 px-3 py-3 text-center">
+                  <div className="text-xs text-gray-400">低危</div>
+                  <div className="mt-1 font-bold text-blue-600">{preview.summary.low}</div>
+                </div>
+                <div className="rounded-xl bg-gray-50 px-3 py-3 text-center">
+                  <div className="text-xs text-gray-400">总计</div>
+                  <div className="mt-1 font-bold text-[#2d3343]">{preview.summary.total}</div>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div className="rounded-xl bg-emerald-50 px-3 py-3 text-center">
+                  <div className="text-xs text-gray-400">已验证攻击链</div>
+                  <div className="mt-1 font-bold text-emerald-700">
+                    {preview.attack_simulation_summary?.validated_attack_paths ?? 0}
+                  </div>
+                </div>
+                <div className="rounded-xl bg-slate-50 px-3 py-3 text-center">
+                  <div className="text-xs text-gray-400">关键产物</div>
+                  <div className="mt-1 font-bold text-[#2d3343]">
+                    {preview.attack_simulation_summary?.artifact_count ?? 0}
+                  </div>
+                </div>
+                <div className="rounded-xl bg-orange-50 px-3 py-3 text-center">
+                  <div className="text-xs text-gray-400">攻击载荷</div>
+                  <div className="mt-1 font-bold text-[#c25b00]">
+                    {preview.attack_simulation_summary?.payload_count ?? 0}
+                  </div>
+                </div>
+                <div className="rounded-xl bg-blue-50 px-3 py-3 text-center">
+                  <div className="text-xs text-gray-400">攻击路径</div>
+                  <div className="mt-1 font-bold text-blue-600">
+                    {preview.attack_simulation_summary?.attack_path_count ?? 0}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-gray-100 p-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <h4 className="text-sm font-bold text-[#2d3343]">漏洞与攻击链证据</h4>
+                  <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-500">
+                    共 {preview.vulnerabilities.length} 项
+                    {hasMore && ` (已显示 ${visibleVulnCount})`}
+                  </span>
+                </div>
+                <button
+                  onClick={() => window.open(getApiResourceUrl(`/reports/${preview.task_id}/html`), '_blank')}
+                  className="text-sm font-semibold text-[#ff6b00] transition-colors hover:text-[#e66000]"
+                >
+                  打开完整 HTML 报告
+                </button>
+              </div>
+              <div className="mt-4 space-y-3">
+                {preview.vulnerabilities.length === 0 ? (
+                  <div className="rounded-xl bg-gray-50 px-4 py-6 text-center text-sm text-gray-400">
+                    当前报告未发现可展示的漏洞验证记录。
+                  </div>
+                ) : (
+                  <>
+                    {preview.vulnerabilities.slice(0, visibleVulnCount).map((vuln) => {
+                      const isExpanded = expandedVulns.has(vuln.id);
+                      const hasAttackSteps = vuln.attack_steps && vuln.attack_steps.length > 0;
+
+                      return (
+                        <div key={vuln.id} className="rounded-2xl bg-gray-50 overflow-hidden">
+                          <button
+                            onClick={() => toggleVulnExpand(vuln.id)}
+                            className="w-full px-4 py-4 flex items-center justify-between text-left hover:bg-gray-100 transition-colors"
+                          >
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <span className={`px-2 py-0.5 rounded text-xs font-bold shrink-0 ${getSeverityColor(vuln.severity)}`}>
+                                {vuln.severity?.toUpperCase() || 'INFO'}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="font-bold text-[#2d3343] truncate">{vuln.title}</div>
+                                <div className="mt-1 text-sm text-gray-500 truncate">
+                                  {vuln.type || '通用 Web 漏洞'}
+                                  {vuln.parameter ? ` · 参数 ${vuln.parameter}` : ''}
                                 </div>
-                                {step.stage_goal && <div className="mt-1 text-xs text-slate-600">目标: {step.stage_goal}</div>}
-                                {step.url && <div className="mt-1 break-all text-xs text-gray-500">{step.url}</div>}
-                                {step.description && <div className="mt-1 text-xs text-gray-500">{step.description}</div>}
-                                {step.artifacts && step.artifacts.length > 0 && (
-                                  <div className="mt-2 flex flex-wrap gap-2">
-                                    {step.artifacts.slice(0, 3).map((artifact, artifactIndex) => (
-                                      <span
-                                        key={`${vuln.id}-${step.stage_id || index}-artifact-${artifactIndex}`}
-                                        className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700"
-                                        title={String(artifact.value)}
-                                      >
-                                        {artifact.name}
-                                      </span>
-                                    ))}
-                                  </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3 shrink-0 ml-3">
+                              <div className="flex items-center gap-2">
+                                <AttackStatusBadge status={vuln.attack_status} />
+                                {hasAttackSteps && (
+                                  <span className="text-xs font-semibold text-gray-500 bg-white px-2 py-0.5 rounded">
+                                    {vuln.attack_steps?.length} 阶段
+                                  </span>
                                 )}
                               </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {vuln.attack_artifacts && vuln.attack_artifacts.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {vuln.attack_artifacts.slice(0, 4).map((artifact, index) => (
-                            <span
-                              key={`${vuln.id}-artifact-${index}`}
-                              className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600"
-                              title={String(artifact.value)}
-                            >
-                              {artifact.name}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                              {isExpanded ? (
+                                <ChevronDown size={18} className="text-gray-400" />
+                              ) : (
+                                <ChevronRight size={18} className="text-gray-400" />
+                              )}
+                            </div>
+                          </button>
 
-                  {hasMore && (
-                    <div className="flex items-center justify-center gap-3 pt-4 border-t border-gray-100">
-                      <button
-                        onClick={onLoadMore}
-                        className="px-6 py-2.5 bg-[#ff6b00] text-white rounded-xl text-sm font-bold hover:bg-[#e66000] transition-all shadow-sm hover:shadow-md"
-                      >
-                        加载更多 ({Math.min(VULN_BATCH_SIZE, preview.vulnerabilities.length - visibleVulnCount)} 项)
-                      </button>
-                      <button
-                        onClick={onShowAll}
-                        className="px-6 py-2.5 bg-gray-100 text-[#2d3343] rounded-xl text-sm font-semibold hover:bg-gray-200 transition-all"
-                      >
-                        显示全部 ({preview.vulnerabilities.length - visibleVulnCount} 项剩余)
-                      </button>
-                    </div>
-                  )}
-                </>
-              )}
+                          {isExpanded && (
+                            <div className="px-4 pb-4 border-t border-gray-200">
+                              <div className="mt-4 flex flex-wrap gap-2">
+                                <VulnerabilityBadge present={vuln.payload_present} label="攻击载荷" colorClass="bg-orange-100 text-[#c25b00]" />
+                                <VulnerabilityBadge present={vuln.attack_path_present} label="攻击路径" colorClass="bg-blue-100 text-blue-600" />
+                                <VulnerabilityBadge present={vuln.evidence_present} label="证据链" colorClass="bg-green-100 text-green-600" />
+                              </div>
+
+                              {vuln.description && (
+                                <p className="mt-3 text-sm text-gray-600">{vuln.description}</p>
+                              )}
+
+                              {vuln.attack_final_reason && (
+                                <div className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                                  <span className="text-xs font-semibold text-emerald-600">验证结论: </span>
+                                  <span className="text-sm text-emerald-700">{vuln.attack_final_reason}</span>
+                                </div>
+                              )}
+
+                              {hasAttackSteps && (
+                                <div className="mt-4">
+                                  <div className="flex items-center justify-between mb-3">
+                                    <div className="text-xs font-bold uppercase tracking-wide text-gray-400">攻击阶段预览</div>
+                                    <button
+                                      onClick={() => setSelectedVuln(vuln)}
+                                      className="text-xs font-semibold text-[#ff6b00] hover:text-[#e66000] transition-colors"
+                                    >
+                                      查看完整时间线 →
+                                    </button>
+                                  </div>
+                                  <div className="space-y-2">
+                                    {vuln.attack_steps!.slice(0, 3).map((step, index) => (
+                                      <div key={step.stage_id || index} className="rounded-lg bg-white px-3 py-2 border border-gray-100">
+                                        <div className="flex items-center gap-2 text-sm">
+                                          <span className="font-bold text-gray-400">#{step.step || index + 1}</span>
+                                          <span className="font-semibold text-[#2d3343]">{step.stage_title || step.stage_name || '阶段'}</span>
+                                          {step.method && (
+                                            <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${
+                                              step.method.toUpperCase() === 'GET' ? 'bg-emerald-100 text-emerald-700' :
+                                              step.method.toUpperCase() === 'POST' ? 'bg-blue-100 text-blue-700' :
+                                              'bg-gray-100 text-gray-600'
+                                            }`}>
+                                              {step.method}
+                                            </span>
+                                          )}
+                                          {step.success !== undefined && (
+                                            step.success ? <CheckCircle size={14} className="text-emerald-500" /> : <XCircle size={14} className="text-red-500" />
+                                          )}
+                                        </div>
+                                        {step.url && (
+                                          <div className="mt-1 text-xs text-gray-500 truncate">{step.url}</div>
+                                        )}
+                                      </div>
+                                    ))}
+                                    {vuln.attack_steps!.length > 3 && (
+                                      <button
+                                        onClick={() => setSelectedVuln(vuln)}
+                                        className="w-full text-center text-xs text-gray-500 hover:text-[#ff6b00] py-2"
+                                      >
+                                        还有 {vuln.attack_steps!.length - 3} 个阶段...
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {vuln.attack_artifacts && vuln.attack_artifacts.length > 0 && (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {vuln.attack_artifacts.slice(0, 4).map((artifact, index) => (
+                                    <span
+                                      key={index}
+                                      className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600"
+                                      title={String(artifact.value)}
+                                    >
+                                      {artifact.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+
+                              <div className="mt-4 flex justify-end">
+                                <button
+                                  onClick={() => setSelectedVuln(vuln)}
+                                  className="px-4 py-2 bg-[#ff6b00] text-white rounded-lg text-sm font-bold hover:bg-[#e66000] transition-all"
+                                >
+                                  查看完整攻击链
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {hasMore && (
+                      <div className="flex items-center justify-center gap-3 pt-4 border-t border-gray-100">
+                        <button
+                          onClick={onLoadMore}
+                          className="px-6 py-2.5 bg-[#ff6b00] text-white rounded-xl text-sm font-bold hover:bg-[#e66000] transition-all shadow-sm hover:shadow-md"
+                        >
+                          加载更多 ({Math.min(VULN_BATCH_SIZE, preview.vulnerabilities.length - visibleVulnCount)} 项)
+                        </button>
+                        <button
+                          onClick={onShowAll}
+                          className="px-6 py-2.5 bg-gray-100 text-[#2d3343] rounded-xl text-sm font-semibold hover:bg-gray-200 transition-all"
+                        >
+                          显示全部 ({preview.vulnerabilities.length - visibleVulnCount} 项剩余)
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+
+      {selectedVuln && (
+        <VulnerabilityDetailPanel
+          vuln={selectedVuln}
+          onClose={() => setSelectedVuln(null)}
+        />
+      )}
+    </>
   );
 };
 

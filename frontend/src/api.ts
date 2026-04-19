@@ -128,34 +128,16 @@ export interface ReportPreviewVulnerability {
   attack_stage_count?: number;
   attack_artifact_count?: number;
   attack_final_reason?: string;
-  attack_steps?: Array<{
-    step?: number;
-    stage_id?: string;
-    stage_name?: string;
-    stage_title?: string;
-    stage_goal?: string;
-    method?: string;
-    url?: string;
-    description?: string;
-    matched_conditions?: string[];
-    artifacts?: Array<{
-      name: string;
-      value: string;
-      source_stage?: string;
-      artifact_type?: string;
-      confidence?: number;
-    }>;
-    extracted?: Record<string, unknown>;
-    success?: boolean;
-    duration_ms?: number;
-  }>;
-  attack_artifacts?: Array<{
-    name: string;
-    value: string;
-    source_stage?: string;
-    artifact_type?: string;
-    confidence?: number;
-  }>;
+  attack_steps?: AttackStep[];
+  attack_artifacts?: AttackArtifact[];
+  attack_chain_summary?: {
+    total_stages: number;
+    successful_stages: number;
+    failed_stages: number;
+    total_duration_ms?: number;
+    attack_vector?: string;
+    entry_point?: string;
+  };
 }
 
 export interface ReportPreview {
@@ -635,15 +617,77 @@ export interface LabScenario {
   updated_at?: string;
 }
 
+export interface AttackStepArtifact {
+  name: string;
+  value: string;
+  source_stage?: string;
+  artifact_type?: string;
+  confidence?: number;
+}
+
+export interface AttackStepEvidence {
+  request?: {
+    method?: string;
+    url?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    raw?: string;
+  };
+  response?: {
+    status_code?: number;
+    status_text?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    body_snippet?: string;
+    raw?: string;
+  };
+  matched_conditions?: string[];
+  matched_patterns?: Array<{
+    pattern: string;
+    match_type: string;
+    matched_text?: string;
+  }>;
+  timing_ms?: number;
+}
+
 export interface AttackStep {
-  step: number;
-  title: string;
+  step?: number;
+  stage_id?: string;
+  stage_name?: string;
+  stage_title?: string;
+  stage_goal?: string;
+  method?: string;
+  url?: string;
   description?: string;
-  request?: Record<string, unknown>;
-  response?: Record<string, unknown>;
+  matched_conditions?: string[];
+  artifacts?: AttackStepArtifact[];
+  extracted?: Record<string, unknown>;
+  success?: boolean;
+  duration_ms?: number;
+  evidence?: AttackStepEvidence;
+  request?: {
+    method?: string;
+    url?: string;
+    headers?: Record<string, string>;
+    body?: string;
+  };
+  response?: {
+    status_code?: number;
+    headers?: Record<string, string>;
+    body?: string;
+  };
   payload?: string;
-  payload_explanation?: string;
   result?: string;
+  status?: string;
+  timestamp?: string;
+}
+
+export interface AttackArtifact {
+  name: string;
+  value: string;
+  source_stage?: string;
+  artifact_type?: string;
+  confidence?: number;
 }
 
 export interface Remediation {

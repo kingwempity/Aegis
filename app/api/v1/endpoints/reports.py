@@ -248,28 +248,94 @@ def preview_report(task_id: int, db: Session = Depends(get_db)):
     if task.status != "COMPLETED":
         raise HTTPException(status_code=400, detail="任务尚未完成")
     
-    # 构建报告数据
     generator = ReportGenerator()
     summary = generator._get_summary(task)
     
     vulnerabilities = []
     for vuln in task.vulnerabilities:
-        # 安全获取可能不存在的新字段
         vuln_type = getattr(vuln, 'vuln_type', None)
         parameter = getattr(vuln, 'parameter', None)
         cvss_score = getattr(vuln, 'cvss_score', None)
         description = getattr(vuln, 'description', None)
         remediation = getattr(vuln, 'remediation', None)
         attack_path = getattr(vuln, "attack_path", None) or {}
-        attack_steps = attack_path.get("steps", []) if isinstance(attack_path, dict) else []
-        attack_artifacts = attack_path.get("artifacts", []) if isinstance(attack_path, dict) else []
+        evidence = getattr(vuln, "evidence", None) or {}
+        
+        attack_steps = []
+        attack_artifacts = []
         attack_status = None
         final_reason = None
+        attack_chain_summary = None
+        
         if isinstance(attack_path, dict):
+            raw_steps = attack_path.get("steps", [])
             attack_status = attack_path.get("status")
             final_reason = attack_path.get("final_reason")
+            
+            for idx, step in enumerate(raw_steps):
+                step_data = {
+                    "step": step.get("step", idx + 1),
+                    "stage_id": step.get("stage_id") or step.get("id") or f"stage-{idx}",
+                    "stage_name": step.get("stage_name") or step.get("name"),
+                    "stage_title": step.get("stage_title") or step.get("title"),
+                    "stage_goal": step.get("stage_goal") or step.get("goal"),
+                    "method": step.get("method"),
+                    "url": step.get("url"),
+                    "description": step.get("description"),
+                    "matched_conditions": step.get("matched_conditions", []),
+                    "artifacts": step.get("artifacts", []),
+                    "extracted": step.get("extracted"),
+                    "success": step.get("success"),
+                    "duration_ms": step.get("duration_ms"),
+                    "status": step.get("status"),
+                    "timestamp": step.get("timestamp"),
+                    "result": step.get("result"),
+                }
+                
+                if step.get("request"):
+                    step_data["request"] = step["request"]
+                if step.get("response"):
+                    step_data["response"] = step["response"]
+                if step.get("payload"):
+                    step_data["payload"] = step["payload"]
+                
+                step_evidence = step.get("evidence", {})
+                if step_evidence:
+                    step_data["evidence"] = {
+                        "request": step_evidence.get("request"),
+                        "response": step_evidence.get("response"),
+                        "matched_conditions": step_evidence.get("matched_conditions", []),
+                        "matched_patterns": step_evidence.get("matched_patterns", []),
+                        "timing_ms": step_evidence.get("timing_ms"),
+                    }
+                elif evidence and isinstance(evidence, dict):
+                    if idx == 0:
+                        step_data["evidence"] = {
+                            "request": evidence.get("request"),
+                            "response": evidence.get("response"),
+                            "matched_conditions": evidence.get("matchers", []),
+                            "timing_ms": evidence.get("timing_ms"),
+                        }
+                
+                attack_steps.append(step_data)
+            
+            attack_artifacts = attack_path.get("artifacts", [])
+            
+            if raw_steps:
+                successful_stages = sum(1 for s in raw_steps if s.get("success") is True or s.get("status") == "validated")
+                failed_stages = sum(1 for s in raw_steps if s.get("success") is False or s.get("status") == "failed")
+                total_duration = sum(s.get("duration_ms", 0) or 0 for s in raw_steps)
+                
+                attack_chain_summary = {
+                    "total_stages": len(raw_steps),
+                    "successful_stages": successful_stages,
+                    "failed_stages": failed_stages,
+                    "total_duration_ms": total_duration if total_duration > 0 else None,
+                    "attack_vector": attack_path.get("attack_vector"),
+                    "entry_point": attack_path.get("entry_point"),
+                }
         
-        vulnerabilities.append({
+        vuln_data = {
             "id": vuln.id,
             "title": vuln.vuln_name,
             "type": vuln_type,
@@ -288,7 +354,12 @@ def preview_report(task_id: int, db: Session = Depends(get_db)):
             "attack_final_reason": final_reason,
             "attack_steps": attack_steps,
             "attack_artifacts": attack_artifacts,
-        })
+        }
+        
+        if attack_chain_summary:
+            vuln_data["attack_chain_summary"] = attack_chain_summary
+        
+        vulnerabilities.append(vuln_data)
 
     payload_count = len([v for v in task.vulnerabilities if getattr(v, "payload", None)])
     attack_path_count = len([v for v in task.vulnerabilities if getattr(v, "attack_path", None)])

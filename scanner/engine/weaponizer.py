@@ -83,10 +83,18 @@ class BypassTechnique(Enum):
 @dataclass
 class TargetContext:
     """
-    目标上下文信息
+    目标上下文信息（统一版本）
     
-    包含从侦察阶段收集的所有信息，用于指导Payload合成
+    包含从侦察阶段收集的所有信息，用于指导Payload合成和攻击决策。
+    
+    设计原则：
+    - 统一管理：避免在多个模块中重复定义上下文类
+    - 渐进增强：支持从ReconResult逐步构建完整上下文
+    - 双向兼容：同时满足Weaponizer和ScannerEngine的需求
     """
+    # 基础信息
+    target_url: str = ""
+    
     # 技术栈信息
     primary_framework: str = ""
     primary_language: str = ""
@@ -95,6 +103,7 @@ class TargetContext:
     database_version: Optional[str] = None
     
     # WAF信息
+    waf_detected: bool = False  # 是否检测到WAF
     waf_type: str = ""  # cloudflare/aws_waf/modsecurity etc.
     waf_vendor: str = ""
     protection_level: int = 0  # 0-4
@@ -102,54 +111,129 @@ class TargetContext:
     # 应用架构
     architecture: str = ""  # monolithic/microservices/load_balanced
     is_behind_cdn: bool = False
+    is_load_balanced: bool = False
     
-    # 认证信息
-    auth_type: str = ""  # session/jwt/oauth2 etc.
+    # 认证信息（使用auth_mechanism统一命名）
+    auth_type: str = ""  # session/jwt/oauth2 etc. (向后兼容)
+    auth_mechanism: str = ""  # 标准命名
     auth_required: bool = False
+    auth_endpoints: List[str] = field(default_factory=list)
     
-    # 输入上下文
+    # 输入上下文（Weaponizer专用）
     input_parameter_name: str = ""
     input_parameter_type: str = ""  # string/integer/search/json/xml
     input_location: str = ""  # query/path/body/header/cookie
     
-    # 页面特征
+    # 页面特征（Weaponizer专用）
     page_charset: str = "UTF-8"
     response_content_type: str = ""
     
-    # 其他发现
+    # 其他发现（Weaponizer专用）
     csrf_token_present: bool = False
     captcha_present: bool = False
     rate_limiting_detected: bool = False
     
+    # 入口点和API端点（侦察增强）
+    entry_points: List[Dict[str, Any]] = field(default_factory=list)
+    api_endpoints: List[Dict[str, Any]] = field(default_factory=list)
+    
+    # 技术栈详情（侦察增强）
+    technologies: List[Dict[str, Any]] = field(default_factory=list)
+    third_party_components: Dict[str, str] = field(default_factory=dict)
+    
+    # 安全配置（侦察增强）
+    security_headers: Dict[str, str] = field(default_factory=dict)
+    missing_security_headers: List[str] = field(default_factory=list)
+    
     @classmethod
     def from_recon(cls, recon_result) -> 'TargetContext':
-        """从侦察结果构建目标上下文"""
+        """
+        从侦察结果构建目标上下文（增强版）
+        
+        支持完整的ReconResult数据提取，包括：
+        - 基础技术栈信息
+        - WAF指纹详情
+        - 架构特征
+        - 认证机制
+        - 入口点和API端点
+        - 安全配置
+        
+        Args:
+            recon_result: ReconResult对象
+            
+        Returns:
+            TargetContext: 完整的目标上下文
+        """
+        if not recon_result:
+            return cls()
+        
         return cls(
+            target_url=getattr(recon_result, 'target_url', ''),
             primary_framework=recon_result.primary_framework or "",
             primary_language=recon_result.primary_language or "",
             primary_database=recon_result.primary_database or "",
             framework_version=None,
             database_version=None,
+            waf_detected=recon_result.waf_fingerprint.waf_type.value != 'unknown',
             waf_type=recon_result.waf_fingerprint.waf_type.value,
             waf_vendor=recon_result.waf_fingerprint.vendor_name,
             protection_level=recon_result.waf_fingerprint.protection_level.value,
             architecture=recon_result.architecture.value,
             is_behind_cdn=recon_result.is_behind_cdn,
-            auth_type=recon_result.auth_mechanism.value,
+            is_load_balanced=getattr(recon_result, 'is_load_balanced', False),
+            auth_type=recon_result.auth_mechanism.value,  # 向后兼容
+            auth_mechanism=recon_result.auth_mechanism.value,
             auth_required=len(recon_result.auth_endpoints) > 0,
+            auth_endpoints=recon_result.auth_endpoints.copy(),
+            entry_points=[ep.to_dict() for ep in getattr(recon_result, 'entry_points', [])],
+            api_endpoints=[ep.to_dict() for ep in getattr(recon_result, 'api_endpoints', [])],
+            technologies=[t.to_dict() for t in getattr(recon_result, 'technologies', [])],
+            third_party_components=getattr(recon_result, 'third_party_components', {}).copy(),
+            security_headers=getattr(recon_result, 'security_headers', {}).copy(),
+            missing_security_headers=getattr(recon_result, 'missing_security_headers', []).copy(),
         )
     
     def to_dict(self) -> Dict[str, Any]:
+        """
+        转换为字典（完整版）
+        
+        Returns:
+            Dict[str, Any]: 包含所有字段的字典
+        """
         return {
+            # 基础信息
+            "target_url": self.target_url,
+            
+            # 技术栈
             "primary_framework": self.primary_framework,
             "primary_language": self.primary_language,
             "primary_database": self.primary_database,
+            
+            # WAF
+            "waf_detected": self.waf_detected,
             "waf_type": self.waf_type,
             "protection_level": self.protection_level,
+            
+            # 架构
             "architecture": self.architecture,
             "is_behind_cdn": self.is_behind_cdn,
+            "is_load_balanced": self.is_load_balanced,
+            
+            # 认证
             "auth_type": self.auth_type,
+            "auth_mechanism": self.auth_mechanism,
             "input_parameter_type": self.input_parameter_type,
+            
+            # 入口点（新增）
+            "entry_points": self.entry_points,
+            "api_endpoints": self.api_endpoints,
+            
+            # 技术栈详情（新增）
+            "technologies": self.technologies,
+            
+            # 安全配置（新增）
+            "security_headers": self.security_headers,
+            "missing_security_headers": self.missing_security_headers,
         }
 
 

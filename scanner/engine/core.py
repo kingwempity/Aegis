@@ -50,8 +50,8 @@ from scanner.engine.rules import (
     FrameworkType,
     ValidationLevel,
 )
-from scanner.engine.recon import ReconEngine, TargetContext
-from scanner.engine.weaponizer import Weaponizer, WeaponizedPayload
+from scanner.engine.recon import ReconEngine
+from scanner.engine.weaponizer import Weaponizer, WeaponizedPayload, TargetContext
 
 # Phase 2: 模拟攻击核心模块（可选导入）
 # 使用安全导入模式：导入失败时所有类设为None，并设置可用性标志

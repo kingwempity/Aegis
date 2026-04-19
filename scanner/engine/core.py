@@ -12,6 +12,12 @@ scanner.engine.core
 6. 跨框架误报防护
 7. 详细扫描日志记录
 
+Phase 1 增强（模拟攻击方向）：
+8. 深度侦察引擎 - 技术栈/WAF/架构识别
+9. 智能武器化器 - 目标感知Payload合成
+10. 智能重试机制 - 自适应WAF绕过策略
+11. 行为分析能力 - 多维度漏洞验证
+
 """
 
 import os
@@ -44,6 +50,8 @@ from scanner.engine.rules import (
     FrameworkType,
     ValidationLevel,
 )
+from scanner.engine.recon import ReconEngine, TargetContext
+from scanner.engine.weaponizer import Weaponizer, WeaponizedPayload
 
 logger = logging.getLogger(__name__)
 
@@ -300,10 +308,47 @@ class ScannerEngine:
         
         self._judgment_log: List[Dict[str, Any]] = []
         self._attack_executions: Dict[str, AttackExecution] = {}
+        
+        # Phase 1: 初始化模拟攻击增强模块（带异常处理和降级策略）
+        self._recon_engine = None
+        self._weaponizer = None
+        self._recon_result = None  # 存储侦察结果
+        self._target_context = None  # 存储目标上下文
+        self._simulation_enabled = False  # 标记模拟攻击功能是否可用
+        
+        try:
+            from scanner.engine.recon import ReconEngine as _ReconEngine
+            self._recon_engine = _ReconEngine(max_depth=self.max_depth, timeout=self.timeout)
+            logger.info("🔍 深度侦察引擎已初始化")
+            self._simulation_enabled = True
+        except ImportError as e:
+            logger.warning(f"⚠️ 侦察模块导入失败（深度侦察功能不可用）: {e}")
+            self._recon_engine = None
+        except Exception as e:
+            logger.error(f"❌ 侦察引擎初始化失败: {e}")
+            self._recon_engine = None
+        
+        try:
+            from scanner.engine.weaponizer import Weaponizer as _Weaponizer
+            self._weaponizer = _Weaponizer(strategy=strategy)
+            logger.info("⚔️ 智能武器化器已初始化")
+        except ImportError as e:
+            logger.warning(f"⚠️ 武器化模块导入失败（智能Payload合成不可用）: {e}")
+            self._weaponizer = None
+        except Exception as e:
+            logger.error(f"❌ 武器化器初始化失败: {e}")
+            self._weaponizer = None
+        
+        if self._simulation_enabled:
+            logger.info("✅ Phase 1 模拟攻击增强功能已启用")
+        else:
+            logger.info("ℹ️ 运行于兼容模式（使用原有扫描逻辑）")
     
     async def run(self) -> List[Dict[str, Any]]:
         """
         执行扫描并返回发现的漏洞列表。
+        
+        Phase 1 增强：集成深度侦察和智能武器化
         """
         self._stats.start_time = time.time()
         self._semaphore = asyncio.Semaphore(self.max_concurrent)
@@ -323,6 +368,9 @@ class ScannerEngine:
             # 阶段1: 初始探测，获取上下文
             await self._initial_probe(client)
             
+            # 阶段1.5: 深度侦察（Phase 1 新增）
+            await self._deep_recon(client)
+            
             # 阶段2: 执行插件扫描
             await self._execute_plugins(client)
             
@@ -331,6 +379,15 @@ class ScannerEngine:
                 await self._discovery_scan(client)
         
         self._stats.end_time = time.time()
+        
+        # 生成最终报告摘要
+        if self._recon_result:
+            logger.info(f"📊 侦察摘要: "
+                       f"技术栈={len(self._recon_result.technologies)}个, "
+                       f"WAF={self._recon_result.waf_fingerprint.waf_type.value}, "
+                       f"架构={self._recon_result.architecture.value}, "
+                       f"入口点={len(self._recon_result.entry_points)}个")
+        
         return [self._result_to_dict(r) for r in self._vulnerabilities]
     
     async def _initial_probe(self, client: httpx.AsyncClient) -> None:
@@ -398,6 +455,87 @@ class ScannerEngine:
             self._log_judgment(
                 phase="initial_probe", plugin_id="N/A",
                 action="framework_detection", details={"error": str(e)}, result="failed",
+            )
+    
+    async def _deep_recon(self, client: httpx.AsyncClient) -> None:
+        """
+        深度侦察（Phase 1 新增）
+        
+        使用增强型ReconEngine进行深度目标分析：
+        - 技术栈深度识别
+        - WAF/防护系统指纹识别
+        - 应用架构推断
+        - 认证机制识别
+        - 入口点发现
+        - 第三方组件识别
+        """
+        # 检查侦察引擎是否可用（降级策略）
+        if not self._recon_engine:
+            logger.info("⏭️ 跳过深度侦察（侦察引擎未初始化）")
+            return
+        
+        try:
+            logger.info("🔬 开始深度侦察...")
+            
+            # 执行深度侦察
+            self._recon_result = await self._recon_engine.deep_recon(self.target, client)
+            
+            # 构建目标上下文（供Weaponizer使用）
+            self._target_context = TargetContext.from_recon(self._recon_result)
+            
+            # 同步到现有上下文系统
+            if self._context and self._recon_result:
+                # 更新技术栈信息
+                if self._recon_result.primary_framework:
+                    if not hasattr(self._context, 'detected_tech') or not self._context.detected_tech:
+                        self._context.detected_tech = [self._recon_result.primary_framework.lower()]
+                    elif self._recon_result.primary_framework.lower() not in self._context.detected_tech:
+                        self._context.detected_tech.append(self._recon_result.primary_framework.lower())
+                
+                # 更新WAF信息
+                if self._recon_result.waf_fingerprint.waf_type.value != 'unknown':
+                    self._context.waf_detected = True
+                    self._context.waf_type = self._recon_result.waf_fingerprint.waf_type.value
+            
+            logger.info(
+                f"✅ 深度侦察完成:\n"
+                f"  📌 主框架: {self._recon_result.primary_framework or '未识别'}\n"
+                f"  💾 数据库: {self._recon_result.primary_database or '未识别'}\n"
+                f"  🛡️ WAF类型: {self._recon_result.waf_fingerprint.vendor_name or '未检测到'} "
+                f"(强度:{self._recon_result.waf_fingerprint.protection_level.value})\n"
+                f"  🏗️ 架构: {self._recon_result.architecture.value}\n"
+                f"  🔐 认证: {self._recon_result.auth_mechanism.value}\n"
+                f"  🔗 入口点: {len(self._recon_result.entry_points)}个\n"
+                f"  📦 组件: {len(self._recon_result.third_party_components)}个\n"
+                f"  ⚠️ 缺失安全头: {len(self._recon_result.missing_security_headers)}个\n"
+                f"  🐛 调试信息: {len(self._recon_result.comments_or_debug_info)}条"
+            )
+            
+            # 记录侦察结果到日志
+            self._log_judgment(
+                phase="deep_recon",
+                plugin_id="N/A",
+                action="target_analysis",
+                details={
+                    "technologies_count": len(self._recon_result.technologies),
+                    "waf_type": self._recon_result.waf_fingerprint.waf_type.value,
+                    "waf_protection_level": self._recon_result.waf_fingerprint.protection_level.value,
+                    "architecture": self._recon_result.architecture.value,
+                    "auth_mechanism": self._recon_result.auth_mechanism.value,
+                    "entry_points_count": len(self._recon_result.entry_points),
+                    "api_endpoints_count": len(self._recon_result.api_endpoints),
+                    "sensitive_paths_found": len(self._recon_result.sensitive_paths),
+                    "missing_security_headers": self._recon_result.missing_security_headers,
+                    "third_party_components": list(self._recon_result.third_party_components.keys()),
+                },
+                result="success",
+            )
+            
+        except Exception as e:
+            logger.warning(f"⚠️ 深度侦察失败: {e}")
+            self._log_judgment(
+                phase="deep_recon", plugin_id="N/A",
+                action="target_analysis", details={"error": str(e)}, result="failed",
             )
 
     def _framework_probe_candidates(self) -> List[str]:
@@ -945,6 +1083,322 @@ class ScannerEngine:
                     self._finalize_attack_execution(plugin, final_status, final_reason)
             
             return any_success
+    
+    # ==================== Phase 1: 智能重试与行为分析方法 ====================
+    
+    def _is_waf_blocked(self, resp: httpx.Response) -> bool:
+        """
+        检测响应是否被WAF拦截
+        
+        Args:
+            resp: HTTP响应对象
+            
+        Returns:
+            True表示被WAF拦截
+        """
+        # 常见的WAF拦截特征
+        waf_indicators = [
+            (403, "forbidden"),
+            (406, "not acceptable"),
+            (429, "too many requests"),
+            (503, "service unavailable"),
+        ]
+        
+        status_code = resp.status_code
+        
+        # 检查状态码
+        for code, reason in waf_indicators:
+            if status_code == code:
+                body_lower = resp.text.lower() if resp.text else ""
+                
+                # 检查响应体中的WAF关键词
+                waf_keywords = [
+                    'cloudflare', 'incapsula', 'akamai', 'sucuri',
+                    'mod_security', 'web application firewall',
+                    'blocked', 'forbidden', 'denied',
+                    'request blocked', 'access denied',
+                    'bot detection', 'security measure',
+                ]
+                
+                keyword_matches = sum(1 for kw in waf_keywords if kw in body_lower)
+                
+                if keyword_matches >= 2:
+                    logger.debug(f"🛡️ 检测到WAF拦截: {status_code} ({reason}), "
+                               f"关键词匹配={keyword_matches}")
+                    return True
+        
+        return False
+    
+    def _analyze_response_behavior(self, 
+                                   resp: httpx.Response,
+                                   baseline_time_ms: float = 0.0) -> Dict[str, Any]:
+        """
+        分析响应行为（Phase 1 新增）
+        
+        多维度分析响应特征：
+        - 时间行为：响应时间异常检测
+        - 状态码变化：状态码差异分析
+        - 内容特征：长度、类型、错误信息
+        
+        Args:
+            resp: HTTP响应对象
+            baseline_time_ms: 基准响应时间（正常请求的响应时间）
+            
+        Returns:
+            行为分析结果字典
+        """
+        behavior = {
+            "response_time_ms": getattr(resp, 'extensions', {}).get('aegis_elapsed_ms', 0),
+            "status_code": resp.status_code,
+            "content_length": len(resp.content),
+            "content_type": resp.headers.get('Content-Type', ''),
+            
+            "time_anomaly": False,
+            "time_deviation_ratio": 0.0,
+            "status_anomaly": False,
+            "size_anomaly": False,
+            "error_indicators": [],
+            "behavior_score": 0.0,  # 0-100, 越高越可疑
+            
+            "analysis_timestamp": time.time(),
+        }
+        
+        # 1. 时间行为分析
+        response_time = behavior["response_time_ms"]
+        if baseline_time_ms > 0 and response_time > 0:
+            deviation = abs(response_time - baseline_time_ms) / baseline_time_ms
+            behavior["time_deviation_ratio"] = round(deviation, 3)
+            
+            # SQL注入时间盲注特征：响应时间显著增加
+            if deviation > 3.0 and response_time > 3000:
+                behavior["time_anomaly"] = True
+                behavior["behavior_score"] += 30
+                behavior["error_indicators"].append(f"time_blind_injection (deviation={deviation:.1f}x)")
+            
+            # 中等时间延迟（可能是基于时间的攻击）
+            elif deviation > 1.5 and response_time > 1000:
+                behavior["time_anomaly"] = True
+                behavior["behavior_score"] += 15
+                behavior["error_indicators"].append(f"delay_detected ({response_time:.0f}ms vs {baseline_time_ms:.0f}ms)")
+        
+        # 2. 状态码分析
+        error_status_codes = [400, 401, 403, 500, 502, 503]
+        if resp.status_code in error_status_codes:
+            behavior["status_anomaly"] = True
+            behavior["behavior_score"] += 20
+            behavior["error_indicators"].append(f"error_status_{resp.status_code}")
+        
+        # 3. 内容长度异常
+        if len(resp.content) < 100 and resp.status_code == 200:
+            behavior["size_anomaly"] = True
+            behavior["behavior_score"] += 10
+            behavior["error_indicators"].append("unusually_short_response")
+        
+        # 4. 错误信息检测
+        if resp.text:
+            text_lower = resp.text.lower()
+            
+            # 数据库错误
+            db_errors = [
+                ('sql', ['sql syntax', 'mysql', 'postgresql', 'oracle', 'mssql']),
+                ('stack_trace', ['traceback', 'exception', 'error at line', 'fatal error']),
+                ('debug_info', ['debug', 'warning:', 'notice:', 'deprecated']),
+                ('path_disclosure', ['/var/www/', '/home/', '\\windows\\', 'c:\\']),
+            ]
+            
+            for error_type, keywords in db_errors:
+                matches = [kw for kw in keywords if kw in text_lower]
+                if matches:
+                    behavior["error_indicators"].append(f"{error_type}:{matches[0]}")
+                    behavior["behavior_score"] += {
+                        'sql': 25,
+                        'stack_trace': 20,
+                        'debug_info': 15,
+                        'path_disclosure': 10,
+                    }.get(error_type, 5)
+        
+        # 5. 规范化分数
+        behavior["behavior_score"] = min(behavior["behavior_score"], 100)
+        
+        return behavior
+    
+    async def _intelligent_retry(self,
+                                  client: httpx.AsyncClient,
+                                  method: str,
+                                  url: str,
+                                  headers: Dict[str, str],
+                                  body: Optional[str],
+                                  plugin_id: str,
+                                  max_retries: int = 3) -> Tuple[Optional[httpx.Response], float]:
+        """
+        智能重试机制（Phase 1 新增）
+        
+        当初始请求被WAF拦截或失败时，自动尝试不同的绕过策略：
+        1. 使用Weaponizer生成针对目标定制的Payload变体
+        2. 应用不同的编码和绕过技术
+        3. 根据历史成功率调整策略
+        
+        Args:
+            client: HTTP客户端
+            method: HTTP方法
+            url: 目标URL
+            headers: 请求头
+            body: 请求体
+            plugin_id: 插件ID（用于确定漏洞类型）
+            max_retries: 最大重试次数
+            
+        Returns:
+            (最终响应, 总耗时)
+        """
+        start_time = time.perf_counter()
+        last_resp = None
+        
+        # 首次尝试
+        try:
+            last_resp = await self._request_in_scope(client, method, url, headers, body)
+            
+            # 如果未被拦截或首次成功，直接返回
+            if not self._is_waf_blocked(last_resp):
+                elapsed = (time.perf_counter() - start_time) * 1000.0
+                return last_resp, elapsed
+                
+        except Exception as e:
+            logger.debug(f"⚠️ 初始请求失败: {e}")
+        
+        # 如果没有目标上下文，无法进行智能重试
+        if not self._target_context:
+            elapsed = (time.perf_counter() - start_time) * 1000.0
+            return last_resp, elapsed
+        
+        # 从插件ID推断漏洞类别
+        vuln_category = self._infer_vulnerability_category(plugin_id)
+        
+        # 使用Weaponizer生成智能Payload变体
+        try:
+            weaponized_payloads = self._weaponizer.synthesize(
+                category=vuln_category,
+                context=self._target_context,
+                max_payloads=max_retries,
+            )
+            
+            for payload_obj in weaponized_payloads[:max_retries]:
+                # 构造新的URL（替换payload部分）
+                modified_url = url
+                if '?' in url:
+                    base_url, query_string = url.split('?', 1)
+                    params = query_string.split('&')
+                    new_params = []
+                    for param in params:
+                        if '=' in param:
+                            param_name, param_value = param.split('=', 1)
+                            # 替换参数值为新的payload
+                            if any(c.isalpha() for c in param_value):
+                                new_params.append(f"{param_name}={payload_obj.encoded}")
+                            else:
+                                new_params.append(param)
+                        else:
+                            new_params.append(param)
+                    
+                    modified_url = f"{base_url}?{'&'.join(new_params)}"
+                
+                try:
+                    logger.debug(
+                        f"🔄 智能重试 [{payload_obj.bypass_technique.value}]: "
+                        f"confidence={payload_obj.confidence:.2f}"
+                    )
+                    
+                    retry_resp = await self._request_in_scope(
+                        client, method, modified_url, headers, body
+                    )
+                    
+                    # 检查是否成功绕过
+                    if not self._is_waf_blocked(retry_resp):
+                        logger.info(
+                            f"✅ 绕过成功 [{payload_obj.bypass_technique.value}]: "
+                            f"{retry_resp.status_code}"
+                        )
+                        elapsed = (time.perf_counter() - start_time) * 1000.0
+                        return retry_resp, elapsed
+                    
+                    last_resp = retry_resp
+                    
+                except Exception as e:
+                    logger.debug(f"⚠️ 重试失败 [{payload_obj.bypass_technique.value}]: {e}")
+                    continue
+                    
+        except Exception as e:
+            logger.warning(f"⚠️ Weaponizer合成失败: {e}")
+        
+        elapsed = (time.perf_counter() - start_time) * 1000.0
+        return last_resp, elapsed
+    
+    def _infer_vulnerability_category(self, plugin_id: str) -> str:
+        """
+        从插件ID推断漏洞类别
+        
+        Args:
+            plugin_id: 插件标识符
+            
+        Returns:
+            漏洞类别字符串
+        """
+        plugin_id_lower = plugin_id.lower()
+        
+        category_mapping = {
+            'sqli': 'sqli',
+            'sql': 'sqli',
+            'injection': 'sqli',
+            'xss': 'xss',
+            'cross-site': 'xss',
+            'path': 'path_traversal',
+            'traversal': 'path_traversal',
+            'lfi': 'lfi',
+            'rfi': 'rfi',
+            'ssrf': 'ssrf',
+            'xxe': 'xxe',
+            'cmd': 'cmd_injection',
+            'command': 'cmd_injection',
+            'rce': 'cmd_injection',
+            'ssti': 'ssti',
+            'template': 'ssti',
+            'redirect': 'open_redirect',
+            'crlf': 'crlf',
+        }
+        
+        for keyword, category in category_mapping.items():
+            if keyword in plugin_id_lower:
+                return category
+        
+        return 'generic'
+    
+    def _calculate_behavior_confidence(self,
+                                       matcher_hit: bool,
+                                       behavior_analysis: Dict[str, Any]) -> float:
+        """
+        结合匹配结果和行为分析计算综合置信度（Phase 1 新增）
+        
+        多维度综合评估：
+        - 传统匹配器结果（权重60%）
+        - 行为分析分数（权重40%）
+        
+        Args:
+            matcher_hit: 匹配器是否命中
+            behavior_analysis: 行为分析结果
+            
+        Returns:
+            综合置信度 (0-1)
+        """
+        base_confidence = 0.8 if matcher_hit else 0.2
+        behavior_score = behavior_analysis.get("behavior_score", 0) / 100.0
+        
+        # 加权计算
+        final_confidence = (base_confidence * 0.6) + (behavior_score * 0.4)
+        
+        # 如果有强行为指标但未命中匹配器，适当提升置信度
+        if not matcher_hit and behavior_score > 0.5:
+            final_confidence = min(final_confidence + 0.2, 0.7)
+        
+        return round(final_confidence, 3)
 
     def _get_plugin_state(self, plugin_id: str) -> Dict[str, Any]:
         if not hasattr(self, "_plugin_vars_cache"):

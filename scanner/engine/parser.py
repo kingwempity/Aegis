@@ -5,9 +5,12 @@ YAML 模板解析器。
 """
 
 import os
+import logging
 from typing import List, Dict, Any, Optional
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 class TemplateParser:
@@ -30,9 +33,9 @@ class TemplateParser:
                     if TemplateParser._is_valid_plugin(data):
                         plugins.append(data)
                     else:
-                        print(f"⚠️ 跳过非法插件: {file}")
+                        logger.warning(f"跳过非法插件: {file}")
                 except Exception as e:
-                    print(f"❌ 解析插件失败 {file}: {e}")
+                    logger.error(f"解析插件失败 {file}: {e}")
         return plugins
 
     @staticmethod

@@ -59,7 +59,7 @@ class WAFType(Enum):
     BINARYSEC = "binarysec"
     HYPERGUARD = "hyperguard"
     NETSCALER = "netscaler"
-    QUICK Defense = "quick_defense"
+    QUICK_DEFENSE = "quick_defense"
 
 
 class ArchitectureType(Enum):

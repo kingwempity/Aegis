@@ -128,6 +128,45 @@ FRAMEWORK_SIGNATURES: Dict[FrameworkType, FrameworkSignature] = {
         ],
         version_patterns=[r"Drupal\s*([0-9]+(?:\.[0-9]+)+)", r"Drupal\s+([0-9]+)"],
     ),
+    FrameworkType.DJANGO: FrameworkSignature(
+        framework=FrameworkType.DJANGO,
+        headers={"X-Frame-Options": r".*", "Server": r".*"},  # Django默认安全头
+        body_patterns=[
+            r"django",
+            r"csrfmiddlewaretoken",
+            r"CSRF token",
+            r"DJANGO_SETTINGS_MODULE",
+            r"django\.core",
+            r"django\.db",
+            r"django\.views",
+            r"Exception Type",
+            r"Exception Value",
+            r"Traceback \(most recent call last\)",
+            r"Request information",
+            r"You're seeing this error because you have",
+            r"DEBUG = True",
+            r"Page not found",
+            r"404\.html",
+            r"500\.html",
+            r"Django Software Foundation",
+            r"powered by Django",
+            r"View does not exist",
+            r"No URL matches query",
+        ],
+        url_patterns=[r"/admin/", r"/create_user/", r"/static/", r"\.py[/\?]", r"csrfmiddlewaretoken"],
+        exclusive_signatures=[
+            "django.core",
+            "django.db",
+            "django.views",
+            "CSRFToken",
+            "csrfmiddlewaretoken",
+            "Django Software Foundation",
+            "DEBUG = True",
+            "Exception Type",
+            "Exception Value",
+        ],
+        version_patterns=[r"Django[ /]([0-9]+\.[0-9]+(?:\.[0-9]+)?)", r"Django-([0-9]+\.[0-9]+)"],
+    ),
 }
 
 
@@ -486,6 +525,13 @@ class RuleEngine:
         """
         判定插件是否应该在当前目标上执行。
         实现插件隔离，避免无关插件产生噪声。
+
+        增强版逻辑（2026-04-19优化）：
+        1. 未定义框架约束 → 允许执行
+        2. 框架明确匹配 → 允许执行
+        3. 框架不匹配 但 路径匹配 → 允许执行（标记为探测模式）
+        4. 框架未知 且 allow_when_framework_unknown=True 且 路径匹配 → 允许
+        5. 其他情况 → 拒绝
         """
         rule = self._detection_rules.get(plugin_id)
         if not rule or not rule.expected_frameworks:
@@ -495,12 +541,20 @@ class RuleEngine:
         expected_set = set(rule.expected_frameworks)
 
         if target_frameworks:
-            # 如果识别到了明确的框架，必须匹配其中之一
+            # 如果识别到了明确的框架
             if any(fw in expected_set for fw in target_frameworks):
                 return True, "目标框架与插件期望匹配"
+
+            # 【关键修复】框架不匹配时，检查路径是否匹配
+            # 如果路径匹配，仍然允许执行（作为探测），后续由matchers和置信度机制过滤
+            if self._paths_match_rule(request_paths, rule.required_path_patterns):
+                current = ",".join(fw.value for fw in target_frameworks)
+                expected = ",".join(fw.value for fw in rule.expected_frameworks)
+                return True, f"目标框架为[{current}]，与期望[{expected}]不匹配，但路径符合特征(探测模式)"
+
             current = ",".join(fw.value for fw in target_frameworks)
             expected = ",".join(fw.value for fw in rule.expected_frameworks)
-            return False, f"目标框架为 [{current}]，与插件期望 [{expected}] 不匹配"
+            return False, f"目标框架为 [{current}]，与插件期望 [{expected}] 不匹配，且路径不符合"
 
         # 如果框架未知
         if not rule.allow_when_framework_unknown:

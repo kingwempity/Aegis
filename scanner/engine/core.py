@@ -689,6 +689,10 @@ class ScannerEngine:
             f"{self.target}/api/",
             f"{self.target}/robots.txt",
             f"{self.target}/sitemap.xml",
+            # Django 特有探测路径
+            f"{self.target}/admin/login/?next=/admin/",
+            f"{self.target}/static/",
+            f"{self.target}/__debug__/",
         ]
 
     async def _fallback_framework_probe(

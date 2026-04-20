@@ -283,7 +283,23 @@ def create_stealthy_engine(target: str):
 class ScannerEngine:
     """
     高级漏洞扫描引擎（集成规则引擎与多重验证）。
+    
+    关键插件常量：
+    - CRITICAL_SEQUENTIAL_PLUGINS: 需要特殊监控和诊断的顺序攻击链插件
+    - 扩展方式: 可通过子类化或修改此常量来添加新的关键插件
     """
+    
+    # 关键顺序攻击链插件列表（集中管理，便于维护和扩展）
+    # 这些插件会在框架检测阶段被特别关注，输出详细的执行预测
+    # 添加新插件只需在此列表中追加插件ID即可
+    CRITICAL_SEQUENTIAL_PLUGINS = [
+        'drupal-cve-2019-6341',      # Drupal 文件上传 XSS (CVE-2019-6341)
+        'django-cve-2017-12794',     # Django DEBUG 页面 XSS (CVE-2017-12794)
+        'thinkphp-sqli',             # ThinkPHP SQL注入
+        # 示例: 添加新的关键插件
+        # 'wordpress-cve-xxxx',
+        # 'spring4shell-rce',
+    ]
     
     def __init__(
         self,
@@ -490,6 +506,17 @@ class ScannerEngine:
         
         logger.info(f"🚀 开始扫描目标: {self.target}")
         
+        # 【新增】扫描启动诊断摘要
+        logger.info("=" * 70)
+        logger.info(f"📋 [扫描配置] 插件总数: {len(self.plugins)}")
+        logger.info(f"   策略: {self.strategy}, 并发数: {self.max_concurrent}, 超时: {self.timeout}s")
+        plugin_ids = [p.get('id', 'unknown') for p in self.plugins]
+        logger.info(f"   插件列表: {plugin_ids}")
+        sequential_plugins = [p.get('id') for p in self.plugins if p.get('sequential_requests')]
+        if sequential_plugins:
+            logger.info(f"   🔄 顺序攻击链插件: {sequential_plugins}")
+        logger.info("=" * 70)
+        
         async with httpx.AsyncClient(
             verify=False,
             timeout=httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0),
@@ -505,6 +532,33 @@ class ScannerEngine:
             
             # 阶段1.5: 深度侦察（Phase 1 新增）
             await self._deep_recon(client)
+            
+            # 【新增】框架检测完成后的诊断报告
+            logger.info("=" * 70)
+            logger.info(f"🔍 [框架检测完成] 检测到的框架:")
+            for fw in self._detected_frameworks:
+                conf = self._framework_confidence.get(fw, 0)
+                ver = self._framework_versions.get(fw, 'unknown')
+                status = "✅ 高置信度" if conf > 0.6 else "⚠️ 中置信度" if conf > 0.3 else "❓ 低置信度"
+                logger.info(f"   {status} {fw.value} (版本: {ver}, 置信度: {conf:.2%})")
+            
+            if not self._detected_frameworks or self._detected_frameworks == [FrameworkType.UNKNOWN]:
+                logger.warning("   ⚠️ 未检测到已知框架，将使用宽松模式执行插件")
+            
+            # 预测关键插件的执行情况（使用集中管理的插件列表）
+            critical_plugins = self.CRITICAL_SEQUENTIAL_PLUGINS
+            for cp_id in critical_plugins:
+                cp_found = any(p.get('id') == cp_id for p in self.plugins)
+                if not cp_found:
+                    continue
+                can_exec, reason = self._rule_engine.should_execute_plugin(
+                    plugin_id=cp_id,
+                    detected_frameworks=self._detected_frameworks,
+                    request_paths=[],
+                )
+                icon = "✅ 将执行" if can_exec else "❌ 将跳过"
+                logger.info(f"   {icon} {cp_id}: {reason}")
+            logger.info("=" * 70)
             
             # 阶段2: 执行插件扫描
             await self._execute_plugins(client)
@@ -779,11 +833,24 @@ class ScannerEngine:
                 for path_item in req.get("path", [])
                 if isinstance(path_item, str)
             ]
+            
+            # 【新增】详细的插件执行决策日志
+            logger.info(f"🔎 [插件门控] 评估插件: {plugin_id} (顺序模式: {sequential}, 请求数: {len(requests_list)})")
+            logger.info(f"   当前检测到的框架: {[fw.value for fw in self._detected_frameworks]}")
+            logger.info(f"   插件路径模板(前5个): {flattened_paths[:5]}")
+            
             can_execute, execute_reason = self._rule_engine.should_execute_plugin(
                 plugin_id=plugin_id,
                 detected_frameworks=self._detected_frameworks,
                 request_paths=flattened_paths,
             )
+            
+            # 【增强】明确的执行/跳过日志
+            if can_execute:
+                logger.info(f"✅ [插件门控] 允许执行 {plugin_id}: {execute_reason}")
+            else:
+                logger.warning(f"⏭️ [插件门控] 跳过插件 {plugin_id}: {execute_reason}")
+            
             self._log_judgment(
                 phase="plugin_gate",
                 plugin_id=plugin_id,
@@ -792,21 +859,29 @@ class ScannerEngine:
                     "detected_frameworks": [fw.value for fw in self._detected_frameworks],
                     "request_paths": flattened_paths[:10],
                     "reason": execute_reason,
+                    "sequential": sequential,
+                    "request_count": len(requests_list),
                 },
                 result="allow" if can_execute else "skip",
             )
             if not can_execute:
-                logger.info(f"⏭️ 跳过插件 {plugin_id}: {execute_reason}")
                 continue
 
             self._get_attack_execution(plugin)
             
             if sequential:
                 await _gather_pending()
+                logger.info(f"🔄 [顺序攻击链] 开始执行 {plugin_id} 的 {len(requests_list)} 个步骤")
                 # 顺序模式下，如果某一步失败（未命中 matchers），则停止该插件后续请求
                 for index, req in enumerate(requests_list):
+                    stage_name = req.get("stage", f"step_{index + 1}")
+                    logger.info(f"   ➡️ 步骤 {index + 1}/{len(requests_list)}: {stage_name}")
+                    logger.info(f"      路径: {req.get('path', [])[:3]}")
+                    
                     if not self._check_preconditions(req):
+                        logger.warning(f"      ⏭️ 前置条件不满足，跳过")
                         continue
+                        
                     can_execute, block_reason = self._can_execute_sequential_step(plugin, req, index)
                     if not can_execute:
                         self._log_judgment(
@@ -814,20 +889,25 @@ class ScannerEngine:
                             plugin_id=plugin_id,
                             action="stage_blocked",
                             details={
-                                "stage": req.get("stage", f"step_{index + 1}"),
+                                "stage": stage_name,
                                 "reason": block_reason,
                                 "state": self._snapshot_plugin_state(plugin_id),
                             },
                             result="suppress",
                         )
-                        logger.info(f"🛑 插件 {plugin_id} 阶段阻断: {block_reason}")
+                        logger.warning(f"🛑 [{plugin_id}] 阶段阻断 @ {stage_name}: {block_reason}")
                         self._finalize_attack_execution(plugin, "blocked", block_reason)
                         break
+                    
+                    logger.info(f"      ✅ 步骤允许执行，开始扫描...")
                     success = await self._scan_with_plugin(client, plugin, req)
                     if not success:
-                        logger.info(f"🛑 插件 {plugin.get('id')} 步骤未命中 matchers，中断后续请求")
-                        self._finalize_attack_execution(plugin, "partial", self._get_plugin_state(plugin_id).get("LastSequentialFailure") or "阶段未完成")
+                        failure_reason = self._get_plugin_state(plugin_id).get("LastSequentialFailure") or "阶段未完成"
+                        logger.warning(f"🛑 [{plugin_id}] 步骤未命中 matchers @ {stage_name}: {failure_reason}")
+                        self._finalize_attack_execution(plugin, "partial", failure_reason)
                         break
+                    else:
+                        logger.info(f"      ✅ 步骤成功: {stage_name}")
                 else:
                     current_execution = self._attack_executions.get(plugin_id)
                     if current_execution and current_execution.status == "running":
@@ -2158,8 +2238,18 @@ class ScannerEngine:
                         plugin_state["ExtractedPath"] = gm
                         logger.info(f"✨ 通用路径提取: {gm}")
                         break
-                if extracted_path:
-                    break
+        
+        # 【新增】状态提取完成后的诊断报告（仅针对关键顺序攻击链插件）
+        if plugin_id in self.CRITICAL_SEQUENTIAL_PLUGINS and is_register_context:
+            logger.info(f"📊 [{plugin_id}] 状态提取摘要:")
+            logger.info(f"   FormBuildId: {'✅ 已提取' if plugin_state.get('FormBuildId') else '❌ 缺失'}")
+            logger.info(f"   FormToken: {'✅ 已提取' if plugin_state.get('FormToken') else '❌ 缺失'}")
+            logger.info(f"   ExtractedPath: {'✅ ' + plugin_state.get('ExtractedPath', '') if plugin_state.get('ExtractedPath') else '❌ 未提取'}")
+            logger.info(f"   UploadedFilename: {'✅ ' + plugin_state.get('UploadedFilename', '') if plugin_state.get('UploadedFilename') else '❌ 未提取'}")
+            logger.info(f"   HasUploadEvidence: {'✅' if plugin_state.get('HasUploadEvidence') else '❌'}")
+            logger.info(f"   ResourceCreated: {'✅' if plugin_state.get('ResourceCreated') else '❌'}")
+            logger.info(f"   FileAccessible: {'✅' if plugin_state.get('FileAccessible') else '❌'}")
+            logger.info(f"   ExceptionTriggered: {'✅' if plugin_state.get('ExceptionTriggered') else '❌'}")
 
     def _extract_upload_path(self, content: str) -> str:
         if not content:
@@ -2723,7 +2813,14 @@ class ScannerEngine:
             "result": result,
         }
         self._judgment_log.append(record)
-        logger.debug(
+
+        # 关键阶段使用INFO级别确保可见性
+        if phase in ("plugin_gate", "vulnerability_judgment", "initial_probe", "sequential_step"):
+            log_func = logger.info
+        else:
+            log_func = logger.debug
+
+        log_func(
             f"📝 判定日志 [{phase}] {plugin_id}/{action}: {result} - "
             f"{json.dumps(details, ensure_ascii=False)[:200]}"
         )

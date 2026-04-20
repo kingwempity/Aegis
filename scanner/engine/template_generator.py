@@ -24,8 +24,6 @@ scanner.engine.template_generator
     ...     print(script.request.url, script.payload.original)
 """
 
-from __future__ import annotations
-
 import base64
 import copy
 import hashlib

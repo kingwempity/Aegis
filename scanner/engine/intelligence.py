@@ -41,8 +41,6 @@ scanner.engine.intelligence
     >>> print(f"WAF类型: {waf_info.waf_type}, 绕过难度: {waf_info.bypass_difficulty}")
 """
 
-from __future__ import annotations
-
 import asyncio
 import time
 import re

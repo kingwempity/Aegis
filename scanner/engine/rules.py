@@ -4,8 +4,6 @@ scanner.engine.rules
 规则引擎：提供框架识别、插件隔离、路径验证、响应分析、版本确认与可配置化判定。
 """
 
-from __future__ import annotations
-
 import copy
 import json
 import logging

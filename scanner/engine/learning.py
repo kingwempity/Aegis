@@ -40,8 +40,6 @@ scanner.engine.learning
     >>> print(f"推荐策略: {strategy['name']}, 置信度: {strategy['confidence']}")
 """
 
-from __future__ import annotations
-
 import time
 import json
 import hashlib

@@ -21,8 +21,6 @@ scanner.engine.recon
     - 低干扰性：最小化对目标的影响
 """
 
-from __future__ import annotations
-
 import re
 import time
 import json

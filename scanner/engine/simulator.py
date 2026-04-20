@@ -30,8 +30,6 @@ scanner.engine.simulator
     ...     print(f"阶段: {chain.stage_name} - {'成功' if chain.success else '失败'}")
 """
 
-from __future__ import annotations
-
 import asyncio
 import time
 import uuid

@@ -26,8 +26,6 @@ scanner.engine.weaponizer
     ...     print(f"Payload: {p.encoded} (confidence: {p.confidence})")
 """
 
-from __future__ import annotations
-
 import re
 import random
 import string

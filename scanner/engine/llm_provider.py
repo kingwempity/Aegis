@@ -2,6 +2,16 @@ import os
 import json
 import logging
 from typing import Dict, Any, List, Optional
+from pathlib import Path
+
+# 自动加载 .env 文件
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).parent.parent.parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+except ImportError:
+    pass
 
 # 使用 try-except 保护，防止环境缺少 openai 包导致 Worker 崩溃
 try:
@@ -14,25 +24,34 @@ logger = logging.getLogger(__name__)
 
 class LLMProvider:
     """
-    LLM 服务提供者，支持 OpenAI 和本地 Ollama。
+    LLM 服务提供者，支持 OpenAI、SiliconFlow、DeepSeek 和本地 Ollama。
+    默认使用 SiliconFlow 的 DeepSeek-R1-Distill-Qwen-7B 模型。
     """
-    def __init__(self, model: str = "llama3", base_url: str = None):
+    DEFAULT_BASE_URL = "https://api.siliconflow.cn/v1"
+    DEFAULT_MODEL = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
+
+    def __init__(self, model: str = None, base_url: str = None, api_key: str = None):
         """
         初始化 LLM 提供者。
         
         Args:
-            model: 模型名称，默认 llama3
-            base_url: API 基础地址。如果使用 Ollama，默认为 http://localhost:11434/v1
+            model: 模型名称，默认 deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
+            base_url: API 基础地址，默认 SiliconFlow API
+            api_key: API 密钥，需从环境变量 LLM_API_KEY 获取或直接传入
         """
         if not OPENAI_AVAILABLE:
             logger.error("❌ 未安装 'openai' Python 包。请在运行环境执行: pip install openai")
             self.client = None
             return
 
-        # 优先从环境变量获取，如果没有则使用默认 Ollama 地址
-        self.base_url = base_url or os.getenv("LLM_BASE_URL", "http://localhost:11434/v1")
-        self.api_key = os.getenv("LLM_API_KEY", "ollama") # Ollama 不需要真实的 API Key，但客户端需要非空字符串
-        self.model = os.getenv("LLM_MODEL", model)
+        self.base_url = base_url or os.getenv("LLM_BASE_URL", self.DEFAULT_BASE_URL)
+        self.api_key = api_key or os.getenv("LLM_API_KEY")
+        self.model = model or os.getenv("LLM_MODEL", self.DEFAULT_MODEL)
+
+        if not self.api_key:
+            logger.warning("⚠️ 未设置 API Key，请通过环境变量 LLM_API_KEY 或参数 api_key 传入")
+            self.client = None
+            return
 
         logger.info(f" 初始化 LLMProvider: BaseURL={self.base_url}, Model={self.model}")
         

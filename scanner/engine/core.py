@@ -1,7 +1,8 @@
 """
 scanner.engine.core
 -------------------
-核心扫描逻辑：遍历插件 -> 生成攻击脚本 -> 路径优先调度 -> 发送请求 -> 匹配漏洞。
+核心扫描逻辑：[已弃用] 建议使用 scanner.engine.simulator.AttackSimulator 进行基于 LLM 驱动的模拟攻击。
+本模块目前保留用于兼容旧版静态扫描逻辑。
 
 集成优化功能：
 1. 智能Payload生成与编码

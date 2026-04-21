@@ -90,8 +90,16 @@ class AttackSimulator:
                 
                 # 执行攻击动作
                 path = decision.get("next_target_path", "")
+                if isinstance(path, list):
+                    path = path[0] if path else ""
+                elif not isinstance(path, str):
+                    path = str(path) if path else ""
                 url = f"{self.target}/{path.lstrip('/')}"
                 payload = decision.get("payload_mutation", "test")
+                if isinstance(payload, list):
+                    payload = payload[0] if payload else "test"
+                elif not isinstance(payload, str):
+                    payload = str(payload) if payload else "test"
                 
                 step = await self._execute_attack_step(client, url, payload)
                 self.history.append(step)

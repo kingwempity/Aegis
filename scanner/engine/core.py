@@ -34,6 +34,8 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
 import logging
 
+logger = logging.getLogger(__name__)
+
 import httpx
 
 from scanner.engine.attack import (
@@ -111,7 +113,6 @@ except Exception as e:
     StrategyProfile = None
     PHASE3_AVAILABLE = False
 
-logger = logging.getLogger(__name__)
 
 
 @dataclass

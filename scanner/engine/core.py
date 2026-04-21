@@ -35,7 +35,6 @@ from dataclasses import dataclass, field
 import logging
 
 logger = logging.getLogger(__name__)
-
 import httpx
 
 from scanner.engine.attack import (
@@ -60,7 +59,10 @@ from scanner.engine.weaponizer import Weaponizer, WeaponizedPayload, TargetConte
 # 使用安全导入模式：导入失败时所有类设为None，并设置可用性标志
 # 后续使用时必须通过 PHASE2_AVAILABLE 和 is not None 双重检查
 try:
-    from scanner.engine.simulator import AttackSimulator, SimulationResult
+    def get_simulator():
+        from scanner.engine.simulator import AttackSimulator
+        return AttackSimulator
+    SimulationResult = None
     from scanner.engine.exploitation import ExploitationEngine
     from scanner.engine.intelligence import IntelligenceModule
     PHASE2_AVAILABLE = True

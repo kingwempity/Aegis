@@ -34,7 +34,7 @@ class LLMProvider:
         self.api_key = os.getenv("LLM_API_KEY", "ollama") # Ollama 不需要真实的 API Key，但客户端需要非空字符串
         self.model = os.getenv("LLM_MODEL", model)
 
-        logger.info(f" 初始化 LLMProvider: BaseURL={self.base_url}, Model={self.model}")
+        logger.info(f"🤖 初始化 LLMProvider: BaseURL={self.base_url}, Model={self.model}")
         
         try:
             self.client = OpenAI(

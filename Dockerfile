@@ -1,15 +1,15 @@
 # 第一阶段：前端构建
 FROM node:22-slim AS frontend-builder
-WORKDIR /frontend
+WORKDIR /AFE
 
 # 配置 npm/pnpm 使用国内镜像源加速
 RUN npm config set registry https://registry.npmmirror.com && \
     npm install -g pnpm && \
     pnpm config set registry https://registry.npmmirror.com
 
-COPY frontend/package*.json ./
+COPY AFE/package*json ./
 RUN pnpm install
-COPY frontend/ ./
+COPY AFE/ ./
 RUN pnpm run build
 
 # 第二阶段：后端运行环境
@@ -39,19 +39,20 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 安装 Playwright 浏览器（使用淘宝镜像加速）
-# 系统依赖已在前面安装，这里只下载浏览器
 ENV PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright
 RUN playwright install chromium
 
-# 复制后端代码
-COPY . .
+# 复制后端代码（BE 目录包含所有后端模块）
+COPY BE/ ./BE/
 
 # 从第一阶段复制前端构建产物到后端静态文件目录
 RUN mkdir -p /app/static
-COPY --from=frontend-builder /frontend/dist /app/static
+COPY --from=frontend-builder /AFE/dist /app/static
 
 # 暴露端口
 EXPOSE 8000
 
 # 启动命令 - 低配服务器优化：单 worker 减少内存占用
+# PYTHONPATH 包含 /app/BE，使得 from app.xxx 等导入正常工作
+ENV PYTHONPATH=/app/BE:/app
 CMD ["gunicorn", "app.main:app", "-w", "1", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000", "--timeout", "120", "--threads", "2"]

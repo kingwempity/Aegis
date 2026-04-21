@@ -4,14 +4,14 @@
 .gitattributes
 
 # 前端依赖与构建产物（镜像内不跑前端构建，可大幅减小 context）
-frontend/node_modules
-frontend/dist
-frontend/.vite
-frontend/npm-debug.log*
-frontend/yarn-debug.log*
-frontend/yarn-error.log*
-frontend/.env
-frontend/.env.*
+AFE/node_modules
+AFE/dist
+AFE/.vite
+AFE/npm-debug.log*
+AFE/yarn-debug.log*
+AFE/yarn-error.log*
+AFE/.env
+AFE/.env.*
 
 # 数据与持久化目录（运行时挂载，不参与构建）
 data/
@@ -28,7 +28,7 @@ env
 .env
 .env.*
 
-#  IDE 与工具
+# IDE 与工具
 .cursor
 .vscode
 .idea

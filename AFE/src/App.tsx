@@ -1,79 +1,190 @@
+/**
+ * Aegis 主应用组件
+ * 
+ * 管理应用的整体布局和认证状态。
+ */
+
 import React, { useState } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { Layout, Spin } from 'antd';
-import { ThemeProvider } from './contexts/ThemeContext';
-import { AuthProvider } from './contexts/AuthContext';
-import Header from './components/Layout/Header';
-import Sidebar from './components/Layout/Sidebar';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Tasks from './pages/Tasks';
-import TaskDetail from './pages/TaskDetail';
-import Reports from './pages/Reports';
-import Statistics from './pages/Statistics';
-import Settings from './pages/Settings';
-import Profile from './pages/Profile';
-import Modules from './pages/Modules';
-import AdminPanel from './pages/AdminPanel';
-import AttackEngine from './pages/AttackEngine';
-import { useAuth } from './hooks/useAuth';
-import './App.css';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import Login from './components/Login';
+import AppShell from './components/AppShell';
+import Dashboard from './components/Dashboard';
+import TaskList from './components/TaskList';
+import VulnerabilityList from './components/VulnerabilityList';
+import TargetList from './components/TargetList';
+import Discovery from './components/Discovery';
+import Reports from './components/Reports';
+import Users from './components/Users';
+import ScanProfiles from './components/ScanProfiles';
+import NewScanModal from './components/NewScanModal';
+import HelpContentManage from './components/HelpContentManage';
+import LabHome from './components/LabHome';
 
-const { Content } = Layout;
-
+/**
+ * 主应用内容组件（在 AuthProvider 内部）
+ */
 const AppContent: React.FC = () => {
-  const { isAuthenticated, isLoading } = useAuth();
-  const [collapsed, setCollapsed] = useState(false);
+  const { isAuthenticated, isLoading, logout } = useAuth();
+  const [currentPage, setCurrentPage] = useState<'overview' | 'discovery' | 'targets' | 'scans' | 'vulnerabilities' | 'reports' | 'lab' | 'users' | 'settings' | 'help'>('overview');
+  const [isNewScanModalOpen, setIsNewScanModalOpen] = useState(false);
 
-  // 显示加载状态
+  // 加载中状态
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-primary-100 via-primary-200 to-primary-300">
+      <div className="min-h-screen bg-[#1a1d2e] flex items-center justify-center">
         <div className="text-center">
-          <Spin size="large" className="mb-4" />
-          <div className="text-primary-600 font-medium">正在加载...</div>
+          <div className="w-12 h-12 border-4 border-[#ff6b00]/30 border-t-[#ff6b00] rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400">加载中...</p>
         </div>
       </div>
     );
   }
 
-  // 未认证用户显示登录页面
+  // 未登录状态，显示登录页面
   if (!isAuthenticated) {
-    return <Login />;
+    return <Login onLoginSuccess={() => {}} />;
   }
 
+  // 已登录状态，显示主应用
+  const navItems = [
+    {
+      icon: 'overview',
+      label: 'Overview',
+      active: currentPage === 'overview',
+      onClick: () => setCurrentPage('overview'),
+    },
+    {
+      icon: 'discovery',
+      label: 'Attack Surface',
+      active: currentPage === 'discovery',
+      onClick: () => setCurrentPage('discovery'),
+    },
+    {
+      icon: 'targets',
+      label: 'Web Targets',
+      active: currentPage === 'targets',
+      onClick: () => setCurrentPage('targets'),
+    },
+    {
+      icon: 'scans',
+      label: 'Attack Validation',
+      active: currentPage === 'scans',
+      onClick: () => setCurrentPage('scans'),
+    },
+    {
+      icon: 'vulnerabilities',
+      label: 'Validated Findings',
+      active: currentPage === 'vulnerabilities',
+      onClick: () => setCurrentPage('vulnerabilities'),
+    },
+    {
+      icon: 'reports',
+      label: 'Attack Reports',
+      active: currentPage === 'reports',
+      onClick: () => setCurrentPage('reports'),
+    },
+    {
+      icon: 'lab',
+      label: 'Vuln Lab',
+      active: currentPage === 'lab',
+      onClick: () => setCurrentPage('lab'),
+    },
+    
+    // SETTINGS 分组
+    {
+      label: 'SETTINGS',
+      variant: 'section-header' as const,
+    },
+    {
+      icon: 'users',
+      label: 'Users',
+      active: currentPage === 'users',
+      onClick: () => setCurrentPage('users'),
+    },
+    {
+      icon: 'settings',
+      label: 'Scan Profiles',
+      active: currentPage === 'settings',
+      onClick: () => setCurrentPage('settings'),
+    },
+    {
+      icon: 'settings',
+      label: 'Help Content',
+      active: currentPage === 'help',
+      onClick: () => setCurrentPage('help'),
+    },
+  ];
+
+  const handleNewScanSuccess = () => {
+    setCurrentPage('scans');
+  };
+
+  const handleViewReport = (taskId: number) => {
+    console.log(`Navigating to report for task ${taskId}`);
+    setCurrentPage('reports');
+  };
+
+  const renderContent = () => {
+    switch (currentPage) {
+      case 'overview':
+        return <Dashboard />;
+      case 'discovery':
+        return <Discovery />;
+      case 'targets':
+        return <TargetList />;
+      case 'scans':
+        return (
+          <TaskList
+            onCreateTask={() => setIsNewScanModalOpen(true)}
+            onViewReport={handleViewReport}
+          />
+        );
+      case 'vulnerabilities':
+        return <VulnerabilityList />;
+      case 'reports':
+        return <Reports />;
+      case 'lab':
+        return <LabHome />;
+      case 'users':
+        return <Users />;
+      case 'settings':
+        return <ScanProfiles />;
+      case 'help':
+        return <HelpContentManage />;
+      default:
+        return <Dashboard />;
+    }
+  };
+
   return (
-    <Layout className="min-h-screen">
-      <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
-      <Layout>
-        <Header collapsed={collapsed} setCollapsed={setCollapsed} />
-        <Content className="p-6 bg-primary-50 dark:bg-primary-900 transition-colors duration-300">
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/attack-engine" element={<AttackEngine />} />
-            <Route path="/tasks" element={<Tasks />} />
-            <Route path="/tasks/:taskId" element={<TaskDetail />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/statistics" element={<Statistics />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/modules" element={<Modules />} />
-            <Route path="/admin" element={<AdminPanel />} />
-          </Routes>
-        </Content>
-      </Layout>
-    </Layout>
+    <>
+      <AppShell
+        navItems={navItems}
+        onNewScan={() => setIsNewScanModalOpen(true)}
+        onLogout={logout}
+      >
+        {renderContent()}
+      </AppShell>
+
+      <NewScanModal 
+        isOpen={isNewScanModalOpen} 
+        onClose={() => setIsNewScanModalOpen(false)}
+        onSuccess={handleNewScanSuccess}
+      />
+    </>
   );
 };
 
+/**
+ * App 根组件
+ * 
+ * 包裹 AuthProvider 提供认证上下文
+ */
 const App: React.FC = () => {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-    </ThemeProvider>
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 };
 

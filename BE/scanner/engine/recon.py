@@ -989,12 +989,19 @@ class ReconEngine:
             matches = []
             confidence = 0.0
             version = None
-            
-            # 检查主体模式
+
             for pattern in sig['patterns']:
-                if re.search(pattern, combined_text, re.IGNORECASE):
-                    matches.append(pattern)
-                    confidence += 0.15
+                if not pattern or not pattern.strip():
+                    logger.debug(f"⚠️ 技术栈 {tech_name} 包含空的正则模式，跳过")
+                    continue
+
+                try:
+                    if re.search(pattern, combined_text, re.IGNORECASE):
+                        matches.append(pattern)
+                        confidence += 0.15
+                except re.error as regex_err:
+                    logger.warning(f"⚠️ 正则表达式错误 [{tech_name}/{pattern[:30]}]: {regex_err}")
+                    continue
             
             # 尝试提取版本
             if sig['version_patterns']:

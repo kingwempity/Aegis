@@ -36,7 +36,8 @@ class LLMProvider:
             self.client = None
             return
 
-        self.base_url = base_url or os.getenv("LLM_BASE_URL", self.DEFAULT_BASE_URL)
+        raw_base_url = base_url or os.getenv("LLM_BASE_URL", self.DEFAULT_BASE_URL)
+        self.base_url = self._sanitize_base_url(raw_base_url)
         self.api_key = api_key or os.getenv("LLM_API_KEY")
         self.model = model or os.getenv("LLM_MODEL", self.DEFAULT_MODEL)
 
@@ -55,6 +56,20 @@ class LLMProvider:
         except Exception as e:
             logger.error(f"❌ 初始化 OpenAI 客户端失败: {e}")
             self.client = None
+
+    def _sanitize_base_url(self, url: str) -> str:
+        """清理和验证BaseURL，去除末尾多余字符"""
+        if not url:
+            return self.DEFAULT_BASE_URL
+
+        url = url.strip()
+
+        url = url.rstrip(',; \t\n\r')
+
+        if not url.endswith('/'):
+            url += '/'
+
+        return url
 
     def _clean_json_content(self, content: str) -> str:
         content = content.strip()
@@ -116,8 +131,22 @@ Rules:
                     {"role": "user", "content": prompt}
                 ]
             )
-            content = self._clean_json_content(response.choices[0].message.content)
-            result = json.loads(content)
+
+            raw_content = response.choices[0].message.content
+            logger.debug(f"📝 LLM 原始响应: {raw_content[:200]}...")
+
+            if not raw_content or not raw_content.strip():
+                logger.error("❌ LLM 返回空响应")
+                return {"action": "continue", "reason": "LLM 返回空响应", "confidence": 0.0}
+
+            content = self._clean_json_content(raw_content)
+
+            try:
+                result = json.loads(content)
+            except json.JSONDecodeError as json_err:
+                logger.error(f"❌ JSON 解析失败: {json_err}")
+                logger.error(f"   清理后的内容: {content[:300]}")
+                return {"action": "continue", "reason": f"JSON 解析错误: {str(json_err)}", "confidence": 0.0}
 
             result["action"] = self._extract_valid_action(result.get("action", "continue"))
             result["next_target_path"] = self._extract_valid_path(result.get("next_target_path", ""))
@@ -132,6 +161,8 @@ Rules:
             return result
         except Exception as e:
             logger.error(f"LLM 决策失败: {e}")
+            import traceback
+            logger.debug(f"详细错误信息:\n{traceback.format_exc()}")
             return {"action": "continue", "reason": f"LLM 错误: {str(e)}", "confidence": 0.0}
 
     async def verify_vulnerability(self, evidence: Dict[str, Any]) -> Dict[str, Any]:

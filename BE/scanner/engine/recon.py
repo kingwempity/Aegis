@@ -475,7 +475,7 @@ class ReconEngine:
                 r'Microsoft SQL Server',
                 r'SQL Server',
                 r'SQLServer',
-                mssql_driver_pattern := r'(sqlsrv|SQLSRV|pdo_sqlsrv|odbc)',
+                r'(sqlsrv|SQLSRV|pdo_sqlsrv|odbc)',
                 r'Microsoft OLE DB Provider for SQL Server',
             ],
             'version_patterns': [],

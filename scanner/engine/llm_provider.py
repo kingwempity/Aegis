@@ -71,40 +71,68 @@ class LLMProvider:
         if not self.client:
             return {"action": "continue", "reason": "LLM 客户端未就绪", "confidence": 0.0}
 
-        prompt = f"""
-你是一个专业的渗透测试专家。请分析当前的攻击上下文并决定下一步行动。
-当前目标: {context.get('target')}
-已识别技术栈: {context.get('technologies')}
-当前阶段: {context.get('current_phase')}
-历史尝试: {json.dumps(context.get('history', []), ensure_ascii=False)}
-最近一次响应状态码: {context.get('last_status')}
-最近一次响应内容摘要: {context.get('last_response_snippet')}
+        prompt = f"""You are a penetration testing expert. Analyze the attack context and decide the next action.
 
-请输出 JSON 格式的决策：
+Target: {context.get('target')}
+Technologies: {context.get('technologies')}
+Phase: {context.get('current_phase')}
+History: {json.dumps(context.get('history', []), ensure_ascii=False)}
+Last Status: {context.get('last_status')}
+Last Response: {context.get('last_response_snippet')}
+
+Output ONLY valid JSON (no markdown, no extra text):
 {{
-    "action": "continue/retry/change_vector/terminate",
-    "reason": "决策原因",
-    "payload_mutation": "如果需要重试，建议的 Payload 变异方向",
-    "next_target_path": "建议的下一个探测路径",
-    "confidence": 0.0-1.0
+    "action": "continue",
+    "reason": "brief reason in Chinese",
+    "payload_mutation": "specific payload string",
+    "next_target_path": "specific path like /admin or /api/test",
+    "confidence": 0.8
 }}
-"""
+
+Rules:
+- action must be ONE of: continue, retry, change_vector, terminate
+- next_target_path must be a valid URL path (e.g., /admin, /api/user, /?id=1)
+- payload_mutation must be a simple string, not a description
+- Output ONLY the JSON object, nothing else"""
+
         try:
-            # 注意：某些版本的 Ollama 可能不支持 response_format={"type": "json_object"}
-            # 如果报错，请尝试移除该参数并在 Prompt 中强调输出 JSON
             response = self.client.chat.completions.create(
                 model=self.model,
-                messages=[{"role": "system", "content": "You are a cybersecurity expert. Always output JSON."},
+                messages=[{"role": "system", "content": "You are a cybersecurity expert. Output ONLY valid JSON, no markdown code blocks."},
                           {"role": "user", "content": prompt}]
             )
-            content = response.choices[0].message.content
-            # 尝试从返回内容中提取 JSON（防止模型返回多余文字）
+            content = response.choices[0].message.content.strip()
+            
+            # 清理 markdown 代码块
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()
             elif "```" in content:
                 content = content.split("```")[1].split("```")[0].strip()
             
-            return json.loads(content)
+            # 移除控制字符
+            content = ''.join(char for char in content if ord(char) >= 32 or char in '\n\r\t')
+            
+            result = json.loads(content)
+            
+            # 验证并规范化 action
+            valid_actions = ["continue", "retry", "change_vector", "terminate"]
+            action = result.get("action", "continue")
+            if "/" in str(action):
+                action = str(action).split("/")[0]
+            if action not in valid_actions:
+                action = "continue"
+            result["action"] = action
+            
+            # 确保 next_target_path 是有效路径
+            path = result.get("next_target_path", "")
+            if not path or not isinstance(path, str):
+                result["next_target_path"] = ""
+            else:
+                # 移除中文描述，只保留路径部分
+                if "/" not in path[:10]:
+                    result["next_target_path"] = ""
+            
+            return result
         except Exception as e:
             logger.error(f"LLM 决策失败: {e}")
             return {"action": "continue", "reason": f"LLM 错误: {str(e)}", "confidence": 0.0}
@@ -116,33 +144,51 @@ class LLMProvider:
         if not self.client:
             return {"is_valid": True, "confidence": 0.5, "analysis": "LLM 未就绪，默认通过"}
 
-        prompt = f"""
-请作为安全审计员复核以下漏洞证据。
-漏洞类型: {evidence.get('vuln_name')}
-请求 URL: {evidence.get('url')}
-Payload: {evidence.get('payload')}
-响应状态码: {evidence.get('status_code')}
-响应内容: {evidence.get('response_body')}
+        prompt = f"""You are a security auditor. Verify if this vulnerability evidence is real or false positive.
 
-请判定该漏洞是否为真实存在（True Positive）或误报（False Positive）。
-输出 JSON:
+Vulnerability Type: {evidence.get('vuln_name')}
+URL: {evidence.get('url')}
+Payload: {evidence.get('payload')}
+Status Code: {evidence.get('status_code')}
+Response: {evidence.get('response_body')}
+
+Output ONLY valid JSON (no markdown, no extra text):
 {{
-    "is_valid": true/false,
-    "confidence": 0.0-1.0,
-    "analysis": "分析原因"
+    "is_valid": true,
+    "confidence": 0.8,
+    "analysis": "brief analysis in Chinese"
 }}
-"""
+
+Rules:
+- is_valid must be true or false (boolean)
+- confidence must be between 0.0 and 1.0
+- Output ONLY the JSON object, nothing else"""
+
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
-                messages=[{"role": "system", "content": "You are a security auditor. Always output JSON."},
+                messages=[{"role": "system", "content": "You are a security auditor. Output ONLY valid JSON, no markdown code blocks."},
                           {"role": "user", "content": prompt}]
             )
-            content = response.choices[0].message.content
+            content = response.choices[0].message.content.strip()
+            
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
             
-            return json.loads(content)
+            content = ''.join(char for char in content if ord(char) >= 32 or char in '\n\r\t')
+            
+            result = json.loads(content)
+            
+            if "is_valid" not in result:
+                result["is_valid"] = True
+            if "confidence" not in result:
+                result["confidence"] = 0.5
+            if "analysis" not in result:
+                result["analysis"] = "LLM 未提供分析"
+            
+            return result
         except Exception as e:
             logger.error(f"LLM 复核失败: {e}")
             return {"is_valid": True, "confidence": 0.5, "analysis": f"LLM 错误: {str(e)}"}

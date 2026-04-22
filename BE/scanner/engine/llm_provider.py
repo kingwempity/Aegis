@@ -1,9 +1,18 @@
 import os
 import json
 import logging
+import re
 from typing import Dict, Any, List, Optional
+from pathlib import Path
 
-# 使用 try-except 保护，防止环境缺少 openai 包导致 Worker 崩溃
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).parent.parent.parent.parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+except ImportError:
+    pass
+
 try:
     from openai import OpenAI
     OPENAI_AVAILABLE = True
@@ -12,30 +21,32 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
 class LLMProvider:
     """
-    LLM 服务提供者，支持 OpenAI 和本地 Ollama。
+    LLM 服务提供者，支持 OpenAI、SiliconFlow、DeepSeek 和本地 Ollama。
+    默认使用 SiliconFlow 的 DeepSeek-R1-Distill-Qwen-7B 模型。
     """
-    def __init__(self, model: str = "llama3", base_url: str = None):
-        """
-        初始化 LLM 提供者。
-        
-        Args:
-            model: 模型名称，默认 llama3
-            base_url: API 基础地址。如果使用 Ollama，默认为 http://localhost:11434/v1
-        """
+    DEFAULT_BASE_URL = "https://api.siliconflow.cn/v1"
+    DEFAULT_MODEL = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
+
+    def __init__(self, model: str = None, base_url: str = None, api_key: str = None):
         if not OPENAI_AVAILABLE:
             logger.error("❌ 未安装 'openai' Python 包。请在运行环境执行: pip install openai")
             self.client = None
             return
 
-        # 优先从环境变量获取，如果没有则使用默认 Ollama 地址
-        self.base_url = base_url or os.getenv("LLM_BASE_URL", "http://localhost:11434/v1")
-        self.api_key = os.getenv("LLM_API_KEY", "ollama") # Ollama 不需要真实的 API Key，但客户端需要非空字符串
-        self.model = os.getenv("LLM_MODEL", model)
+        self.base_url = base_url or os.getenv("LLM_BASE_URL", self.DEFAULT_BASE_URL)
+        self.api_key = api_key or os.getenv("LLM_API_KEY")
+        self.model = model or os.getenv("LLM_MODEL", self.DEFAULT_MODEL)
+
+        if not self.api_key:
+            logger.warning("⚠️ 未设置 API Key，请通过环境变量 LLM_API_KEY 或参数 api_key 传入")
+            self.client = None
+            return
 
         logger.info(f"🤖 初始化 LLMProvider: BaseURL={self.base_url}, Model={self.model}")
-        
+
         try:
             self.client = OpenAI(
                 base_url=self.base_url,
@@ -45,85 +56,123 @@ class LLMProvider:
             logger.error(f"❌ 初始化 OpenAI 客户端失败: {e}")
             self.client = None
 
+    def _clean_json_content(self, content: str) -> str:
+        content = content.strip()
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            parts = content.split("```")
+            if len(parts) >= 2:
+                content = parts[1].strip()
+        content = ''.join(char for char in content if ord(char) >= 32 or char in '\n\r\t')
+        return content
+
+    def _extract_valid_action(self, action_value: Any) -> str:
+        valid_actions = ["continue", "retry", "change_vector", "terminate"]
+        action_str = str(action_value).lower().strip()
+        for valid in valid_actions:
+            if valid in action_str:
+                return valid
+        return "continue"
+
+    def _extract_valid_path(self, path_value: Any) -> str:
+        if not path_value:
+            return ""
+        path_str = str(path_value).strip()
+        if re.match(r'^[/\?]', path_str):
+            return path_str.split()[0].split('?')[0] if ' ' in path_str else path_str
+        match = re.search(r'([/\?][a-zA-Z0-9_\-./?=&%]*)', path_str)
+        if match:
+            return match.group(1)
+        return ""
+
     async def decide_next_step(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        全时决策：基于当前攻击上下文决定下一步行动。
-        """
         if not self.client:
             return {"action": "continue", "reason": "LLM 客户端未就绪", "confidence": 0.0}
 
-        prompt = f"""
-你是一个专业的渗透测试专家。请分析当前的攻击上下文并决定下一步行动。
-当前目标: {context.get('target')}
-已识别技术栈: {context.get('technologies')}
-当前阶段: {context.get('current_phase')}
-历史尝试: {json.dumps(context.get('history', []), ensure_ascii=False)}
-最近一次响应状态码: {context.get('last_status')}
-最近一次响应内容摘要: {context.get('last_response_snippet')}
+        prompt = f"""You are a penetration testing expert. Analyze and decide the next action.
 
-请输出 JSON 格式的决策：
-{{
-    "action": "continue/retry/change_vector/terminate",
-    "reason": "决策原因",
-    "payload_mutation": "如果需要重试，建议的 Payload 变异方向",
-    "next_target_path": "建议的下一个探测路径",
-    "confidence": 0.0-1.0
-}}
-"""
+Target: {context.get('target')}
+Technologies: {context.get('technologies')}
+Phase: {context.get('current_phase')}
+History: {json.dumps(context.get('history', []), ensure_ascii=False)}
+Last Status: {context.get('last_status')}
+Last Response: {context.get('last_response_snippet')}
+
+Output ONLY a single line of valid JSON (no markdown, no explanation):
+{{"action":"continue","reason":"brief reason","payload_mutation":"test","next_target_path":"/admin","confidence":0.8}}
+
+Rules:
+- action: exactly ONE of: continue, retry, change_vector, terminate
+- next_target_path: a URL path starting with / or ? (e.g., /admin, /?id=1, /api/user)
+- payload_mutation: a simple test string
+- Output ONLY the JSON, nothing else"""
+
         try:
-            # 注意：某些版本的 Ollama 可能不支持 response_format={"type": "json_object"}
-            # 如果报错，请尝试移除该参数并在 Prompt 中强调输出 JSON
             response = self.client.chat.completions.create(
                 model=self.model,
-                messages=[{"role": "system", "content": "You are a cybersecurity expert. Always output JSON."},
-                          {"role": "user", "content": prompt}]
+                messages=[
+                    {"role": "system", "content": "Output ONLY valid JSON on a single line. No markdown. No explanation."},
+                    {"role": "user", "content": prompt}
+                ]
             )
-            content = response.choices[0].message.content
-            # 尝试从返回内容中提取 JSON（防止模型返回多余文字）
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
-            
-            return json.loads(content)
+            content = self._clean_json_content(response.choices[0].message.content)
+            result = json.loads(content)
+
+            result["action"] = self._extract_valid_action(result.get("action", "continue"))
+            result["next_target_path"] = self._extract_valid_path(result.get("next_target_path", ""))
+
+            if "reason" not in result:
+                result["reason"] = "LLM 未提供原因"
+            if "payload_mutation" not in result:
+                result["payload_mutation"] = "test"
+            if "confidence" not in result:
+                result["confidence"] = 0.5
+
+            return result
         except Exception as e:
             logger.error(f"LLM 决策失败: {e}")
             return {"action": "continue", "reason": f"LLM 错误: {str(e)}", "confidence": 0.0}
 
     async def verify_vulnerability(self, evidence: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        结果复核：判定漏洞证据是否真实有效。
-        """
         if not self.client:
             return {"is_valid": True, "confidence": 0.5, "analysis": "LLM 未就绪，默认通过"}
 
-        prompt = f"""
-请作为安全审计员复核以下漏洞证据。
-漏洞类型: {evidence.get('vuln_name')}
-请求 URL: {evidence.get('url')}
-Payload: {evidence.get('payload')}
-响应状态码: {evidence.get('status_code')}
-响应内容: {evidence.get('response_body')}
+        prompt = f"""You are a security auditor. Verify this vulnerability evidence.
 
-请判定该漏洞是否为真实存在（True Positive）或误报（False Positive）。
-输出 JSON:
-{{
-    "is_valid": true/false,
-    "confidence": 0.0-1.0,
-    "analysis": "分析原因"
-}}
-"""
+Type: {evidence.get('vuln_name')}
+URL: {evidence.get('url')}
+Payload: {evidence.get('payload')}
+Status: {evidence.get('status_code')}
+Response: {evidence.get('response_body')}
+
+Output ONLY a single line of valid JSON:
+{{"is_valid":true,"confidence":0.8,"analysis":"brief analysis"}}
+
+Rules:
+- is_valid: true or false (boolean)
+- confidence: 0.0 to 1.0
+- Output ONLY the JSON, nothing else"""
+
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
-                messages=[{"role": "system", "content": "You are a security auditor. Always output JSON."},
-                          {"role": "user", "content": prompt}]
+                messages=[
+                    {"role": "system", "content": "Output ONLY valid JSON on a single line. No markdown."},
+                    {"role": "user", "content": prompt}
+                ]
             )
-            content = response.choices[0].message.content
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            
-            return json.loads(content)
+            content = self._clean_json_content(response.choices[0].message.content)
+            result = json.loads(content)
+
+            if "is_valid" not in result:
+                result["is_valid"] = True
+            if "confidence" not in result:
+                result["confidence"] = 0.5
+            if "analysis" not in result:
+                result["analysis"] = "LLM 未提供分析"
+
+            return result
         except Exception as e:
             logger.error(f"LLM 复核失败: {e}")
             return {"is_valid": True, "confidence": 0.5, "analysis": f"LLM 错误: {str(e)}"}

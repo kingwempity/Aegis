@@ -8,6 +8,7 @@ from celery import Celery
 import httpx
 from app.database import SessionLocal
 from app.models.task import ScanTask, Vulnerability
+from scanner.engine.core import ScannerEngine
 from scanner.engine.simulator import AttackSimulator
 
 # 配置日志
@@ -47,20 +48,25 @@ def execute_scan_task(task_id: int, target_url: str, scan_strategy: str = "intel
         task.status = "RUNNING"
         db.commit()
 
-        # === 调用模拟攻击引擎 ===
-        logger.info("🔧 [Worker] 初始化 AttackSimulator...")
-        simulator = AttackSimulator(target=target_url, strategy=scan_strategy)
+        # === 使用 ScannerEngine 进行漏洞扫描 (与 quick_test_vulhub.py 相同) ===
+        logger.info("🔧 [Worker] 初始化 ScannerEngine...")
+        engine = ScannerEngine(
+            target=target_url,
+            strategy="aggressive",
+            max_concurrent=5,
+            timeout=15.0,
+            max_depth=2
+        )
         
-        # 执行模拟攻击
-        logger.info("🎯 [Worker] 开始执行 LLM 驱动的攻击循环...")
+        # 执行扫描
+        logger.info("🎯 [Worker] 开始执行漏洞扫描...")
         # 兼容 Python 3.6
         if hasattr(asyncio, 'run'):
-            result = asyncio.run(simulator.run_simulation())
+            found_vulns = asyncio.run(engine.run())
         else:
             loop = asyncio.get_event_loop()
-            result = loop.run_until_complete(simulator.run_simulation())
+            found_vulns = loop.run_until_complete(engine.run())
         
-        found_vulns = result.get("vulnerabilities", [])
         execution_time = time.time() - start_time
         
         # 保存漏洞结果

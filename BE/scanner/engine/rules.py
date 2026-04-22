@@ -700,6 +700,10 @@ class RuleEngine:
             return False, version_reason
 
         # 5. 证据强度 (LOOSE 级别除外)
+        # 如果 matched_keywords 为空,自动从响应体中提取漏洞特征
+        if not matched_keywords:
+            matched_keywords = self._auto_extract_vuln_keywords(plugin_id, body_lower, response_body)
+        
         if rule.validation_level != ValidationLevel.LOOSE and not matched_keywords:
             return False, "未提取到有效的漏洞特征证据"
 
@@ -715,6 +719,45 @@ class RuleEngine:
             return False, plugin_specific_reason
 
         return True, "验证通过"
+
+    def _auto_extract_vuln_keywords(self, plugin_id: str, body_lower: str, response_body: str) -> List[str]:
+        """自动从响应体中提取漏洞特征关键词"""
+        keywords = []
+        
+        # ThinkPHP SQL 注入特征
+        if plugin_id == "thinkphp-sqli":
+            sqli_markers = [
+                "call stack", "connection.php", "query.php", "pdoexception",
+                "x-powered-by: php", "sqlstate", "syntax error",
+                "updatexml", "extractvalue", "concat(0xa",
+                "think\\db\\exception", "thinkexception",
+                "where_id_in_", "->query(", "pdostatement",
+                "mysql_fetch", "sql syntax", "etc/passwd",
+                "environment variables", "get data", "post data",
+            ]
+            keywords = [m for m in sqli_markers if m in body_lower]
+        
+        # Git 配置泄露特征
+        elif plugin_id == "git-config-leak":
+            git_markers = ["[core]", "repositoryformatversion", "bare = false", "dirc"]
+            keywords = [m for m in git_markers if m in body_lower]
+        
+        # SSRF 特征
+        elif plugin_id == "ssrf-probe":
+            ssrf_markers = ["ami-id", "instance-id", "metadata-flavor", "ssh-2.0-"]
+            keywords = [m for m in ssrf_markers if m in body_lower]
+        
+        # 通用 SQL 注入特征
+        elif plugin_id.endswith("sqli") or "sql" in plugin_id.lower():
+            general_sqli = [
+                "sql syntax", "mysql_fetch", "sqlstate", "syntax error",
+                "pdoexception", "updatexml", "extractvalue",
+                "error in your sql syntax", "sql error", "database error",
+                "call stack", "connection.php", "query.php",
+            ]
+            keywords = [m for m in general_sqli if m in body_lower]
+        
+        return keywords
 
     def _validate_plugin_specific_signal(
         self,

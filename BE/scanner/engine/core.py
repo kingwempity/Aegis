@@ -791,7 +791,7 @@ class ScannerEngine:
             
             # VULHUB 调试模式: 强制允许所有插件执行
             # 生产环境请注释掉以下两行
-            if plugin_id == "thinkphp-sqli":
+            if plugin_id in ("thinkphp-sqli", "django-cve-2017-12794", "in-sqlijection"):
                 can_execute, execute_reason = True, f"VULHUB调试: 强制执行 {plugin_id}"
             
             self._log_judgment(

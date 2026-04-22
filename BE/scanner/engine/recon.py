@@ -963,6 +963,14 @@ class ReconEngine:
                         if tech.version:
                             result.framework_versions[fw_lower] = tech.version
             
+            # Django 特殊处理: 如果响应包含 "Django tried these URL patterns",即使没有 X-Powered-By 也要检测
+            if FrameworkType.DJANGO not in result.detected_frameworks:
+                django_markers = ["django", "django tried these url patterns", "debug = true"]
+                if any(m in combined_text.lower() for m in django_markers):
+                    result.detected_frameworks.append(FrameworkType.DJANGO)
+                    result.framework_versions['django'] = 'unknown (debug mode)'
+                    result.primary_framework = 'django'
+            
             # 阶段3：WAF/防护识别
             result.waf_fingerprint = await self._identify_waf(target, client, resp)
             

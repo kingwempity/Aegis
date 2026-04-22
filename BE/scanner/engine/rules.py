@@ -27,12 +27,52 @@ class FrameworkType(Enum):
     WORDPRESS = "wordpress"
     SPRING = "spring"
     STRUTS2 = "struts2"
+    FLASK = "flask"
+    EXPRESS = "express"
+    JOOMLA = "joomla"
+    WEBLOGIC = "weblogic"
+    TOMCAT = "tomcat"
+    NGINX = "nginx"
+    APACHE = "apache"
+    IIS = "iis"
+    PHP = "php"
+    PYTHON = "python"
+    NODEJS = "nodejs"
+    MYSQL = "mysql"
+    POSTGRESQL = "postgresql"
+    REDIS = "redis"
+    MONGODB = "mongodb"
 
 
 class ValidationLevel(Enum):
     LOOSE = 1
     MODERATE = 2
     STRICT = 3
+
+FRAMEWORK_NAME_MAP: Dict[str, FrameworkType] = {
+    "thinkphp": FrameworkType.THINKPHP,
+    "drupal": FrameworkType.DRUPAL,
+    "wordpress": FrameworkType.WORDPRESS,
+    "laravel": FrameworkType.LARAVEL,
+    "django": FrameworkType.DJANGO,
+    "spring": FrameworkType.SPRING,
+    "flask": FrameworkType.FLASK,
+    "express": FrameworkType.EXPRESS,
+    "joomla": FrameworkType.JOOMLA,
+    "struts2": FrameworkType.STRUTS2,
+    "weblogic": FrameworkType.WEBLOGIC,
+    "tomcat": FrameworkType.TOMCAT,
+    "nginx": FrameworkType.NGINX,
+    "apache": FrameworkType.APACHE,
+    "iis": FrameworkType.IIS,
+    "php": FrameworkType.PHP,
+    "python": FrameworkType.PYTHON,
+    "nodejs": FrameworkType.NODEJS,
+    "mysql": FrameworkType.MYSQL,
+    "postgresql": FrameworkType.POSTGRESQL,
+    "redis": FrameworkType.REDIS,
+    "mongodb": FrameworkType.MONGODB,
+}
 
 
 @dataclass

@@ -72,7 +72,12 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        # 兼容 Python 3.6
+        if hasattr(asyncio, 'run'):
+            asyncio.run(main())
+        else:
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(main())
     except KeyboardInterrupt:
         print("\n⚠️ 用户中断")
     except Exception as e:

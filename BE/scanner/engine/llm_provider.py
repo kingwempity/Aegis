@@ -114,22 +114,26 @@ History: {json.dumps(context.get('history', []), ensure_ascii=False)}
 Last Status: {context.get('last_status')}
 Last Response: {context.get('last_response_snippet')}
 
-Output ONLY a single line of valid JSON (no markdown, no explanation):
+CRITICAL: You MUST output ONLY valid JSON. No thinking process. No explanation.
+Required JSON format:
 {{"action":"continue","reason":"brief reason","payload_mutation":"test","next_target_path":"/admin","confidence":0.8}}
 
 Rules:
 - action: exactly ONE of: continue, retry, change_vector, terminate
 - next_target_path: a URL path starting with / or ? (e.g., /admin, /?id=1, /api/user)
 - payload_mutation: a simple test string
-- Output ONLY the JSON, nothing else"""
+- confidence: 0.0 to 1.0
+- Output ONLY the JSON object, nothing else"""
 
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "Output ONLY valid JSON on a single line. No markdown. No explanation."},
+                    {"role": "system", "content": "You are a JSON generator. Output ONLY valid JSON. No thinking. No explanation. No markdown. Just the JSON object."},
                     {"role": "user", "content": prompt}
-                ]
+                ],
+                temperature=0.1,
+                max_tokens=500
             )
 
             raw_content = response.choices[0].message.content
@@ -144,9 +148,14 @@ Rules:
             try:
                 result = json.loads(content)
             except json.JSONDecodeError as json_err:
-                logger.error(f"❌ JSON 解析失败: {json_err}")
-                logger.error(f"   清理后的内容: {content[:300]}")
-                return {"action": "continue", "reason": f"JSON 解析错误: {str(json_err)}", "confidence": 0.0}
+                logger.error(f"❌ JSON 解析失败：{json_err}")
+                logger.error(f"   清理后的内容：{content[:300]}")
+                
+                result = self._extract_json_from_natural_language(raw_content)
+                if result:
+                    logger.info("✅ 从自然语言中提取到 JSON")
+                else:
+                    return {"action": "continue", "reason": f"JSON 解析错误：{str(json_err)}", "confidence": 0.0}
 
             result["action"] = self._extract_valid_action(result.get("action", "continue"))
             result["next_target_path"] = self._extract_valid_path(result.get("next_target_path", ""))
@@ -160,10 +169,57 @@ Rules:
 
             return result
         except Exception as e:
-            logger.error(f"LLM 决策失败: {e}")
+            logger.error(f"LLM 决策失败：{e}")
             import traceback
             logger.debug(f"详细错误信息:\n{traceback.format_exc()}")
-            return {"action": "continue", "reason": f"LLM 错误: {str(e)}", "confidence": 0.0}
+            return {"action": "continue", "reason": f"LLM 错误：{str(e)}", "confidence": 0.0}
+
+    def _extract_json_from_natural_language(self, text: str) -> Optional[Dict[str, Any]]:
+        """
+        当 LLM 返回自然语言而非 JSON 时，尝试从中提取关键信息构建 JSON
+        """
+        text_lower = text.lower()
+        
+        result = {
+            "action": "continue",
+            "reason": "",
+            "payload_mutation": "test",
+            "next_target_path": "",
+            "confidence": 0.5
+        }
+        
+        action_keywords = {
+            "continue": ["continue", "keep going", "proceed", "next", "move on"],
+            "retry": ["retry", "try again", "attempt again", "retest"],
+            "change_vector": ["change", "switch", "different", "alternative", "new vector"],
+            "terminate": ["terminate", "stop", "finish", "done", "complete"]
+        }
+        
+        for action, keywords in action_keywords.items():
+            if any(kw in text_lower for kw in keywords):
+                result["action"] = action
+                break
+        
+        path_patterns = [
+            r'(?:path|url|target|endpoint|route)[s]?\s*(?:is|:|=|to)\s*[/\?][a-zA-Z0-9_\-./?=&%]+',
+            r'/(?:admin|api|user|login|upload|config|debug|test|manager|console)',
+            r'\?[a-zA-Z0-9_\-./?=&%]+',
+        ]
+        
+        for pattern in path_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                result["next_target_path"] = match.group(0).strip()
+                break
+        
+        reason_match = re.search(r'(?:reason|because|therefore|so)[s]?\s*(?:is|:|=)?\s*([^.\n]+)', text, re.IGNORECASE)
+        if reason_match:
+            result["reason"] = reason_match.group(1).strip()[:200]
+        
+        if not result["reason"]:
+            result["reason"] = text[:100].strip()
+        
+        return result
 
     async def verify_vulnerability(self, evidence: Dict[str, Any]) -> Dict[str, Any]:
         if not self.client:

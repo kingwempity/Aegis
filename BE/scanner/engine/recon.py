@@ -170,6 +170,13 @@ class ReconResult:
     primary_language: Optional[str] = None
     primary_database: Optional[str] = None
     
+    # 框架信息
+    detected_frameworks: List['FrameworkType'] = field(default_factory=list)
+    framework_versions: Dict[str, str] = field(default_factory=dict)
+    
+    # 入口点(侦察阶段发现的可用路径)
+    entry_points: List[str] = field(default_factory=list)
+    
     # WAF/防护信息
     waf_fingerprint: WAFFingerprint = field(default_factory=WAFFingerprint)
     
@@ -932,6 +939,29 @@ class ReconEngine:
             result.primary_framework = self._determine_primary_framework(result.technologies)
             result.primary_language = self._determine_primary_language(result.technologies)
             result.primary_database = self._determine_primary_database(result.technologies)
+            
+            # 填充框架检测和版本信息
+            for tech in result.technologies:
+                if tech.category == 'framework' and tech.confidence >= 0.35:
+                    fw_lower = tech.name.lower()
+                    fw_map = {
+                        "thinkphp": FrameworkType.THINKPHP,
+                        "drupal": FrameworkType.DRUPAL,
+                        "django": FrameworkType.DJANGO,
+                        "laravel": FrameworkType.LARAVEL,
+                        "wordpress": FrameworkType.WORDPRESS,
+                        "spring": FrameworkType.SPRING,
+                        "struts2": FrameworkType.STRUTS2,
+                        "flask": FrameworkType.FLASK,
+                        "express": FrameworkType.EXPRESS,
+                        "joomla": FrameworkType.JOOMLA,
+                        "weblogic": FrameworkType.WEBLOGIC,
+                        "tomcat": FrameworkType.TOMCAT,
+                    }
+                    if fw_lower in fw_map:
+                        result.detected_frameworks.append(fw_map[fw_lower])
+                        if tech.version:
+                            result.framework_versions[fw_lower] = tech.version
             
             # 阶段3：WAF/防护识别
             result.waf_fingerprint = await self._identify_waf(target, client, resp)

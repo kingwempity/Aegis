@@ -105,23 +105,83 @@ class LLMProvider:
         if not self.client:
             return {"action": "continue", "reason": "LLM 客户端未就绪", "confidence": 0.0}
 
-        prompt = f"""You are a penetration testing expert. Analyze and decide the next action.
+        # 根据侦察阶段探测到的实际信息动态生成路径建议
+        tech = [t.lower() for t in context.get('technologies', [])]
+        frameworks = context.get('detected_frameworks', [])
+        entry_points = context.get('entry_points', [])  # 侦察阶段发现的入口点
+        tech_versions = context.get('tech_versions', {})  # 技术版本信息
+        
+        # 基于实际探测结果生成路径建议
+        path_suggestions = []
+        
+        # 优先使用侦察阶段发现的入口点
+        if entry_points:
+            path_suggestions.extend(entry_points[:5])
+        
+        # 根据实际探测到的技术栈补充路径
+        if 'php' in tech:
+            path_suggestions.append("/index.php")
+        if 'thinkphp' in [f.lower() for f in frameworks] or any('thinkphp' in t.lower() for t in tech):
+            tp_version = tech_versions.get('thinkphp', 'unknown')
+            path_suggestions.extend([
+                "/index.php?s=/index/index/index",
+                "/index.php?ids[]=",
+                "/index.php?where[id]=",
+                "/index.php?order[id]=",
+            ])
+        elif 'drupal' in [f.lower() for f in frameworks] or any('drupal' in t.lower() for t in tech):
+            path_suggestions.extend(["/user/register", "/node/", "/?q="])
+        elif 'django' in [f.lower() for f in frameworks] or any('django' in t.lower() for t in tech):
+            path_suggestions.extend(["/admin/login/", "/api/", "/accounts/login/"])
+        elif 'wordpress' in [f.lower() for f in frameworks] or any('wordpress' in t.lower() for t in tech):
+            path_suggestions.extend(["/wp-login.php", "/xmlrpc.php", "/wp-json/"])
+        elif 'laravel' in [f.lower() for f in frameworks] or any('laravel' in t.lower() for t in tech):
+            path_suggestions.extend(["/login", "/api/v1/", "/debug/"])
+        
+        # 去重并过滤空值
+        path_suggestions = list(dict.fromkeys(p for p in path_suggestions if p))
+        
+        # 记录失败的路径,避免重复
+        failed_paths = []
+        for h in context.get('history', []):
+            status = h.get('status') or h.get('status_code')
+            if status in [404, 403, 500]:
+                # 从 URL 中提取路径
+                url = h.get('url', '')
+                if url:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(url)
+                    path = parsed.path + ('?' + parsed.query if parsed.query else '')
+                    failed_paths.append(path)
+        
+        # 构建动态 Prompt
+        prompt = f"""You are a penetration testing expert. Analyze the target and decide the next action.
 
-Target: {context.get('target')}
-Technologies: {context.get('technologies')}
-Phase: {context.get('current_phase')}
-History: {json.dumps(context.get('history', []), ensure_ascii=False)}
-Last Status: {context.get('last_status')}
-Last Response: {context.get('last_response_snippet')}
+RECONNAISSANCE RESULTS:
+- Target: {context.get('target')}
+- Technologies: {', '.join(context.get('technologies', ['Unknown']))}
+- Frameworks: {', '.join(frameworks) if frameworks else 'Not detected'}
+- Versions: {tech_versions if tech_versions else 'Unknown'}
+
+DYNAMIC PATH SUGGESTIONS (based on actual recon results):
+{', '.join(path_suggestions) if path_suggestions else 'No specific suggestions available. Try common paths for the detected technology.'}
+
+PREVIOUSLY FAILED PATHS (AVOID REPEATING):
+{', '.join(failed_paths) if failed_paths else 'None yet'}
+
+RECENT HISTORY (last 5 actions):
+{json.dumps(context.get('history', [])[-5:], ensure_ascii=False)}
 
 CRITICAL: You MUST output ONLY valid JSON. No thinking process. No explanation.
 Required JSON format:
-{{"action":"continue","reason":"brief reason","payload_mutation":"test","next_target_path":"/admin","confidence":0.8}}
+{{"action":"continue","reason":"brief reason","payload_mutation":"0,updatexml(0,concat(0xa,user()),0)","next_target_path":"/index.php?s=/index/index/index&ids[0]=1","confidence":0.8}}
 
-Rules:
+DECISION RULES:
 - action: exactly ONE of: continue, retry, change_vector, terminate
-- next_target_path: a URL path starting with / or ? (e.g., /admin, /?id=1, /api/user)
-- payload_mutation: a simple test string
+- next_target_path: MUST use paths from "DYNAMIC PATH SUGGESTIONS" or framework-specific paths based on recon results
+- payload_mutation: use technology-specific payloads (e.g., SQL injection for PHP/ThinkPHP)
+- NEVER repeat paths that returned 404/403
+- DO NOT use generic paths like /admin unless recon confirms the framework uses it
 - confidence: 0.0 to 1.0
 - Output ONLY the JSON object, nothing else"""
 

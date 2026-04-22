@@ -64,6 +64,9 @@ class AttackSimulator:
         self.context: Dict[str, Any] = {
             "target": self.target,
             "technologies": [],
+            "detected_frameworks": [],  # 侦察阶段检测到的框架
+            "tech_versions": {},        # 技术版本信息
+            "entry_points": [],         # 侦察阶段发现的入口点
             "current_phase": "init",
             "history": []
         }
@@ -84,8 +87,26 @@ class AttackSimulator:
                     self.detected_frameworks.append(FRAMEWORK_NAME_MAP[fw_lower])
                 logger.info(f"📦 主框架: {recon_result.primary_framework}")
             
+            # 更新上下文,供 LLM 动态决策
+            self.context["detected_frameworks"] = [fw.value for fw in self.detected_frameworks]
+            self.context["tech_versions"] = self.framework_versions
+            
+            # 提取侦察阶段发现的入口点
+            if recon_result.entry_points:
+                self.context["entry_points"] = recon_result.entry_points[:5]
+            else:
+                # 根据检测到的技术栈生成默认入口点
+                tech_lower = [t.lower() for t in self.context['technologies']]
+                if 'thinkphp' in ' '.join(tech_lower) or 'php' in tech_lower:
+                    self.context["entry_points"] = ["/index.php", "/?s=/index/index/index"]
+                elif 'drupal' in ' '.join(tech_lower):
+                    self.context["entry_points"] = ["/user/register", "/node/"]
+                elif 'wordpress' in ' '.join(tech_lower):
+                    self.context["entry_points"] = ["/wp-login.php", "/xmlrpc.php"]
+            
             logger.info(f"🔍 侦察完成，识别技术栈: {self.context['technologies']}")
-            logger.info(f"📦 检测到的框架: {[fw.value for fw in self.detected_frameworks]}")
+            logger.info(f"📦 检测到的框架: {self.context['detected_frameworks']}")
+            logger.info(f"🔑 发现的入口点: {self.context['entry_points']}")
 
             # 2. VULHUB 快速扫描: 直接注入预定义 payload
             logger.info("🔧 开始 VULHUB 快速扫描...")

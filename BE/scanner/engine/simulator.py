@@ -16,7 +16,7 @@ import httpx
 
 from scanner.engine.llm_provider import LLMProvider
 from scanner.engine.recon import ReconEngine
-from scanner.engine.rules import RuleEngine, FRAMEWORK_NAME_MAP
+from scanner.engine.rules import RuleEngine, FRAMEWORK_NAME_MAP, FrameworkType
 
 logger = logging.getLogger(__name__)
 
@@ -272,8 +272,13 @@ class AttackSimulator:
             )
 
     def _is_potential_vuln_basic(self, resp: httpx.Response) -> bool:
-        # 基础的启发式判断
-        indicators = ["sql syntax", "mysql_fetch", "<script>alert", "etc/passwd", "uid="]
+        # 基础启发式判断
+        indicators = [
+            "sql syntax", "mysql_fetch", "<script>alert", "etc/passwd", "uid=",
+            # ThinkPHP 调试页面特征
+            "call stack", "connection.php", "query.php", "pdoexception",
+            "thinkphp_show_page_trace", "environment variables",
+        ]
         return any(ind in resp.text.lower() for ind in indicators)
 
     def _is_potential_vuln(self, step: AttackStep) -> bool:

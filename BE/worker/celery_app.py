@@ -52,7 +52,12 @@ def execute_scan_task(task_id: int, target_url: str, scan_strategy: str = "intel
         
         # 执行模拟攻击
         logger.info("🎯 [Worker] 开始执行 LLM 驱动的攻击循环...")
-        result = asyncio.run(simulator.run_simulation())
+        # 兼容 Python 3.6
+        if hasattr(asyncio, 'run'):
+            result = asyncio.run(simulator.run_simulation())
+        else:
+            loop = asyncio.get_event_loop()
+            result = loop.run_until_complete(simulator.run_simulation())
         
         found_vulns = result.get("vulnerabilities", [])
         execution_time = time.time() - start_time
@@ -92,7 +97,8 @@ def execute_scan_task(task_id: int, target_url: str, scan_strategy: str = "intel
         logger.info("=" * 60)
 
     except Exception as e:
-        logger.error(f"❌ [Worker] 引擎异常: {e}")
+        error_msg = f"❌ [Worker] 引擎异常: {e}"
+        logger.error(error_msg)
         logger.error(traceback.format_exc())
         if task:
             task.status = "FAILED"

@@ -8,8 +8,7 @@ from celery import Celery
 import httpx
 from app.database import SessionLocal
 from app.models.task import ScanTask, Vulnerability
-from scanner.engine.core import ScannerEngine
-from scanner.engine.simulator import AttackSimulator
+from scanner.engine.hybrid_engine import HybridScannerEngine
 
 # 配置日志
 logging.basicConfig(
@@ -48,18 +47,18 @@ def execute_scan_task(task_id: int, target_url: str, scan_strategy: str = "intel
         task.status = "RUNNING"
         db.commit()
 
-        # === 使用 ScannerEngine 进行漏洞扫描 (与 quick_test_vulhub.py 相同) ===
-        logger.info("🔧 [Worker] 初始化 ScannerEngine...")
-        engine = ScannerEngine(
+        # === 使用混合扫描引擎 ===
+        logger.info("🔧 [Worker] 初始化 HybridScannerEngine...")
+        engine = HybridScannerEngine(
             target=target_url,
-            strategy="aggressive",
+            strategy="hybrid",
             max_concurrent=5,
             timeout=15.0,
             max_depth=2
         )
         
-        # 执行扫描
-        logger.info("🎯 [Worker] 开始执行漏洞扫描...")
+        # 执行混合扫描
+        logger.info("🎯 [Worker] 开始执行混合扫描...")
         # 兼容 Python 3.6
         if hasattr(asyncio, 'run'):
             found_vulns = asyncio.run(engine.run())

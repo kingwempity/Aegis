@@ -71,6 +71,18 @@ class AttackSimulator:
             "history": []
         }
 
+    def set_recon_context(self, context: Dict[str, Any]):
+        """接收第一阶段 ScannerEngine 的侦察结果，作为 LLM 决策的上下文"""
+        self.detected_frameworks = context.get('detected_frameworks', [])
+        self.framework_versions = context.get('framework_versions', {})
+
+        # 更新上下文供 LLM 使用
+        self.context['detected_frameworks'] = context.get('detected_frameworks', [])
+        self.context['tech_versions'] = context.get('framework_versions', {})
+        self.context['entry_points'] = context.get('entry_points', [])
+        self.context['already_found_vulns'] = context.get('already_found_vulns', [])
+        self.context['technologies'] = context.get('technologies', [])
+        
     async def run_simulation(self) -> Dict[str, Any]:
         """执行完整的模拟攻击流程"""
         logger.info(f"🚀 开始对 {self.target} 进行模拟攻击 (策略: {self.strategy})")

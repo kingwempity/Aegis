@@ -889,6 +889,19 @@ class RuleEngine:
                 triggered = any(marker in body_lower for marker in cmd_markers)
             elif adj.condition == "response_has_other_framework_sig":
                 triggered = any(fw not in expected_set and fw != FrameworkType.UNKNOWN for fw in combined_frameworks)
+            elif adj.condition == "response_has_thinkphp_debug_page":
+                thinkphp_debug_markers = [
+                    "call stack",
+                    "connection.php",
+                    "query.php line",
+                    "->query(",
+                    "where_id_in_",
+                    "environment variables",
+                    "get data",
+                    "post data",
+                    "thinkphp_show_page_trace",
+                ]
+                triggered = sum(1 for m in thinkphp_debug_markers if m in body_lower) >= 2
 
             if triggered:
                 confidence += adj.adjustment

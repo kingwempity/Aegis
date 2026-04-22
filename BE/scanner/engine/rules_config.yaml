@@ -1,7 +1,7 @@
 framework_signatures:
   thinkphp:
     headers:
-      X-Powered-By: "ThinkPHP"
+      X-Powered-By: "ThinkPHP|PHP"
     body_patterns:
       - "十年磨一剑"
       - "ThinkPHP"
@@ -9,6 +9,7 @@ framework_signatures:
       - "Var_Pathinfo"
       - "think-error"
       - "thinkphp_show_page_trace"
+      - "thinkphp"
     url_patterns:
       - "s=/index/index"
       - "public/static"
@@ -20,6 +21,7 @@ framework_signatures:
       - "Think\\\\Exception"
       - "thinkphp_show_page_trace"
       - "十年磨一剑"
+      - "ThinkPHP"
     version_patterns:
       - "ThinkPHP\\s*[Vv/]?([0-9]+(?:\\.[0-9]+)+)"
 
@@ -122,9 +124,9 @@ detection_rules:
   thinkphp-sqli:
     plugin_id: "thinkphp-sqli"
     expected_frameworks: ["thinkphp"]
-    validation_level: "strict"
-    min_confidence: 0.45
-    required_evidence_count: 2
+    validation_level: "moderate"
+    min_confidence: 0.25
+    required_evidence_count: 1
     exclusion_rules: ["response_has_drupal_exclusive_sig", "response_has_django_exclusive_sig"]
     allow_when_framework_unknown: true
     required_path_patterns:
@@ -160,6 +162,10 @@ detection_rules:
         condition: "response_has_sql_error"
         adjustment: 0.15
         description: "响应包含通用SQL错误特征"
+      - factor_name: "thinkphp_debug_page"
+        condition: "response_has_thinkphp_debug_page"
+        adjustment: 0.20
+        description: "响应包含ThinkPHP调试页面特征"
 
   drupal-cve-2019-6341:
     plugin_id: "drupal-cve-2019-6341"

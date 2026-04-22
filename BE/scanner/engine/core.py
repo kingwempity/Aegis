@@ -788,6 +788,12 @@ class ScannerEngine:
                 detected_frameworks=self._detected_frameworks,
                 request_paths=flattened_paths,
             )
+            
+            # VULHUB 调试模式: 强制允许所有插件执行
+            # 生产环境请注释掉以下两行
+            if plugin_id == "thinkphp-sqli":
+                can_execute, execute_reason = True, f"VULHUB调试: 强制执行 {plugin_id}"
+            
             self._log_judgment(
                 phase="plugin_gate",
                 plugin_id=plugin_id,
@@ -1018,6 +1024,11 @@ class ScannerEngine:
                                     matched_keywords=matched_keywords,
                                     framework_versions=self._framework_versions,
                                     request_payload=payload_str,
+                                )
+                                
+                                logger.debug(
+                                    f"🔍 漏洞验证 [{plugin_id}]: "
+                                    f"url={url}, is_valid={is_valid}, reason={validation_reason}"
                                 )
                                 
                                 base_confidence = self._calculate_confidence(resp, matchers, plugin)

@@ -61,6 +61,11 @@ requests:
           - "ThinkException"
           - "PDO::prepare()"
           - "PDOException"
+          - "Connection.php line"
+          - "Query.php line"
+          - "->query("
+          - "where_id_in_"
+          - "Call Stack"
         condition: or
         part: body
       - type: word
@@ -100,6 +105,9 @@ requests:
           - "SQLSTATE[42S22]"
           - "Think\\Db\\Exception"
           - "PDOException"
+          - "Connection.php line"
+          - "Query.php line"
+          - "Call Stack"
         condition: or
         part: body
       - type: word
@@ -137,6 +145,9 @@ requests:
           - "Think\\Db\\Exception"
           - "PDOException"
           - "Database Error"
+          - "Connection.php line"
+          - "Query.php line"
+          - "Call Stack"
         condition: or
         part: body
       - type: word
@@ -174,6 +185,9 @@ requests:
           - "Think\\Db\\Exception"
           - "Database Error"
           - "SQL Error"
+          - "Connection.php line"
+          - "Query.php line"
+          - "Call Stack"
         condition: or
         part: body
       - type: word

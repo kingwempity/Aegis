@@ -36,7 +36,16 @@ def infer_vulnerability_type(vuln_data: Dict[str, Any]) -> str:
     """
     url = vuln_data.get("url", "").lower()
     payload = vuln_data.get("payload", "").lower() if vuln_data.get("payload") else ""
-    evidence = vuln_data.get("evidence", "").lower() if vuln_data.get("evidence") else ""
+    
+    # evidence 可能是字典或字符串，需要安全转换
+    evidence_raw = vuln_data.get("evidence", "")
+    if isinstance(evidence_raw, dict):
+        evidence = str(evidence_raw).lower()
+    elif evidence_raw:
+        evidence = evidence_raw.lower()
+    else:
+        evidence = ""
+    
     llm_analysis = vuln_data.get("llm_analysis", "").lower() if vuln_data.get("llm_analysis") else ""
     
     # 合并所有文本用于分析

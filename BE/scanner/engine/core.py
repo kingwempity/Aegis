@@ -2286,17 +2286,141 @@ class ScannerEngine:
                 self._stats.vulnerabilities_found += 1
     
     async def _request_in_scope(self, client: httpx.AsyncClient, method: str, url: str, headers: Optional[Dict[str, str]] = None, body: Optional[str] = None, max_redirects: int = 5) -> httpx.Response:
-        """发送请求并仅跟随同源重定向"""
+        """发送请求并仅跟随同源重定向
+        
+        特殊处理：对于包含#字符的 URL（如 CVE-2025-32395），
+        使用 socket 直接发送原始 HTTP 请求以保留#字符
+        """
         current_url = url
         current_headers = headers or {}
+        
         for _ in range(max_redirects + 1):
+            # 检查 URL 是否包含#字符（用于 CVE-2025-32395 等特殊漏洞）
+            if '#' in current_url:
+                # 使用 socket 直接发送原始 HTTP 请求以保留#字符
+                resp = await self._send_raw_http_request(current_url, method, current_headers, body)
+                if resp is not None:
+                    return resp
+                # 如果原始请求失败，回退到标准方法（但#会被移除）
+            
+            # 标准请求（不含#或原始请求失败）
             resp = await client.request(method, current_url, headers=current_headers, content=body)
+            
             location = resp.headers.get("location")
-            if not location or not (300 <= resp.status_code < 400): return resp
+            if not location or not (300 <= resp.status_code < 400): 
+                return resp
+            
             next_url = urljoin(current_url, location)
-            if not self._is_in_scope(next_url): return resp
+            if not self._is_in_scope(next_url): 
+                return resp
+            
             current_url = next_url
+        
         return resp
+    
+    async def _send_raw_http_request(self, url: str, method: str, headers: Dict[str, str], body: Optional[str] = None) -> Optional[httpx.Response]:
+        """
+        使用 socket 直接发送原始 HTTP 请求，保留 URL 中的#字符
+        
+        这是为了解决 httpx/httpcore 自动规范化 URL 移除#字符的问题
+        """
+        import socket
+        import asyncio
+        import ssl
+        
+        try:
+            # 解析 URL
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            
+            host = parsed.hostname
+            port = parsed.port or (443 if parsed.scheme == 'https' else 80)
+            path = parsed.path
+            query = f"?{parsed.query}" if parsed.query else ""
+            fragment = f"#{url.split('#', 1)[1]}" if '#' in url else ""
+            
+            # 构建完整的请求路径（包含#）
+            full_path = f"{path}{query}{fragment}"
+            
+            # 创建 socket 连接
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port, ssl=(parsed.scheme == 'https')),
+                timeout=10.0
+            )
+            
+            # 构建 HTTP 请求
+            request_lines = [
+                f"{method} {full_path} HTTP/1.1",
+                f"Host: {host}:{port if port != 80 and port != 443 else ''}".rstrip(':'),
+            ]
+            
+            # 添加请求头
+            for key, value in headers.items():
+                request_lines.append(f"{key}: {value}")
+            
+            # 默认 User-Agent
+            if 'user-agent' not in [k.lower() for k in headers.keys()]:
+                request_lines.append("User-Agent: Aegis-Scanner/1.0")
+            
+            request_lines.append("Connection: close")
+            request_lines.append("")
+            request_lines.append("")
+            
+            # 添加请求体
+            if body:
+                request_lines[-1] = body
+            
+            request = "\r\n".join(request_lines)
+            
+            # 发送请求
+            writer.write(request.encode('utf-8'))
+            await writer.drain()
+            
+            # 读取响应
+            response_data = b""
+            while True:
+                chunk = await asyncio.wait_for(reader.read(4096), timeout=10.0)
+                if not chunk:
+                    break
+                response_data += chunk
+            
+            # 解析响应
+            response_text = response_data.decode('utf-8', errors='ignore')
+            
+            # 分离响应头和响应体
+            if "\r\n\r\n" in response_text:
+                header_part, body_part = response_text.split("\r\n\r\n", 1)
+            else:
+                header_part = response_text
+                body_part = ""
+            
+            # 解析状态码
+            status_line = header_part.split("\r\n")[0]
+            status_code = int(status_line.split()[1])
+            
+            # 创建 httpx Response 对象
+            httpx_resp = httpx.Response(
+                status_code=status_code,
+                headers={},
+                content=body_part.encode('utf-8'),
+                request=httpx.Request(method, url),
+            )
+            
+            # 设置扩展属性以便调试
+            httpx_resp.extensions['raw_request'] = True
+            httpx_resp.extensions['full_path'] = full_path
+            
+            writer.close()
+            await writer.wait_closed()
+            
+            return httpx_resp
+            
+        except Exception as e:
+            # 记录错误但不中断
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"原始 HTTP 请求失败：{e}")
+            return None
     
     def _is_in_scope(self, url: str) -> bool:
         parsed = urlparse(url)

@@ -30,6 +30,8 @@ from enum import Enum
 import logging
 import httpx
 
+from scanner.engine.rules import FrameworkType
+
 logger = logging.getLogger(__name__)
 
 
@@ -252,12 +254,11 @@ class ReconEngine:
             'patterns': [
                 r'thinkphp',
                 r'ThinkPHP',
-                r'Think\\',
                 r'Think\\\\',
                 r'__think__',
                 r'think_',
                 r's=/',
-                r'?s=',
+                r'\?s=',
                 r'Var_Pathinfo',
                 r'think_trace',
             ],
@@ -942,7 +943,8 @@ class ReconEngine:
             
             # 填充框架检测和版本信息
             for tech in result.technologies:
-                if tech.category == 'framework' and tech.confidence >= 0.35:
+                # 同时支持 framework 和 cms 类别 (Drupal, WordPress 等属于 cms)
+                if tech.category in ('framework', 'cms') and tech.confidence >= 0.35:
                     fw_lower = tech.name.lower()
                     fw_map = {
                         "thinkphp": FrameworkType.THINKPHP,
@@ -966,7 +968,8 @@ class ReconEngine:
             # Django 特殊处理: 如果响应包含 "Django tried these URL patterns",即使没有 X-Powered-By 也要检测
             if FrameworkType.DJANGO not in result.detected_frameworks:
                 django_markers = ["django", "django tried these url patterns", "debug = true"]
-                if any(m in combined_text.lower() for m in django_markers):
+                combined_text_for_django = resp.text + "\n" + str(dict(resp.headers))
+                if any(m in combined_text_for_django.lower() for m in django_markers):
                     result.detected_frameworks.append(FrameworkType.DJANGO)
                     result.framework_versions['django'] = 'unknown (debug mode)'
                     result.primary_framework = 'django'
@@ -1020,7 +1023,7 @@ class ReconEngine:
         combined_text = (
             response_body.lower() + 
             "\n" + 
-            json.dumps(response_headers).lower()
+            json.dumps(dict(response_headers)).lower()
         )
         
         for tech_name, sig in self.FRAMEWORK_SIGNATURES.items():
@@ -1045,7 +1048,7 @@ class ReconEngine:
             if sig['version_patterns']:
                 for pattern, source in sig['version_patterns']:
                     if source == 'header':
-                        text_to_search = json.dumps(response_headers)
+                        text_to_search = json.dumps(dict(response_headers))
                     elif source == 'body':
                         text_to_search = response_body
                     elif source == 'meta':
@@ -1053,7 +1056,7 @@ class ReconEngine:
                     elif source == 'error':
                         text_to_search = response_body
                     elif source == 'cookie':
-                        text_to_search = json.dumps(response_headers)
+                        text_to_search = json.dumps(dict(response_headers))
                     else:
                         text_to_search = combined_text
                     
@@ -1300,7 +1303,7 @@ class ReconEngine:
             r'kubernetes',
         ]
         
-        combined = f"{json.dumps(headers)} {body}"
+        combined = f"{json.dumps(dict(headers))} {body}"
         ms_matches = sum(1 for pattern in microservice_indicators 
                        if re.search(pattern, combined, re.IGNORECASE))
         
@@ -1363,7 +1366,7 @@ class ReconEngine:
         session_config = {}
         
         body_lower = body.lower()
-        headers_str = json.dumps(headers).lower()
+        headers_str = json.dumps(dict(headers)).lower()
         
         # 检查Session Cookie认证
         session_cookies = ['sessionid', 'jsessionid', 'phpsessid', 'asp.net_sessionid']

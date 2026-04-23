@@ -69,12 +69,12 @@ def infer_vulnerability_type(vuln_data: Dict[str, Any]) -> str:
         r"<svg", r"<iframe", r"<img.*src\s*=\s*x",
     ]
     
-    # 命令注入特征
+    # 命令注入特征（移除 /etc/passwd，避免与文件读取混淆）
     cmd_injection_patterns = [
         r"command\s*injection", r"rce", r"remote\s*code\s*execution",
         r"cmd\s*=", r"exec\s*\(", r"system\s*\(", r"shell_exec",
         r"passthru", r"proc_open", r"\|\s*(cat|ls|dir|whoami|id)",
-        r"`.*`", r"\$\(.*\)", r"/bin/(ba)?sh", r"/etc/passwd",
+        r"`.*`", r"\$\(.*\)", r"/bin/(ba)?sh",
     ]
     
     # 文件包含/遍历特征
@@ -83,6 +83,12 @@ def infer_vulnerability_type(vuln_data: Dict[str, Any]) -> str:
         r"\.\./", r"\.\.\\", r"/etc/passwd", r"/etc/shadow",
         r"win\.ini", r"boot\.ini", r"php://filter", r"php://input",
         r"expect://", r"data://", r"file://",
+    ]
+    
+    # CVE-2025-32395 特定特征
+    cve_2025_32395_patterns = [
+        r"cve.*2025.*32395", r"vite.*hash", r"vite.*bypass",
+        r"/@fs/", r"server\.fs\.deny", r"vite.*file.*read",
     ]
     
     # SSRF 特征
@@ -114,9 +120,10 @@ def infer_vulnerability_type(vuln_data: Dict[str, Any]) -> str:
         "Django Debug Page Disclosure": [r"django.*debug", r"django_settings_module"],
         "Drupal File Upload (CVE-2018-7600)": [r"drupal.*upload", r"cve.*2018.*7600"],
         "Django IntegrityError (CVE-2017-12794)": [r"django.*integrity", r"cve.*2017.*12794"],
+        "CVE-2025-32395 Vite Hash Bypass": cve_2025_32395_patterns,
     }
     
-    # 检查框架特定漏洞
+    # 检查框架特定漏洞（包括 CVE-2025-32395）
     for vuln_name, patterns in framework_patterns.items():
         if any(re.search(p, full_text) for p in patterns):
             return f"{vuln_name} (Simulation-Confirmed)"
@@ -196,12 +203,22 @@ def execute_scan_task(task_id: int, target_url: str, scan_strategy: str = "intel
                 # 智能推断漏洞类型
                 vuln_name = infer_vulnerability_type(v)
                 
+                # 提取 Payload - 优先使用原始 payload，如果没有则从 URL 中提取攻击路径
+                payload = v.get("payload", "N/A")
+                if not payload or payload == "N/A" or payload == "aegis_probe":
+                    # 从 URL 中提取攻击路径（特别是对于 CVE-2025-32395 等文件读取漏洞）
+                    url = v.get("url", "")
+                    if "/@fs/" in url:
+                        # 提取 /@fs/ 及其后面的部分作为 Payload
+                        payload_start = url.find("/@fs/")
+                        payload = url[payload_start:] if payload_start >= 0 else url
+                
                 vuln_record = Vulnerability(
                     task_id=task_id,
                     vuln_name=vuln_name,
                     severity="HIGH", # 模拟攻击确认的通常是高危
                     url=v["url"],
-                    payload=v.get("payload"),
+                    payload=payload,
                     evidence=json.dumps({
                         "evidence": v["evidence"],
                         "llm_analysis": v.get("llm_analysis")
@@ -210,7 +227,7 @@ def execute_scan_task(task_id: int, target_url: str, scan_strategy: str = "intel
                 db.add(vuln_record)
                 
                 logger.info(f"  [{idx}] {vuln_name} @ {v['url']}")
-                logger.info(f"      Payload: {v.get('payload', 'N/A')[:100]}")
+                logger.info(f"      Payload: {payload[:100]}")
                 logger.info(f"      分析：{v.get('llm_analysis')}")
         else:
             logger.info("ℹ️  [Worker] 未发现漏洞")

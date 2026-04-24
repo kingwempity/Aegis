@@ -53,7 +53,80 @@ const RequestResponseViewer: React.FC<{
 
   const hasRequest = req && (req.url || req.body || req.headers);
   const hasResponse = resp && (resp.status_code || resp.body || resp.headers);
-  const hasEvidence = evidence?.matched_conditions && evidence.matched_conditions.length > 0;
+  const hasEvidence = evidence && (
+    (evidence.matched_conditions && evidence.matched_conditions.length > 0) ||
+    (evidence.matched_patterns && evidence.matched_patterns.length > 0) ||
+    evidence.vulnerability_confirmed !== undefined ||
+    evidence.timing_ms !== undefined ||
+    (evidence.request || evidence.response)
+  );
+
+  const evidenceTabContent = () => {
+    if (!evidence) {
+      return (
+        <div className="text-sm text-gray-400 text-center py-4">无证据数据</div>
+      );
+    }
+
+    const hasMatchedConditions = evidence.matched_conditions && evidence.matched_conditions.length > 0;
+    const hasMatchedPatterns = evidence.matched_patterns && evidence.matched_patterns.length > 0;
+
+    if (!hasMatchedConditions && !hasMatchedPatterns && !evidence.vulnerability_confirmed && !evidence.timing_ms) {
+      return (
+        <div className="space-y-3">
+          <div className="text-xs text-gray-500">证据信息</div>
+          <div className="bg-gray-50 px-3 py-2 rounded-lg">
+            <div className="text-xs text-gray-600">
+              {evidence.vulnerability_confirmed !== undefined ? (
+                <span>漏洞确认: {evidence.vulnerability_confirmed ? '是' : '否'}</span>
+              ) : evidence.timing_ms ? (
+                <span>耗时: {formatDuration(evidence.timing_ms)}</span>
+              ) : (
+                <span className="text-gray-400">暂无详细证据信息</span>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        {hasMatchedConditions && (
+          <>
+            <div className="text-xs font-semibold text-gray-500 uppercase">匹配条件</div>
+            <div className="space-y-2">
+              {evidence.matched_conditions?.map((condition, idx) => (
+                <div key={idx} className="flex items-start gap-2 bg-amber-50 px-3 py-2 rounded-lg">
+                  <CheckCircle size={14} className="text-amber-500 mt-0.5 shrink-0" />
+                  <span className="text-xs text-gray-700">{condition}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {hasMatchedPatterns && (
+          <>
+            <div className="text-xs font-semibold text-gray-500 uppercase mt-4">匹配模式</div>
+            <div className="space-y-2">
+              {evidence.matched_patterns!.map((pattern, idx) => (
+                <div key={idx} className="bg-white px-3 py-2 rounded-lg border border-gray-200">
+                  <div className="text-xs font-mono text-purple-600">{pattern.pattern}</div>
+                  <div className="text-xs text-gray-500 mt-1">类型: {pattern.match_type}</div>
+                  {pattern.matched_text && (
+                    <pre className="text-xs bg-gray-50 p-2 rounded mt-2 overflow-x-auto">
+                      {pattern.matched_text}
+                    </pre>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 overflow-hidden">
@@ -187,37 +260,7 @@ const RequestResponseViewer: React.FC<{
           </div>
         )}
 
-        {activeTab === 'evidence' && hasEvidence && (
-          <div className="space-y-3">
-            <div className="text-xs font-semibold text-gray-500 uppercase">匹配条件</div>
-            <div className="space-y-2">
-              {evidence?.matched_conditions?.map((condition, idx) => (
-                <div key={idx} className="flex items-start gap-2 bg-amber-50 px-3 py-2 rounded-lg">
-                  <CheckCircle size={14} className="text-amber-500 mt-0.5 shrink-0" />
-                  <span className="text-xs text-gray-700">{condition}</span>
-                </div>
-              ))}
-            </div>
-            {evidence?.matched_patterns && evidence.matched_patterns.length > 0 && (
-              <>
-                <div className="text-xs font-semibold text-gray-500 uppercase mt-4">匹配模式</div>
-                <div className="space-y-2">
-                  {evidence.matched_patterns.map((pattern, idx) => (
-                    <div key={idx} className="bg-white px-3 py-2 rounded-lg border border-gray-200">
-                      <div className="text-xs font-mono text-purple-600">{pattern.pattern}</div>
-                      <div className="text-xs text-gray-500 mt-1">类型: {pattern.match_type}</div>
-                      {pattern.matched_text && (
-                        <pre className="text-xs bg-gray-50 p-2 rounded mt-2 overflow-x-auto">
-                          {pattern.matched_text}
-                        </pre>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        )}
+        {activeTab === 'evidence' && hasEvidence && evidenceTabContent()}
       </div>
     </div>
   );

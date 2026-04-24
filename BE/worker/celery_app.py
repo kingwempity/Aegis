@@ -213,16 +213,79 @@ def execute_scan_task(task_id: int, target_url: str, scan_strategy: str = "intel
                         payload_start = url.find("/@fs/")
                         payload = url[payload_start:] if payload_start >= 0 else url
                 
+                # 提取攻击路径信息（来自 ScannerEngine 的 ScanResult）
+                attack_path = v.get("attack_path")
+                
+                # 提取漏洞类型和参数
+                vuln_type = None
+                parameter = None
+                
+                # 尝试从 validation_log 中提取
+                validation_log = v.get("validation_log")
+                if validation_log and isinstance(validation_log, dict):
+                    vuln_type = validation_log.get("vuln_type")
+                    parameter = validation_log.get("parameter")
+                
+                # 尝试从 evidence 中提取
+                evidence_data = v.get("evidence")
+                if evidence_data and isinstance(evidence_data, dict):
+                    if not vuln_type:
+                        vuln_type = evidence_data.get("vuln_type")
+                    if not parameter:
+                        parameter = evidence_data.get("parameter")
+                
+                # 尝试从 attack_path 中提取
+                if attack_path and isinstance(attack_path, dict):
+                    if not parameter:
+                        request_info = attack_path.get("request", {})
+                        if isinstance(request_info, dict):
+                            url_str = request_info.get("url", "")
+                            if "?" in url_str:
+                                query = url_str.split("?", 1)[1]
+                                for part in query.split("&"):
+                                    if "=" in part:
+                                        parameter = part.split("=", 1)[0]
+                                        break
+                
+                # 推断漏洞类型（如果还没有的话）
+                if not vuln_type:
+                    vuln_type = vuln_name.split(" (Simulation-Confirmed)")[0] if " (Simulation-Confirmed)" in vuln_name else None
+                
+                # 构建证据数据 - 保留完整的结构化证据
+                evidence_dict = {
+                    "evidence": v.get("evidence"),
+                    "llm_analysis": v.get("llm_analysis"),
+                }
+                
+                # 如果 evidence 本身就是结构化数据（来自 ScannerEngine），合并它
+                if evidence_data and isinstance(evidence_data, dict):
+                    evidence_dict.update({
+                        "matchers": evidence_data.get("matchers"),
+                        "matchers_condition": evidence_data.get("matchers_condition"),
+                        "confidence": evidence_data.get("confidence"),
+                        "base_confidence": evidence_data.get("base_confidence"),
+                        "evidence_count": evidence_data.get("evidence_count"),
+                        "matched_keywords": evidence_data.get("matched_keywords"),
+                        "response_status": evidence_data.get("response_status"),
+                        "response_time_ms": evidence_data.get("response_time_ms"),
+                        "framework_validation": evidence_data.get("framework_validation"),
+                        "confidence_adjustments": evidence_data.get("confidence_adjustments"),
+                        "attack_stage_count": evidence_data.get("attack_stage_count"),
+                        "attack_artifacts": evidence_data.get("attack_artifacts"),
+                        "encoding_used": evidence_data.get("encoding_used"),
+                        "mutation_type": evidence_data.get("mutation_type"),
+                    })
+                
                 vuln_record = Vulnerability(
                     task_id=task_id,
                     vuln_name=vuln_name,
-                    severity="HIGH", # 模拟攻击确认的通常是高危
+                    severity="HIGH",
                     url=v["url"],
                     payload=payload,
-                    evidence=json.dumps({
-                        "evidence": v["evidence"],
-                        "llm_analysis": v.get("llm_analysis")
-                    }, ensure_ascii=False)
+                    evidence=evidence_dict,
+                    attack_path=attack_path,
+                    vuln_type=vuln_type,
+                    parameter=parameter,
                 )
                 db.add(vuln_record)
                 

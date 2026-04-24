@@ -135,19 +135,21 @@ def _get_description(vuln: VulnerabilityModel) -> Optional[str]:
     if getattr(vuln, "attack_path", None):
         parts.append("已记录攻击路径")
 
-    if evidence:
+    if evidence and isinstance(evidence, dict):
+        parts.append("已保留证据链")
+
+        if "matchers" in evidence:
+            matchers = evidence["matchers"]
+            if isinstance(matchers, list) and matchers:
+                parts.append(f"命中 {len(matchers)} 条验证规则")
+
+        if "encoding_used" in evidence and evidence["encoding_used"]:
+            parts.append(f"载荷编码: {evidence['encoding_used']}")
+    elif evidence and not isinstance(evidence, dict):
         parts.append("已保留证据链")
 
     if not evidence:
         return "，".join(parts) if parts else None
-
-    if "matchers" in evidence:
-        matchers = evidence["matchers"]
-        if isinstance(matchers, list) and matchers:
-            parts.append(f"命中 {len(matchers)} 条验证规则")
-
-    if "encoding_used" in evidence and evidence["encoding_used"]:
-        parts.append(f"载荷编码: {evidence['encoding_used']}")
 
     if parts:
         return "，".join(parts)

@@ -125,7 +125,7 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
               <tr><td colSpan={7} className="px-8 py-12 text-center text-gray-400">暂无匹配的验证任务</td></tr>
             ) : (
               filteredTasks.map((task) => (
-                <tr key={task.id} className="hover:bg-gray-50/50 transition-colors">
+                <tr key={task.id} className="hover:bg-gray-50/50 transition-colors align-top">
                   <td className="px-8 py-5 text-xs font-bold text-gray-400">#{task.display_id}</td>
                   <td className="px-8 py-5 font-bold text-[#2d3343]">{task.target_url}</td>
                   <td className="px-8 py-5">

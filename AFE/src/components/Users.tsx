@@ -108,7 +108,7 @@ const Users: React.FC = () => {
                 const isOpen = openMenuId === userId;
                 
                 return (
-                  <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
+                  <tr key={user.id} className="hover:bg-gray-50/50 transition-colors align-top">
                     <td className="px-8 py-5">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-[#2d3343] font-bold text-xs">

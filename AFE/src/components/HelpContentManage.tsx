@@ -563,7 +563,7 @@ const HelpContentManage: React.FC = () => {
                 const IconComponent = getIconComponent(content.icon);
                 
                 return (
-                  <tr key={content.id} className="hover:bg-gray-50/50 transition-colors">
+                  <tr key={content.id} className="hover:bg-gray-50/50 transition-colors align-top">
                     <td className="px-6 py-4">
                       <div 
                         className="w-10 h-10 rounded-lg flex items-center justify-center"

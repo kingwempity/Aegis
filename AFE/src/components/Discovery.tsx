@@ -337,7 +337,7 @@ const Discovery: React.FC = () => {
               </tr>
             ) : (
               assets.map((asset) => (
-                <tr key={asset.ip_address} className="hover:bg-gray-50/50 transition-colors">
+                <tr key={asset.ip_address} className="hover:bg-gray-50/50 transition-colors align-top">
                   <td className="px-8 py-5 font-bold text-[#2d3343]">{asset.ip_address}</td>
                   <td className="px-8 py-5 text-gray-600">{asset.hostname || '-'}</td>
                   <td className="px-8 py-5 text-gray-600">{asset.mac_address || '-'}</td>

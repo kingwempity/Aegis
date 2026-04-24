@@ -196,12 +196,12 @@ const Dashboard: React.FC = () => {
         </div>
 
         {/* 主要威胁 */}
-        <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 flex flex-col gap-6">
+        <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 flex flex-col gap-6 min-w-0">
           <h3 className="text-[#2d3343] text-lg font-bold">主要攻击验证发现</h3>
           <div className="flex flex-col gap-4">
             {stats?.top_threats && stats.top_threats.length > 0 ? (
               stats.top_threats.map((threat) => (
-                <div key={threat.id} className="flex items-start gap-4">
+                <div key={threat.id} className="flex items-start gap-4 min-w-0">
                   <div className={`mt-1 w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
                     threat.severity === 'critical' ? 'bg-red-100 text-red-600' :
                     threat.severity === 'high' ? 'bg-orange-100 text-orange-600' :
@@ -210,9 +210,11 @@ const Dashboard: React.FC = () => {
                   }`}>
                     <Info size={20} />
                   </div>
-                  <div className="flex flex-col">
-                    <span className="text-gray-800 font-bold text-sm">{threat.title}</span>
-                    <span className="text-gray-400 text-xs">{threat.target_url || '全部目标'} · 已纳入模拟攻击证据判断</span>
+                  <div className="flex flex-col min-w-0 flex-1">
+                    <span className="text-gray-800 font-bold text-sm break-words">{threat.title}</span>
+                    <span className="text-gray-400 text-xs truncate max-w-full" title={threat.target_url || '全部目标'}>
+                      {threat.target_url || '全部目标'} · 已纳入模拟攻击证据判断
+                    </span>
                   </div>
                 </div>
               ))

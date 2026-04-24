@@ -19,9 +19,9 @@ export default defineConfig({
   build: {
     reportCompressedSize: false,
     chunkSizeWarningLimit: 2000,
-    target: 'esnext', // 移除 minify: 'esbuild'，让 Vite 使用默认 minifier'
-
+    target: 'esnext',
     sourcemap: false,
+    emptyOutDir: false,
     rollupOptions: {
       output: {
         manualChunks(id) {

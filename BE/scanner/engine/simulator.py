@@ -161,12 +161,20 @@ class AttackSimulator:
                         
                         if is_valid:
                             logger.info(f"✅ 规则引擎确认: {reason}")
-                            found_vulns.append({
-                                "url": str(resp.url),
-                                "payload": str(pp["params"]),
-                                "evidence": resp.text[:1000],
-                                "llm_analysis": f"规则引擎验证: {reason}"
-                            })
+                            
+                            found_vulns.append(self._build_vuln_record(
+                                url=str(resp.url),
+                                payload=str(pp["params"]),
+                                reason=reason,
+                                status_code=resp.status_code,
+                                duration_ms=0,
+                                response_body=resp.text,
+                                scenario_id="thinkphp-sqli",
+                                stage_name="thinkphp_sqli_probe",
+                                stage_title="ThinkPHP SQL 注入探测",
+                                stage_goal="验证 ThinkPHP SQL 注入漏洞",
+                                confidence=0.8,
+                            ))
                         else:
                             logger.info(f"❌ 规则引擎未确认: {reason}")
                 except Exception as e:
@@ -237,12 +245,20 @@ class AttackSimulator:
                     
                     if is_valid:
                         logger.info(f"✅ 规则引擎确认漏洞有效: {validation_reason}")
-                        found_vulns.append({
-                            "url": step.url,
-                            "payload": step.payload,
-                            "evidence": step.response_body[:1000],
-                            "llm_analysis": f"规则引擎验证: {validation_reason}"
-                        })
+                        
+                        found_vulns.append(self._build_vuln_record(
+                            url=step.url,
+                            payload=step.payload,
+                            reason=validation_reason,
+                            status_code=step.status_code,
+                            duration_ms=step.duration_ms,
+                            response_body=step.response_body,
+                            scenario_id="thinkphp-sqli",
+                            stage_name="thinkphp_sqli_probe",
+                            stage_title="ThinkPHP SQL 注入探测",
+                            stage_goal="验证 ThinkPHP SQL 注入漏洞",
+                            confidence=0.8,
+                        ))
                     else:
                         # 回退到 LLM 验证
                         logger.info(f"🔄 规则引擎未确认，尝试 LLM 验证...")
@@ -257,12 +273,21 @@ class AttackSimulator:
                         
                         if verification.get("is_valid"):
                             logger.info(f"✅ LLM 确认漏洞有效: {verification['analysis']}")
-                            found_vulns.append({
-                                "url": step.url,
-                                "payload": step.payload,
-                                "evidence": step.response_body[:1000],
-                                "llm_analysis": verification["analysis"]
-                            })
+                            
+                            found_vulns.append(self._build_vuln_record(
+                                url=step.url,
+                                payload=step.payload,
+                                reason=verification.get("analysis", "LLM 确认"),
+                                status_code=step.status_code,
+                                duration_ms=step.duration_ms,
+                                response_body=step.response_body,
+                                scenario_id="llm-discovered",
+                                stage_name="llm_dynamic_probe",
+                                stage_title="LLM 动态探测",
+                                stage_goal="LLM 自主发现漏洞",
+                                confidence=0.6,
+                                verification_result=verification,
+                            ))
                         else:
                             logger.info(f"❌ LLM 判定为误报: {verification['analysis']}")
 
@@ -315,6 +340,120 @@ class AttackSimulator:
 
     def _is_potential_vuln(self, step: AttackStep) -> bool:
         return step.success or step.status_code == 500
+
+    def _extract_parameter_from_url(self, url: str) -> Optional[str]:
+        """从 URL 中提取注入参数名"""
+        if "?" not in url:
+            return None
+        query = url.split("?", 1)[1]
+        for part in query.split("&"):
+            if "=" in part:
+                param_name = part.split("=", 1)[0]
+                if param_name not in ("s",):
+                    return param_name
+        return None
+
+    FRAMEWORK_VULN_MAP = {
+        'thinkphp': 'ThinkPHP SQL Injection',
+        'django': 'Django SQL Injection',
+        'flask': 'Flask SQL Injection',
+        'laravel': 'Laravel SQL Injection',
+        'spring': 'Spring Boot Injection',
+        'wordpress': 'WordPress SQL Injection',
+        'drupal': 'Drupal SQL Injection',
+        'joomla': 'Joomla SQL Injection',
+        'express': 'Express.js Injection',
+        'asp.net': 'ASP.NET Injection',
+        'ruby on rails': 'Ruby on Rails Injection',
+    }
+
+    def _infer_vuln_type(self, verification_result: Optional[Dict[str, Any]] = None) -> str:
+        """基于检测到的框架类型动态推断漏洞类型"""
+        if verification_result and verification_result.get("vuln_type"):
+            return verification_result["vuln_type"]
+
+        if not self.detected_frameworks:
+            return "Potential Vulnerability"
+
+        framework = self.detected_frameworks[0]
+        framework_lower = framework.value.lower() if hasattr(framework, "value") else str(framework).lower()
+
+        for framework_pattern, vuln_type in self.FRAMEWORK_VULN_MAP.items():
+            if framework_pattern in framework_lower:
+                return vuln_type
+
+        return "SQL Injection"
+
+    def _build_vuln_record(
+        self,
+        url: str,
+        payload: str,
+        reason: str,
+        status_code: int,
+        duration_ms: float,
+        response_body: str,
+        scenario_id: str,
+        stage_name: str,
+        stage_title: str,
+        stage_goal: str,
+        confidence: float = 0.8,
+        verification_result: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """构建标准化漏洞记录"""
+        parameter = self._extract_parameter_from_url(url)
+        vuln_type = self._infer_vuln_type(verification_result)
+
+        return {
+            "url": url,
+            "payload": payload,
+            "evidence": {
+                "matchers": [],
+                "confidence": confidence,
+                "response_status": status_code,
+                "response_time_ms": duration_ms,
+                "response_body_snippet": response_body[:1000],
+                "framework_validation": {
+                    "is_valid": True,
+                    "reason": reason,
+                },
+                "attack_stage_count": 1,
+                "attack_artifacts": [],
+            },
+            "llm_analysis": f"规则引擎验证: {reason}" if verification_result is None else reason,
+            "validation_log": {
+                "attack_status": "exploitable",
+                "attack_stage_count": 1,
+                "artifacts": [],
+                "vuln_type": vuln_type,
+                "parameter": parameter,
+            },
+            "attack_path": {
+                "scenario_id": scenario_id,
+                "status": "validated",
+                "steps": [
+                    {
+                        "step": 1,
+                        "stage_id": f"{scenario_id}-probe",
+                        "stage_name": stage_name,
+                        "stage_title": stage_title,
+                        "stage_goal": stage_goal,
+                        "method": "GET",
+                        "url": url,
+                        "description": reason,
+                        "matched_conditions": [],
+                        "success": True,
+                        "duration_ms": duration_ms,
+                        "response_status": status_code,
+                    }
+                ],
+                "request": {
+                    "method": "GET",
+                    "url": url,
+                },
+                "artifacts": [],
+                "final_reason": reason,
+            },
+        }
 
 def create_simulator(target: str, strategy: str = "intelligent") -> AttackSimulator:
     return AttackSimulator(target=target, strategy=strategy)

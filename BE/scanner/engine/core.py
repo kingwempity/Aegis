@@ -300,6 +300,11 @@ class ScannerEngine:
         timeout: float = 10.0,
         max_depth: int = 3,
         rules_config_path: Optional[str] = None,
+        target_paths: Optional[List[str]] = None,
+        target_vuln_types: Optional[List[str]] = None,
+        target_parameters: Optional[List[str]] = None,
+        enable_discovery_scan: bool = True,
+        payload_set: str = "standard",
     ):
         self.target = target.rstrip("/")
         self.strategy = strategy
@@ -308,6 +313,11 @@ class ScannerEngine:
         self.max_concurrent = max_concurrent
         self.timeout = timeout
         self.max_depth = max_depth
+        self.target_paths = target_paths or []
+        self.target_vuln_types = target_vuln_types or []
+        self.target_parameters = target_parameters or []
+        self.enable_discovery_scan = enable_discovery_scan
+        self.payload_set = payload_set
         
         # 优化插件路径解析：支持绝对路径和项目根目录相对路径
         if os.path.isabs(plugin_dir):

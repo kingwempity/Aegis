@@ -42,10 +42,11 @@ def _compact_display_ids(db: Session) -> None:
             task.display_id = index
     db.flush()
 
-def _run_scan_in_background(task_id: int, target_url: str, scan_strategy: str) -> None:
+def _run_scan_in_background(task_id: int, target_url: str, scan_strategy: str,
+                            target_paths=None, target_vuln_types=None, target_parameters=None) -> None:
     background_thread = threading.Thread(
         target=execute_scan_task,
-        args=(task_id, target_url, scan_strategy),
+        args=(task_id, target_url, scan_strategy, target_paths, target_vuln_types, target_parameters),
         daemon=True,
     )
     background_thread.start()
@@ -91,6 +92,9 @@ def create_scan_task(task_in: TaskCreate, db: Session = Depends(get_db)):
             display_id=_next_display_id(db),
             target_url=str(task_in.target_url),
             scan_strategy=task_in.scan_strategy,
+            target_paths=task_in.target_paths,
+            target_vuln_types=task_in.target_vuln_types,
+            target_parameters=task_in.target_parameters,
             status="PENDING"
         )
         db.add(db_task)
@@ -105,10 +109,24 @@ def create_scan_task(task_in: TaskCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="创建任务失败，请稍后重试")
 
     try:
-        run_scan_task.delay(db_task.id, str(task_in.target_url), task_in.scan_strategy)
+        run_scan_task.delay(
+            db_task.id,
+            str(task_in.target_url),
+            task_in.scan_strategy,
+            task_in.target_paths,
+            task_in.target_vuln_types,
+            task_in.target_parameters,
+        )
     except Exception as exc:
         logger.exception("Celery dispatch failed, falling back to in-process background scan: %s", exc)
-        _run_scan_in_background(db_task.id, str(task_in.target_url), task_in.scan_strategy)
+        _run_scan_in_background(
+            db_task.id,
+            str(task_in.target_url),
+            task_in.scan_strategy,
+            task_in.target_paths,
+            task_in.target_vuln_types,
+            task_in.target_parameters,
+        )
 
     # 发射任务创建通知（异步，不阻塞响应）
     try:

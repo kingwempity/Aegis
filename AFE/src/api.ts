@@ -53,6 +53,9 @@ export interface ScanTask {
   target_url: string;
   status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
   scan_strategy: string;
+  target_paths?: string[];
+  target_vuln_types?: string[];
+  target_parameters?: string[];
   progress?: number;
   created_at: string;
   duration_seconds?: number;
@@ -281,7 +284,7 @@ export const api = {
     return response.json();
   },
 
-  async createTask(data: { target_url: string; scan_strategy: string }): Promise<ScanTask> {
+  async createTask(data: { target_url: string; scan_strategy: string; target_paths?: string[]; target_vuln_types?: string[]; target_parameters?: string[] }): Promise<ScanTask> {
     const response = await fetch(joinApiPath('/tasks'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

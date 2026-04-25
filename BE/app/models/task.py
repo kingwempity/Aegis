@@ -31,6 +31,9 @@ class ScanTask(Base):
     target_url = Column(String(255), nullable=False)
     status = Column(String(50), default="PENDING")
     scan_strategy = Column(String(50), default="default")
+    target_paths = Column(JSON)
+    target_vuln_types = Column(JSON)
+    target_parameters = Column(JSON)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 

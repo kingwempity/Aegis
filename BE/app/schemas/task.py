@@ -8,9 +8,11 @@ from typing import Optional, List
 from datetime import datetime
 
 class TaskCreate(BaseModel):
-    """创建任务时的请求参数"""
     target_url: HttpUrl = Field(..., description="目标网站 URL")
-    scan_strategy: str = Field("default", description="扫描策略: default/full/fast")
+    scan_strategy: str = Field("attack_validation", description="扫描策略: attack_validation/full_audit/focused_probe")
+    target_paths: Optional[List[str]] = Field(None, description="定向路径列表（仅 focused_probe 模式）")
+    target_vuln_types: Optional[List[str]] = Field(None, description="定向漏洞类型列表（仅 focused_probe 模式）")
+    target_parameters: Optional[List[str]] = Field(None, description="定向参数列表（仅 focused_probe 模式）")
 
 class VulnerabilityOut(BaseModel):
     """响应中的漏洞信息"""

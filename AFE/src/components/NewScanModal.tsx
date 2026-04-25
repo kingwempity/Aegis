@@ -13,6 +13,9 @@ interface NewScanModalProps {
 const NewScanModal: React.FC<NewScanModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [url, setUrl] = useState('');
   const [scanStrategy, setScanStrategy] = useState('attack_validation');
+  const [targetPaths, setTargetPaths] = useState('');
+  const [targetVulnTypes, setTargetVulnTypes] = useState('');
+  const [targetParameters, setTargetParameters] = useState('');
   const [loading, setLoading] = useState(false);
   const activeStrategy = getScanStrategyMeta(scanStrategy);
 
@@ -22,10 +25,28 @@ const NewScanModal: React.FC<NewScanModalProps> = ({ isOpen, onClose, onSuccess 
     e.preventDefault();
     setLoading(true);
     try {
-      await api.createTask({
+      const payload: {
+        target_url: string;
+        scan_strategy: string;
+        target_paths?: string[];
+        target_vuln_types?: string[];
+        target_parameters?: string[];
+      } = {
         target_url: url,
         scan_strategy: scanStrategy,
-      });
+      };
+      if (scanStrategy === 'focused_probe') {
+        if (targetPaths.trim()) {
+          payload.target_paths = targetPaths.split(',').map((s) => s.trim()).filter(Boolean);
+        }
+        if (targetVulnTypes.trim()) {
+          payload.target_vuln_types = targetVulnTypes.split(',').map((s) => s.trim()).filter(Boolean);
+        }
+        if (targetParameters.trim()) {
+          payload.target_parameters = targetParameters.split(',').map((s) => s.trim()).filter(Boolean);
+        }
+      }
+      await api.createTask(payload);
       onSuccess?.();
       onClose();
     } catch {
@@ -78,6 +99,45 @@ const NewScanModal: React.FC<NewScanModalProps> = ({ isOpen, onClose, onSuccess 
                   任务将优先输出攻击载荷、攻击路径和可利用性证明。
                 </p>
               </div>
+
+              {scanStrategy === 'focused_probe' && (
+                <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-5 space-y-4">
+                  <h4 className="text-sm font-bold text-[#2d3343] flex items-center gap-2">
+                    <span className="text-blue-500">🎯</span>
+                    定向验证配置
+                  </h4>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-gray-500">定向路径（可选，逗号分隔）</label>
+                    <input
+                      type="text"
+                      placeholder="/api/login, /admin/settings"
+                      value={targetPaths}
+                      onChange={(e) => setTargetPaths(e.target.value)}
+                      className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#ff6b00]/20 outline-none transition-all"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-gray-500">定向漏洞类型（可选，逗号分隔）</label>
+                    <input
+                      type="text"
+                      placeholder="SQL Injection, XSS"
+                      value={targetVulnTypes}
+                      onChange={(e) => setTargetVulnTypes(e.target.value)}
+                      className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#ff6b00]/20 outline-none transition-all"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-gray-500">定向参数（可选，逗号分隔）</label>
+                    <input
+                      type="text"
+                      placeholder="username, password, token"
+                      value={targetParameters}
+                      onChange={(e) => setTargetParameters(e.target.value)}
+                      className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#ff6b00]/20 outline-none transition-all"
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* 动态属性条 */}
               <div className="rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">

@@ -5,7 +5,7 @@ import traceback
 import time
 import json
 import re
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 from celery import Celery
 import httpx
 from app.database import SessionLocal
@@ -147,7 +147,14 @@ def infer_vulnerability_type(vuln_data: Dict[str, Any]) -> str:
     return "Simulation-Confirmed Vulnerability"
 
 
-def execute_scan_task(task_id: int, target_url: str, scan_strategy: str = "intelligent"):
+def execute_scan_task(
+    task_id: int,
+    target_url: str,
+    scan_strategy: str = "attack_validation",
+    target_paths: Optional[List[str]] = None,
+    target_vuln_types: Optional[List[str]] = None,
+    target_parameters: Optional[List[str]] = None,
+):
     """
     执行模拟攻击扫描任务 (LLM 增强版)
     """
@@ -155,10 +162,16 @@ def execute_scan_task(task_id: int, target_url: str, scan_strategy: str = "intel
     start_time = time.time()
     
     logger.info("=" * 60)
-    logger.info(f"🚀 [Worker] 启动模拟攻击引擎 (Simulation Mode)")
+    logger.info(f"🚀 [Worker] 启动模拟攻击引擎 (模式: {scan_strategy})")
     logger.info(f"   任务 ID: {task_id}")
     logger.info(f"   目标 URL: {target_url}")
     logger.info(f"   策略：{scan_strategy}")
+    if target_paths:
+        logger.info(f"   定向路径: {target_paths}")
+    if target_vuln_types:
+        logger.info(f"   定向漏洞类型: {target_vuln_types}")
+    if target_parameters:
+        logger.info(f"   定向参数: {target_parameters}")
     logger.info("=" * 60)
     
     task = None
@@ -177,10 +190,10 @@ def execute_scan_task(task_id: int, target_url: str, scan_strategy: str = "intel
         logger.info("🔧 [Worker] 初始化 HybridScannerEngine...")
         engine = HybridScannerEngine(
             target=target_url,
-            strategy="hybrid",
-            max_concurrent=5,
-            timeout=15.0,
-            max_depth=2
+            strategy=scan_strategy,
+            target_paths=target_paths,
+            target_vuln_types=target_vuln_types,
+            target_parameters=target_parameters,
         )
         
         # 执行混合扫描
@@ -316,5 +329,16 @@ def execute_scan_task(task_id: int, target_url: str, scan_strategy: str = "intel
         db.close()
 
 @celery_app.task(bind=True)
-def run_scan_task(self, task_id: int, target_url: str, scan_strategy: str = "intelligent"):
-    execute_scan_task(task_id, target_url, scan_strategy)
+def run_scan_task(
+    self,
+    task_id: int,
+    target_url: str,
+    scan_strategy: str = "attack_validation",
+    target_paths: Optional[List[str]] = None,
+    target_vuln_types: Optional[List[str]] = None,
+    target_parameters: Optional[List[str]] = None,
+):
+    execute_scan_task(
+        task_id, target_url, scan_strategy,
+        target_paths, target_vuln_types, target_parameters,
+    )

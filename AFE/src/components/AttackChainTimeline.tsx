@@ -61,6 +61,22 @@ const RequestResponseViewer: React.FC<{
     (evidence.request || evidence.response)
   );
 
+  const safeConditionText = (condition: unknown): string => {
+    if (typeof condition === 'string') return condition;
+    if (typeof condition === 'number' || typeof condition === 'boolean') return String(condition);
+    if (condition && typeof condition === 'object') {
+      const obj = condition as Record<string, unknown>;
+      const mType = obj.type || 'unknown';
+      if (mType === 'word' && Array.isArray(obj.words)) return `关键词匹配: ${obj.words.slice(0, 5).join(', ')}`;
+      if (mType === 'regex' && obj.regex) return `正则匹配: ${String(obj.regex).substring(0, 80)}`;
+      if (mType === 'status' && Array.isArray(obj.status)) return `状态码匹配: ${obj.status.join(', ')}`;
+      if (mType === 'binary') return '二进制模式匹配';
+      if (mType === 'dsl' && Array.isArray(obj.dsl)) return `DSL表达式: ${obj.dsl.slice(0, 3).join(', ')}`;
+      try { return JSON.stringify(condition); } catch { return `匹配器(${mType})`; }
+    }
+    return String(condition ?? '');
+  };
+
   const evidenceTabContent = () => {
     if (!evidence) {
       return (
@@ -99,7 +115,7 @@ const RequestResponseViewer: React.FC<{
               {evidence.matched_conditions?.map((condition, idx) => (
                 <div key={idx} className="flex items-start gap-2 bg-amber-50 px-3 py-2 rounded-lg">
                   <CheckCircle size={14} className="text-amber-500 mt-0.5 shrink-0" />
-                  <span className="text-xs text-gray-700">{condition}</span>
+                  <span className="text-xs text-gray-700">{safeConditionText(condition)}</span>
                 </div>
               ))}
             </div>
@@ -110,13 +126,13 @@ const RequestResponseViewer: React.FC<{
           <>
             <div className="text-xs font-semibold text-gray-500 uppercase mt-4">匹配模式</div>
             <div className="space-y-2">
-              {evidence.matched_patterns!.map((pattern, idx) => (
+              {evidence.matched_patterns?.map((pattern, idx) => (
                 <div key={idx} className="bg-white px-3 py-2 rounded-lg border border-gray-200">
-                  <div className="text-xs font-mono text-purple-600">{pattern.pattern}</div>
-                  <div className="text-xs text-gray-500 mt-1">类型: {pattern.match_type}</div>
-                  {pattern.matched_text && (
+                  <div className="text-xs font-mono text-purple-600">{pattern?.pattern ?? ''}</div>
+                  <div className="text-xs text-gray-500 mt-1">类型: {pattern?.match_type ?? '未知'}</div>
+                  {pattern?.matched_text && (
                     <pre className="text-xs bg-gray-50 p-2 rounded mt-2 overflow-x-auto">
-                      {pattern.matched_text}
+                      {pattern?.matched_text}
                     </pre>
                   )}
                 </div>
@@ -407,7 +423,7 @@ const AttackStageCard: React.FC<AttackStageCardProps> = ({
                     {step.matched_conditions.map((condition, idx) => (
                       <div key={idx} className="flex items-center gap-2 text-xs text-gray-600">
                         <CheckCircle size={12} className="text-emerald-500" />
-                        {condition}
+                        {safeConditionText(condition)}
                       </div>
                     ))}
                   </div>

@@ -310,11 +310,40 @@ def preview_report(task_id: int, db: Session = Depends(get_db)):
                     }
                 elif evidence and isinstance(evidence, dict):
                     if idx == 0:
+                        raw_matchers = evidence.get("matchers", [])
+                        safe_conditions = []
+                        for m in raw_matchers:
+                            if isinstance(m, str):
+                                safe_conditions.append(m)
+                            elif isinstance(m, dict):
+                                m_type = m.get("type", "unknown")
+                                if m_type == "word" and m.get("words"):
+                                    safe_conditions.append(f"关键词匹配: {', '.join(str(w) for w in m['words'][:5])}")
+                                elif m_type == "regex" and m.get("regex"):
+                                    safe_conditions.append(f"正则匹配: {m['regex'][:80]}")
+                                elif m_type == "status" and m.get("status"):
+                                    safe_conditions.append(f"状态码匹配: {', '.join(str(s) for s in m['status'])}")
+                                elif m_type == "binary" and m.get("binary"):
+                                    safe_conditions.append("二进制模式匹配")
+                                elif m_type == "dsl" and m.get("dsl"):
+                                    safe_conditions.append(f"DSL表达式: {', '.join(str(d) for d in m['dsl'][:3])}")
+                                else:
+                                    safe_conditions.append(f"匹配器({m_type})")
+                            else:
+                                safe_conditions.append(str(m))
+
+                        fallback_conditions = evidence.get("matched_keywords", [])
+                        if fallback_conditions and isinstance(fallback_conditions, list):
+                            for kw in fallback_conditions:
+                                if isinstance(kw, str) and kw not in safe_conditions:
+                                    safe_conditions.append(kw)
+
                         step_data["evidence"] = {
                             "request": evidence.get("request"),
                             "response": evidence.get("response"),
-                            "matched_conditions": evidence.get("matchers", []),
-                            "timing_ms": evidence.get("timing_ms"),
+                            "matched_conditions": safe_conditions,
+                            "matched_patterns": evidence.get("matched_patterns", []),
+                            "timing_ms": evidence.get("response_time_ms") or evidence.get("timing_ms"),
                         }
                 
                 attack_steps.append(step_data)

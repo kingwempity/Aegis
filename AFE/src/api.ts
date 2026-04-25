@@ -645,7 +645,7 @@ export interface AttackStepEvidence {
     body_snippet?: string;
     raw?: string;
   };
-  matched_conditions?: string[];
+  matched_conditions?: Array<string | Record<string, unknown>>;
   matched_patterns?: Array<{
     pattern: string;
     match_type: string;
@@ -663,7 +663,7 @@ export interface AttackStep {
   method?: string;
   url?: string;
   description?: string;
-  matched_conditions?: string[];
+  matched_conditions?: Array<string | Record<string, unknown>>;
   artifacts?: AttackStepArtifact[];
   extracted?: Record<string, unknown>;
   success?: boolean;

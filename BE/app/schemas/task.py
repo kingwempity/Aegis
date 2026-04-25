@@ -31,6 +31,7 @@ class TaskOut(BaseModel):
     status: str
     scan_strategy: str
     created_at: datetime
+    duration_seconds: Optional[float] = None
     # vulnerabilities: List[VulnerabilityOut] = [] 
 
     class Config:

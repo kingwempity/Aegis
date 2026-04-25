@@ -65,6 +65,18 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
     }
   };
 
+const formatDuration = (seconds: number): string => {
+    if (seconds < 60) {
+      return `${Math.round(seconds)}秒`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.round(seconds % 60);
+    if (remainingSeconds > 0) {
+      return `${minutes}分${remainingSeconds}秒`;
+    }
+    return `${minutes}分钟`;
+  };
+
   const normalizedQuery = searchQuery.trim().replace(/^#/, '');
   const filteredTasks = tasks.filter(task =>
     task.target_url.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -131,16 +143,26 @@ const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
                   <td className="px-8 py-5">
                     {(() => {
                       const strategy = getScanStrategyMeta(task.scan_strategy);
+                      const actualDuration = task.status === 'COMPLETED' && task.duration_seconds 
+                        ? formatDuration(task.duration_seconds) 
+                        : null;
+                      const estimatedDuration = strategy.estimatedResults.duration;
+                      const speedDisplay = actualDuration 
+                        ? <span className="text-xs font-bold text-green-600">{actualDuration}</span>
+                        : task.status === 'RUNNING'
+                          ? <span className="text-xs font-bold text-blue-600">{strategy.speed}</span>
+                          : <span className="text-xs text-gray-400">{strategy.speed}</span>;
                       return (
-                        <div className="flex flex-col gap-2">
+                        <div className="flex flex-col gap-1">
                           <span className="inline-flex w-fit rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-[#c25b00]">
                             {strategy.label}
                           </span>
-                          <div className="text-xs leading-5 text-gray-400">
-                            <span>{strategy.scope}</span>
-                            <span className="mx-1.5">·</span>
-                            <span>{strategy.speed}</span>
-                          </div>
+                          {speedDisplay}
+                          {actualDuration && (
+                            <div className="text-[10px] text-gray-400">
+                              预计: {estimatedDuration}
+                            </div>
+                          )}
                         </div>
                       );
                     })()}

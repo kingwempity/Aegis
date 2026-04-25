@@ -14,6 +14,12 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _calculate_duration_seconds(task: ScanTask) -> float | None:
+    if not task.created_at or not task.updated_at:
+        return None
+    return (task.updated_at - task.created_at).total_seconds()
+
+
 def _next_display_id(db: Session) -> int:
     last_task = (
         db.query(ScanTask)
@@ -133,7 +139,12 @@ def create_scan_task(task_in: TaskCreate, db: Session = Depends(get_db)):
 def read_tasks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     """获取所有任务列表"""
     tasks = db.query(ScanTask).order_by(ScanTask.id.desc()).offset(skip).limit(limit).all()
-    return tasks
+    results = []
+    for task in tasks:
+        task_out = TaskOut.model_validate(task)
+        task_out.duration_seconds = _calculate_duration_seconds(task)
+        results.append(task_out)
+    return results
 
 
 @router.get("/{task_id}", response_model=TaskOut)

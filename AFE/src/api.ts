@@ -55,6 +55,7 @@ export interface ScanTask {
   scan_strategy: string;
   progress?: number;
   created_at: string;
+  duration_seconds?: number;
 }
 
 export interface Vulnerability {

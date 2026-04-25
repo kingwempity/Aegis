@@ -39,7 +39,7 @@ const STRATEGY_META: Record<string, ScanStrategyMeta> = {
     riskDescription: '标准验证模式，对目标性能影响较小，适合大多数场景。',
     estimatedResults: {
       vulns: '8-15 个',
-      duration: '20-35 分钟',
+      duration: '2-4 分钟',
       payloads: '15-25 个',
       attackPaths: '5-10 条',
     },
@@ -64,7 +64,7 @@ const STRATEGY_META: Record<string, ScanStrategyMeta> = {
     riskDescription: '深度审计模式，可能对目标系统产生较高负载，建议在低峰期执行。',
     estimatedResults: {
       vulns: '20-40 个',
-      duration: '50-90 分钟',
+      duration: '3-6 分钟',
       payloads: '40-70 个',
       attackPaths: '15-25 条',
     },
@@ -89,7 +89,7 @@ const STRATEGY_META: Record<string, ScanStrategyMeta> = {
     riskDescription: '精准测试模式，资源消耗极低，适合快速验证和应急响应。',
     estimatedResults: {
       vulns: '3-8 个',
-      duration: '5-15 分钟',
+      duration: '1-2 分钟',
       payloads: '5-12 个',
       attackPaths: '2-5 条',
     },
@@ -114,7 +114,7 @@ const STRATEGY_META: Record<string, ScanStrategyMeta> = {
     riskDescription: '标准验证模式，对目标性能影响较小。',
     estimatedResults: {
       vulns: '5-12 个',
-      duration: '15-30 分钟',
+      duration: '2-3 分钟',
       payloads: '10-20 个',
       attackPaths: '3-8 条',
     },
@@ -139,7 +139,7 @@ const STRATEGY_META: Record<string, ScanStrategyMeta> = {
     riskDescription: '标准验证模式，对目标性能影响较小。',
     estimatedResults: {
       vulns: '5-12 个',
-      duration: '15-30 分钟',
+      duration: '2-3 分钟',
       payloads: '10-20 个',
       attackPaths: '3-8 条',
     },
@@ -164,7 +164,7 @@ const STRATEGY_META: Record<string, ScanStrategyMeta> = {
     riskDescription: '快速测试模式，资源消耗较低。',
     estimatedResults: {
       vulns: '3-8 个',
-      duration: '10-20 分钟',
+      duration: '1-2 分钟',
       payloads: '5-15 个',
       attackPaths: '2-6 条',
     },

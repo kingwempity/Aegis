@@ -40,6 +40,22 @@ const formatDuration = (ms?: number): string => {
   return `${(ms / 60000).toFixed(2)}min`;
 };
 
+const safeConditionText = (condition: unknown): string => {
+  if (typeof condition === 'string') return condition;
+  if (typeof condition === 'number' || typeof condition === 'boolean') return String(condition);
+  if (condition && typeof condition === 'object') {
+    const obj = condition as Record<string, unknown>;
+    const mType = obj.type || 'unknown';
+    if (mType === 'word' && Array.isArray(obj.words)) return `关键词匹配: ${obj.words.slice(0, 5).join(', ')}`;
+    if (mType === 'regex' && obj.regex) return `正则匹配: ${String(obj.regex).substring(0, 80)}`;
+    if (mType === 'status' && Array.isArray(obj.status)) return `状态码匹配: ${obj.status.join(', ')}`;
+    if (mType === 'binary') return '二进制模式匹配';
+    if (mType === 'dsl' && Array.isArray(obj.dsl)) return `DSL表达式: ${obj.dsl.slice(0, 3).join(', ')}`;
+    try { return JSON.stringify(condition); } catch { return `匹配器(${mType})`; }
+  }
+  return String(condition ?? '');
+};
+
 const RequestResponseViewer: React.FC<{
   evidence?: AttackStepEvidence;
   request?: AttackStep['request'];
@@ -60,22 +76,6 @@ const RequestResponseViewer: React.FC<{
     evidence.timing_ms !== undefined ||
     (evidence.request || evidence.response)
   );
-
-  const safeConditionText = (condition: unknown): string => {
-    if (typeof condition === 'string') return condition;
-    if (typeof condition === 'number' || typeof condition === 'boolean') return String(condition);
-    if (condition && typeof condition === 'object') {
-      const obj = condition as Record<string, unknown>;
-      const mType = obj.type || 'unknown';
-      if (mType === 'word' && Array.isArray(obj.words)) return `关键词匹配: ${obj.words.slice(0, 5).join(', ')}`;
-      if (mType === 'regex' && obj.regex) return `正则匹配: ${String(obj.regex).substring(0, 80)}`;
-      if (mType === 'status' && Array.isArray(obj.status)) return `状态码匹配: ${obj.status.join(', ')}`;
-      if (mType === 'binary') return '二进制模式匹配';
-      if (mType === 'dsl' && Array.isArray(obj.dsl)) return `DSL表达式: ${obj.dsl.slice(0, 3).join(', ')}`;
-      try { return JSON.stringify(condition); } catch { return `匹配器(${mType})`; }
-    }
-    return String(condition ?? '');
-  };
 
   const evidenceTabContent = () => {
     if (!evidence) {

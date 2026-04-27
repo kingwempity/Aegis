@@ -3,13 +3,16 @@
 
 功能：
 - 基于角色的访问控制（RBAC）
+- 资源所有权权限（Owner-based access control）
 - 细粒度权限验证
 - API权限装饰器
 - 高危操作权限保护
 
 Notes:
     - 权限格式：resource:action（如 scan:create, report:download）
-    - 角色继承：Administrator > Operator > Auditor > Viewer
+    - 角色层级：Administrator > Scanner = Auditor > Viewer
+    - Scanner和Auditor为平级角色，职责不同，权限独立
+    - 支持资源所有者权限：用户对自己创建的资源有额外权限
 """
 
 import os
@@ -25,7 +28,7 @@ logger = logging.getLogger(__name__)
 class Role(str, Enum):
     """用户角色枚举"""
     ADMINISTRATOR = "Administrator"
-    OPERATOR = "Operator"
+    SCANNER = "Scanner"
     AUDITOR = "Auditor"
     VIEWER = "Viewer"
 
@@ -66,6 +69,10 @@ class Permission(str, Enum):
 
 
 # 角色权限映射
+# 设计原则：
+# - Scanner: 专注于扫描任务执行，能管理自己创建的任务及其报告
+# - Auditor: 专注于审查和审计，不能执行扫描，但能查看所有结果和审计日志
+# - Viewer: 仅查看，无操作权限
 ROLE_PERMISSIONS: Dict[Role, Set[Permission]] = {
     Role.ADMINISTRATOR: {
         # 管理员拥有所有权限
@@ -79,19 +86,22 @@ ROLE_PERMISSIONS: Dict[Role, Set[Permission]] = {
         Permission.SETTINGS_READ, Permission.SETTINGS_UPDATE,
         Permission.AUDIT_READ, Permission.AUDIT_EXPORT,
     },
-    Role.OPERATOR: {
-        # 操作员：扫描和报告权限
+    Role.SCANNER: {
+        # 扫描员：扫描任务执行和管理权限
+        # 包含 delete 权限，但实际使用时应配合所有权检查（只能删除自己的任务）
         Permission.SCAN_CREATE, Permission.SCAN_READ, Permission.SCAN_UPDATE,
-        Permission.SCAN_START, Permission.SCAN_CANCEL,
+        Permission.SCAN_DELETE, Permission.SCAN_START, Permission.SCAN_CANCEL,
         Permission.REPORT_CREATE, Permission.REPORT_READ, Permission.REPORT_DOWNLOAD,
+        Permission.REPORT_DELETE,
         Permission.VULN_READ,
     },
     Role.AUDITOR: {
-        # 审计员：只读权限 + 报告下载
+        # 审计员：审查和审计权限，不执行扫描
+        # 可以下载报告和导出漏洞数据用于审计
         Permission.SCAN_READ,
-        Permission.REPORT_CREATE, Permission.REPORT_READ, Permission.REPORT_DOWNLOAD,
+        Permission.REPORT_READ, Permission.REPORT_DOWNLOAD,
         Permission.VULN_READ, Permission.VULN_EXPORT,
-        Permission.AUDIT_READ,
+        Permission.AUDIT_READ, Permission.AUDIT_EXPORT,
     },
     Role.VIEWER: {
         # 查看者：仅查看权限
@@ -197,8 +207,8 @@ class PermissionService:
             int: 角色等级（越高权限越大）
         """
         levels = {
-            Role.ADMINISTRATOR.value: 4,
-            Role.OPERATOR.value: 3,
+            Role.ADMINISTRATOR.value: 3,
+            Role.SCANNER.value: 2,
             Role.AUDITOR.value: 2,
             Role.VIEWER.value: 1,
         }
@@ -433,3 +443,99 @@ def can_access_endpoint(role: str, method: str, path: str) -> bool:
     
     # 非高危端点，默认允许
     return True
+
+
+def check_ownership(user: dict, resource_owner_id: Optional[int]) -> bool:
+    """
+    检查用户是否为资源的所有者
+    
+    Args:
+        user: 用户信息字典
+        resource_owner_id: 资源所有者的用户ID
+        
+    Returns:
+        bool: 是否为资源所有者
+    """
+    if not user or resource_owner_id is None:
+        return False
+    
+    user_id = user.get("id")
+    return user_id is not None and int(user_id) == int(resource_owner_id)
+
+
+def check_permission_with_ownership(
+    user: dict, 
+    permission: Permission, 
+    resource_owner_id: Optional[int] = None
+) -> bool:
+    """
+    检查用户是否拥有权限（支持资源所有者检查）
+    
+    对于删除/更新等写操作，如果用户是资源所有者且角色级别足够，则允许操作。
+    
+    Args:
+        user: 用户信息字典
+        permission: 权限
+        resource_owner_id: 资源所有者的用户ID（可选）
+        
+    Returns:
+        bool: 是否拥有权限
+    """
+    # 首先检查角色权限
+    if check_permission(user, permission):
+        return True
+    
+    # 对于写操作，检查资源所有权（仅限Scanner及以上角色）
+    write_permissions = {
+        Permission.SCAN_UPDATE, Permission.SCAN_DELETE,
+        Permission.REPORT_DELETE,
+    }
+    
+    if permission in write_permissions and resource_owner_id is not None:
+        if check_ownership(user, resource_owner_id):
+            user_role = user.get("role", "")
+            min_roles_for_ownership = {"Scanner", "Administrator"}
+            if user_role in min_roles_for_ownership:
+                return True
+    
+    return False
+
+
+def require_ownership_or_permission(permission: Permission, owner_id_field: str = "resource_owner_id"):
+    """
+    权限装饰器：要求用户拥有权限或者是资源所有者
+    
+    Args:
+        permission: 所需权限
+        owner_id_field: 从请求中获取资源所有者ID的字段名
+        
+    Returns:
+        装饰器函数
+    """
+    def decorator(func: Callable):
+        @wraps(func)
+        async def wrapper(*args, user: dict = None, **kwargs):
+            if not user:
+                raise HTTPException(
+                    status_code=401,
+                    detail="未登录或登录已过期"
+                )
+            
+            resource_owner_id = kwargs.get(owner_id_field)
+            
+            if not check_permission_with_ownership(user, permission, resource_owner_id):
+                logger.warning(
+                    f"Permission denied: user={user.get('username')}, "
+                    f"required={permission.value}, role={user.get('role')}, "
+                    f"is_owner={check_ownership(user, resource_owner_id) if resource_owner_id else False}"
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"权限不足，需要 {permission.value} 权限或为资源所有者"
+                )
+            
+            return await func(*args, user=user, **kwargs)
+        
+        return wrapper
+    
+    return decorator

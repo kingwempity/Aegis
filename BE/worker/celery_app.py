@@ -22,41 +22,59 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://aegis-redis:6379/0")
-FASTAPI_URL = os.getenv("FASTAPI_URL", "http://aegis-backend:8000").rstrip("/")
-NOTIFICATION_API_URL = f"{FASTAPI_URL}/api/v1/notifications/events/emit"
+FASTAPI_URL = os.getenv("FASTAPI_URL", "").rstrip("/") or None
+NOTIFICATION_API_URL = f"{FASTAPI_URL}/api/v1/notifications/events/emit" if FASTAPI_URL else None
 celery_app = Celery("aegis_worker", broker=REDIS_URL, backend=REDIS_URL)
 
 
-def _emit_notification_to_fastapi(event_type: str, data: Dict[str, Any], source: str = "scanner_worker"):
+def _emit_notification(event_type: str, data: Dict[str, Any], source: str = "scanner_worker"):
     """
-    通过 HTTP 回调将通知事件发送到 FastAPI 后端。
+    智能通知发射：自动选择最优路径。
     
-    由于 Celery Worker 运行在独立进程中，直接调用 notification_service
-    只会在 Worker 进程内存中创建通知，前端无法获取。
-    因此通过 HTTP POST 调用 FastAPI 的 /events/emit 端点，
-    确保通知在 FastAPI 进程中创建并通过 WebSocket 推送给前端。
+    策略：
+    1. 同进程模式（_run_scan_in_background 回退路径）→ 直接调用 notification_service 内存队列
+    2. 跨进程模式（Celery Worker 独立进程）→ HTTP 回调到 FastAPI API
     
     Args:
-        event_type: 事件类型（如 scan.started, vulnerability.found）
+        event_type: 事件类型
         data: 事件数据
         source: 事件源标识
     """
+    # 策略1：尝试同进程直接调用（适用于 _run_scan_in_background 场景）
     try:
-        response = httpx.post(
-            NOTIFICATION_API_URL,
-            json={
-                "event_type": event_type,
-                "data": data,
-                "source": source
-            },
-            timeout=5.0,
+        from app.services.notification_service import notification_service
+        notification_service.emit_event_from_thread(
+            event_type=event_type,
+            data=data,
+            source=source
         )
-        if response.status_code == 200:
-            logger.info(f"✅ [Notification] HTTP callback success: {event_type} -> FastAPI")
-        else:
-            logger.warning(f"⚠️ [Notification] HTTP callback failed ({response.status_code}): {event_type}")
+        logger.info(f"✅ [Notification] Direct emit success: {event_type}")
+        return
     except Exception as e:
-        logger.warning(f"⚠️ [Notification] HTTP callback error for {event_type}: {e}")
+        logger.debug(f"[Notification] Direct emit not available ({e}), trying HTTP callback...")
+    
+    # 策略2：跨进程 HTTP 回调（适用于独立 Celery Worker 进程）
+    if NOTIFICATION_API_URL:
+        try:
+            response = httpx.post(
+                NOTIFICATION_API_URL,
+                json={
+                    "event_type": event_type,
+                    "data": data,
+                    "source": source
+                },
+                timeout=5.0,
+            )
+            if response.status_code == 200:
+                logger.info(f"✅ [Notification] HTTP callback success: {event_type} -> FastAPI")
+                return
+            else:
+                logger.warning(f"⚠️ [Notification] HTTP callback failed ({response.status_code}): {event_type}")
+        except Exception as e:
+            logger.warning(f"⚠️ [Notification] HTTP callback error for {event_type}: {e}")
+    
+    # 所有策略均失败
+    logger.error(f"❌ [Notification] ALL methods failed for event: {event_type}")
 
 
 def get_risk_level(severity_str: str) -> str:
@@ -244,8 +262,8 @@ def execute_scan_task(
         task.status = "RUNNING"
         db.commit()
         
-        # 发射扫描启动通知（HTTP回调到FastAPI）
-        _emit_notification_to_fastapi(
+        # 发射扫描启动通知
+        _emit_notification(
             event_type="scan.started",
             data={
                 "task_id": task_id,
@@ -400,8 +418,8 @@ def execute_scan_task(
                 "url": v.get("url", ""),
             })
         
-        # 发射扫描完成通知（HTTP回调到FastAPI）
-        _emit_notification_to_fastapi(
+        # 发射扫描完成通知
+        _emit_notification(
             event_type="scan.completed",
             data={
                 "task_id": task_id,
@@ -416,7 +434,7 @@ def execute_scan_task(
         
         # 发射漏洞汇总通知（HTTP回调到FastAPI）
         if vuln_count > 0:
-            _emit_notification_to_fastapi(
+            _emit_notification(
                 event_type="vulnerability.summary",
                 data={
                     "task_id": task_id,
@@ -447,8 +465,8 @@ def execute_scan_task(
             task.status = "FAILED"
             db.commit()
             
-            # 发射扫描失败通知（HTTP回调到FastAPI）
-            _emit_notification_to_fastapi(
+            # 发射扫描失败通知
+            _emit_notification(
                 event_type="scan.failed",
                 data={
                     "task_id": task_id,

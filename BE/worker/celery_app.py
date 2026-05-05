@@ -22,7 +22,41 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://aegis-redis:6379/0")
+FASTAPI_URL = os.getenv("FASTAPI_URL", "http://aegis-backend:8000").rstrip("/")
+NOTIFICATION_API_URL = f"{FASTAPI_URL}/api/v1/notifications/events/emit"
 celery_app = Celery("aegis_worker", broker=REDIS_URL, backend=REDIS_URL)
+
+
+def _emit_notification_to_fastapi(event_type: str, data: Dict[str, Any], source: str = "scanner_worker"):
+    """
+    通过 HTTP 回调将通知事件发送到 FastAPI 后端。
+    
+    由于 Celery Worker 运行在独立进程中，直接调用 notification_service
+    只会在 Worker 进程内存中创建通知，前端无法获取。
+    因此通过 HTTP POST 调用 FastAPI 的 /events/emit 端点，
+    确保通知在 FastAPI 进程中创建并通过 WebSocket 推送给前端。
+    
+    Args:
+        event_type: 事件类型（如 scan.started, vulnerability.found）
+        data: 事件数据
+        source: 事件源标识
+    """
+    try:
+        response = httpx.post(
+            NOTIFICATION_API_URL,
+            json={
+                "event_type": event_type,
+                "data": data,
+                "source": source
+            },
+            timeout=5.0,
+        )
+        if response.status_code == 200:
+            logger.info(f"✅ [Notification] HTTP callback success: {event_type} -> FastAPI")
+        else:
+            logger.warning(f"⚠️ [Notification] HTTP callback failed ({response.status_code}): {event_type}")
+    except Exception as e:
+        logger.warning(f"⚠️ [Notification] HTTP callback error for {event_type}: {e}")
 
 
 def get_risk_level(severity_str: str) -> str:
@@ -210,28 +244,22 @@ def execute_scan_task(
         task.status = "RUNNING"
         db.commit()
         
-        # 发射扫描启动通知
-        try:
-            from app.services.notification_service import notification_service
-            notification_service.emit_event_from_thread(
-                event_type="scan.started",
-                data={
-                    "task_id": task_id,
-                    "display_id": task.display_id,
-                    "target_url": target_url,
-                    "scan_strategy": scan_strategy,
-                    "scan_range": {
-                        "paths": target_paths or [],
-                        "vuln_types": target_vuln_types or [],
-                        "parameters": target_parameters or [],
-                    },
-                    "started_at": datetime.now().isoformat(),
+        # 发射扫描启动通知（HTTP回调到FastAPI）
+        _emit_notification_to_fastapi(
+            event_type="scan.started",
+            data={
+                "task_id": task_id,
+                "display_id": task.display_id,
+                "target_url": target_url,
+                "scan_strategy": scan_strategy,
+                "scan_range": {
+                    "paths": target_paths or [],
+                    "vuln_types": target_vuln_types or [],
+                    "parameters": target_parameters or [],
                 },
-                source="scanner_worker"
-            )
-            logger.info(f"Emitted scan started notification for task #{task.display_id}")
-        except Exception as e:
-            logger.warning(f"Failed to emit scan started notification: {e}")
+                "started_at": datetime.now().isoformat(),
+            },
+        )
 
         # === 使用混合扫描引擎 ===
         logger.info("🔧 [Worker] 初始化 HybridScannerEngine...")
@@ -349,32 +377,6 @@ def execute_scan_task(
                 )
                 db.add(vuln_record)
                 
-                # 发射漏洞发现通知
-                try:
-                    from app.services.notification_service import notification_service
-                    risk_level = get_risk_level(vuln_record.severity or "HIGH")
-                    
-                    notification_service.emit_event_from_thread(
-                        event_type="vulnerability.found",
-                        data={
-                            "task_id": task_id,
-                            "name": vuln_name,
-                            "risk_level": risk_level,
-                            "url": v["url"],
-                            "vuln_type": vuln_type or (vuln_name.split(" (Simulation-Confirmed)")[0] if "(Simulation-Confirmed)" in vuln_name else None),
-                            "description": v.get("llm_analysis", ""),
-                            "cvss_score": evidence_data.get("confidence") if isinstance(evidence_data, dict) else None,
-                            "parameter": parameter,
-                            "method": attack_path.get("request", {}).get("method", "GET") if isinstance(attack_path, dict) else "GET",
-                            "affected_asset": target_url,
-                            "location_path": v["url"],
-                        },
-                        source="scanner_worker"
-                    )
-                    logger.info(f"Emitted vulnerability found notification: {vuln_name}")
-                except Exception as e:
-                    logger.warning(f"Failed to emit vulnerability found notification: {e}")
-                
                 logger.info(f"  [{idx}] {vuln_name} @ {v['url']}")
                 logger.info(f"      Payload: {payload[:100]}")
                 logger.info(f"      分析：{v.get('llm_analysis')}")
@@ -398,50 +400,39 @@ def execute_scan_task(
                 "url": v.get("url", ""),
             })
         
-        # 发射扫描完成通知
-        try:
-            from app.services.notification_service import notification_service
-            notification_service.emit_event_from_thread(
-                event_type="scan.completed",
+        # 发射扫描完成通知（HTTP回调到FastAPI）
+        _emit_notification_to_fastapi(
+            event_type="scan.completed",
+            data={
+                "task_id": task_id,
+                "display_id": task.display_id,
+                "target_url": target_url,
+                "vulnerabilities_found": vuln_count,
+                "duration_seconds": execution_time,
+                "completed_at": datetime.now().isoformat(),
+                "severity_summary": severity_counts,
+            },
+        )
+        
+        # 发射漏洞汇总通知（HTTP回调到FastAPI）
+        if vuln_count > 0:
+            _emit_notification_to_fastapi(
+                event_type="vulnerability.summary",
                 data={
                     "task_id": task_id,
                     "display_id": task.display_id,
                     "target_url": target_url,
-                    "vulnerabilities_found": vuln_count,
-                    "duration_seconds": execution_time,
-                    "completed_at": datetime.now().isoformat(),
-                    "severity_summary": severity_counts,
-                },
-                source="scanner_worker"
-            )
-            logger.info(f"Emitted scan completed notification for task #{task.display_id}")
-        except Exception as e:
-            logger.warning(f"Failed to emit scan completed notification: {e}")
-        
-        # 发射漏洞汇总通知
-        if vuln_count > 0:
-            try:
-                notification_service.emit_event_from_thread(
-                    event_type="vulnerability.summary",
-                    data={
-                        "task_id": task_id,
-                        "display_id": task.display_id,
-                        "target_url": target_url,
-                        "total_count": vuln_count,
-                        "severity_counts": severity_counts,
-                        "top_vulnerabilities": top_vulns[:5],
-                        "scan_duration": execution_time,
-                        "scan_range": {
-                            "paths": target_paths or [],
-                            "vuln_types": target_vuln_types or [],
-                            "parameters": target_parameters or [],
-                        },
+                    "total_count": vuln_count,
+                    "severity_counts": severity_counts,
+                    "top_vulnerabilities": top_vulns[:5],
+                    "scan_duration": execution_time,
+                    "scan_range": {
+                        "paths": target_paths or [],
+                        "vuln_types": target_vuln_types or [],
+                        "parameters": target_parameters or [],
                     },
-                    source="scanner_worker"
-                )
-                logger.info(f"Emitted vulnerability summary notification for task #{task.display_id}")
-            except Exception as e:
-                logger.warning(f"Failed to emit vulnerability summary notification: {e}")
+                },
+            )
         
         logger.info("=" * 60)
         logger.info(f"✅ [Worker] 模拟攻击任务完成")
@@ -456,22 +447,16 @@ def execute_scan_task(
             task.status = "FAILED"
             db.commit()
             
-            # 发射扫描失败通知
-            try:
-                from app.services.notification_service import notification_service
-                notification_service.emit_event_from_thread(
-                    event_type="scan.failed",
-                    data={
-                        "task_id": task_id,
-                        "display_id": task.display_id if hasattr(task, 'display_id') else task_id,
-                        "error_message": str(e),
-                        "failed_at": datetime.now().isoformat(),
-                    },
-                    source="scanner_worker"
-                )
-                logger.info(f"Emitted scan failed notification for task {task_id}")
-            except Exception as notif_err:
-                logger.warning(f"Failed to emit scan failed notification: {notif_err}")
+            # 发射扫描失败通知（HTTP回调到FastAPI）
+            _emit_notification_to_fastapi(
+                event_type="scan.failed",
+                data={
+                    "task_id": task_id,
+                    "display_id": task.display_id if hasattr(task, 'display_id') else task_id,
+                    "error_message": str(e),
+                    "failed_at": datetime.now().isoformat(),
+                },
+            )
     finally:
         db.close()
 

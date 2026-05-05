@@ -128,23 +128,21 @@ def create_scan_task(task_in: TaskCreate, db: Session = Depends(get_db)):
             task_in.target_parameters,
         )
 
-    # 发射任务创建通知（异步，不阻塞响应）
+    # 发射任务创建通知（线程安全，不阻塞响应）
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            asyncio.create_task(_emit_task_created_notification(
-                db_task.id,
-                db_task.display_id,
-                str(task_in.target_url),
-                task_in.scan_strategy
-            ))
-        else:
-            loop.run_until_complete(_emit_task_created_notification(
-                db_task.id,
-                db_task.display_id,
-                str(task_in.target_url),
-                task_in.scan_strategy
-            ))
+        from app.services.notification_service import notification_service
+        notification_service.emit_event_from_thread(
+            event_type="scan.created",
+            data={
+                "task_id": db_task.id,
+                "display_id": db_task.display_id,
+                "target_url": str(task_in.target_url),
+                "scan_strategy": task_in.scan_strategy,
+                "status": "PENDING"
+            },
+            source="task_api"
+        )
+        logger.info(f"Emitted notification for task creation: #{db_task.display_id}")
     except Exception as e:
         logger.warning(f"Could not emit task creation notification: {e}")
 

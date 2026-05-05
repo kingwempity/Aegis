@@ -206,12 +206,20 @@ class NotificationService:
     
     def _register_default_handlers(self):
         """注册默认的事件处理器"""
+        # 扫描任务创建事件
+        self.register_event_handler("scan.created", self._handle_scan_created, priority=10)
+        # 扫描启动事件
+        self.register_event_handler("scan.started", self._handle_scan_started, priority=10)
+        # 扫描进行中事件
+        self.register_event_handler("scan.in_progress", self._handle_scan_in_progress, priority=8)
         # 扫描完成事件
         self.register_event_handler("scan.completed", self._handle_scan_completed, priority=10)
         # 扫描失败事件
         self.register_event_handler("scan.failed", self._handle_scan_failed, priority=10)
         # 发现漏洞事件
         self.register_event_handler("vulnerability.found", self._handle_vulnerability_found, priority=8)
+        # 漏洞扫描结果汇总事件
+        self.register_event_handler("vulnerability.summary", self._handle_vulnerability_summary, priority=9)
         # 用户操作事件
         self.register_event_handler("user.*", self._handle_user_event, priority=5)
         
@@ -746,24 +754,152 @@ class NotificationService:
     
     # ==================== 默认事件处理器 ====================
     
+    def _handle_scan_created(self, event: NotificationEvent) -> Notification:
+        """
+        处理扫描任务创建事件
+        """
+        task_id = event.data.get("task_id", "Unknown")
+        display_id = event.data.get("display_id", task_id)
+        target_url = event.data.get("target_url", "Unknown target")
+        scan_strategy = event.data.get("scan_strategy", "default")
+        
+        strategy_labels = {
+            "attack_validation": "攻击验证模式",
+            "full_audit": "全面审计模式",
+            "focused_probe": "定向探测模式",
+            "default": "默认模式",
+        }
+        strategy_label = strategy_labels.get(scan_strategy, scan_strategy)
+        
+        return self.create_notification(
+            type=NotificationType.INFO.value,
+            category=NotificationCategory.SCAN.value,
+            title=f"扫描任务 #{display_id} 已创建",
+            message=f"目标: {target_url}，策略: {strategy_label}，状态: 等待执行",
+            extra_data={
+                "action": "scan_created",
+                "task_id": task_id,
+                "display_id": display_id,
+                "target_url": target_url,
+                "scan_strategy": scan_strategy,
+                "status": "PENDING"
+            },
+            priority=NotificationPriority.MEDIUM.value
+        )
+    
+    def _handle_scan_started(self, event: NotificationEvent) -> Notification:
+        """
+        处理扫描启动事件
+        
+        当扫描任务状态变为 RUNNING 时触发，通知用户扫描已开始。
+        """
+        task_id = event.data.get("task_id", "Unknown")
+        display_id = event.data.get("display_id", task_id)
+        target_url = event.data.get("target_url", "Unknown target")
+        scan_strategy = event.data.get("scan_strategy", "default")
+        scan_range = event.data.get("scan_range", {})
+        started_at = event.data.get("started_at", datetime.now().isoformat())
+        
+        title = f"扫描任务 #{display_id} 已启动"
+        message_parts = [f"目标: {target_url}"]
+        
+        if scan_range:
+            paths = scan_range.get("paths", [])
+            vuln_types = scan_range.get("vuln_types", [])
+            parameters = scan_range.get("parameters", [])
+            if paths:
+                message_parts.append(f"扫描路径: {', '.join(paths[:3])}{'...' if len(paths) > 3 else ''}")
+            if vuln_types:
+                message_parts.append(f"漏洞类型: {', '.join(vuln_types[:3])}{'...' if len(vuln_types) > 3 else ''}")
+        
+        message = "；".join(message_parts)
+        
+        return self.create_notification(
+            type=NotificationType.INFO.value,
+            category=NotificationCategory.SCAN.value,
+            title=title,
+            message=message,
+            extra_data={
+                "action": "scan_started",
+                "task_id": task_id,
+                "display_id": display_id,
+                "target_url": target_url,
+                "scan_strategy": scan_strategy,
+                "scan_range": scan_range,
+                "started_at": started_at,
+                "status": "RUNNING"
+            },
+            priority=NotificationPriority.HIGH.value
+        )
+    
+    def _handle_scan_in_progress(self, event: NotificationEvent) -> Optional[Notification]:
+        """
+        处理扫描进行中事件
+        
+        默认情况下不创建独立通知，以避免通知过多。
+        仅当配置为需要进度通知时才创建。
+        """
+        send_notification = event.data.get("send_notification", False)
+        if not send_notification:
+            return None
+        
+        task_id = event.data.get("task_id", "Unknown")
+        display_id = event.data.get("display_id", task_id)
+        progress = event.data.get("progress", 0)
+        current_stage = event.data.get("current_stage", "扫描中")
+        
+        return self.create_notification(
+            type=NotificationType.INFO.value,
+            category=NotificationCategory.SCAN.value,
+            title=f"扫描进度 #{display_id}: {progress}%",
+            message=f"当前阶段: {current_stage}，已完成 {progress}%",
+            extra_data={
+                "action": "scan_in_progress",
+                "task_id": task_id,
+                "display_id": display_id,
+                "progress": progress,
+                "current_stage": current_stage
+            },
+            priority=NotificationPriority.LOW.value
+        )
+    
     def _handle_scan_completed(self, event: NotificationEvent) -> Notification:
         """
         处理扫描完成事件
+        
+        增强版：包含扫描范围、时间戳等关键要素。
         """
         task_id = event.data.get("task_id", "Unknown")
+        display_id = event.data.get("display_id", task_id)
         target_url = event.data.get("target_url", "Unknown target")
         vulnerabilities_found = event.data.get("vulnerabilities_found", 0)
         duration = event.data.get("duration_seconds", 0)
-        
-        title = "扫描任务完成"
-        message = f"扫描任务 #{task_id} 已完成，发现 {vulnerabilities_found} 个漏洞，耗时 {duration:.1f} 秒"
+        scan_range = event.data.get("scan_range", {})
+        completed_at = event.data.get("completed_at", datetime.now().isoformat())
+        severity_summary = event.data.get("severity_summary", {})
         
         if vulnerabilities_found > 0:
             notif_type = NotificationType.WARNING.value
             priority = NotificationPriority.HIGH.value
+            
+            severity_parts = []
+            for level in ["critical", "high", "medium", "low", "info"]:
+                count = severity_summary.get(level, 0)
+                if count > 0:
+                    level_labels = {
+                        "critical": "严重", "high": "高危",
+                        "medium": "中危", "low": "低危", "info": "信息"
+                    }
+                    severity_parts.append(f"{level_labels.get(level)}:{count}")
+            
+            severity_info = f"（{', '.join(severity_parts)}）" if severity_parts else ""
+            title = f"扫描任务 #{display_id} 完成"
+            message = f"扫描目标 {target_url} 已完成，发现 {vulnerabilities_found} 个漏洞{severity_info}，耗时 {duration:.1f}s"
         else:
             notif_type = NotificationType.SUCCESS.value
             priority = NotificationPriority.LOW.value
+            title = f"扫描任务 #{display_id} 完成"
+            message = f"扫描目标 {target_url} 已完成，未发现漏洞，耗时 {duration:.1f}s"
         
         return self.create_notification(
             type=notif_type,
@@ -773,9 +909,13 @@ class NotificationService:
             extra_data={
                 "action": "scan_completed",
                 "task_id": task_id,
+                "display_id": display_id,
                 "target_url": target_url,
                 "vulnerabilities_found": vulnerabilities_found,
-                "duration_seconds": duration
+                "duration_seconds": duration,
+                "scan_range": scan_range,
+                "completed_at": completed_at,
+                "severity_summary": severity_summary,
             },
             priority=priority
         )
@@ -803,13 +943,23 @@ class NotificationService:
     def _handle_vulnerability_found(self, event: NotificationEvent) -> Notification:
         """
         处理发现漏洞事件
+        
+        增强版：包含漏洞类型、风险等级、受影响资产、位置路径、
+        CVSS评分、修复建议等详细安全信息。
         """
         vuln_name = event.data.get("name", "未知漏洞")
         risk_level = event.data.get("risk_level", "unknown")
         url = event.data.get("url", "")
         task_id = event.data.get("task_id", "Unknown")
+        vuln_type = event.data.get("vuln_type", "未知类型")
+        description = event.data.get("description", "")
+        remediation = event.data.get("remediation", "")
+        cvss_score = event.data.get("cvss_score")
+        parameter = event.data.get("parameter", "")
+        method = event.data.get("method", "GET")
+        affected_asset = event.data.get("affected_asset", url)
+        location_path = event.data.get("location_path", url)
         
-        # 根据风险等级设置通知类型和优先级
         risk_mapping = {
             "critical": (NotificationType.ERROR.value, NotificationPriority.CRITICAL.value),
             "high": (NotificationType.ERROR.value, NotificationPriority.HIGH.value),
@@ -823,19 +973,130 @@ class NotificationService:
             (NotificationType.INFO.value, NotificationPriority.MEDIUM.value)
         )
         
+        detail_parts = []
+        if vuln_type:
+            detail_parts.append(f"漏洞类型: {vuln_type}")
+        if parameter:
+            detail_parts.append(f"参数: {parameter}")
+        if method:
+            detail_parts.append(f"方法: {method}")
+        if cvss_score is not None:
+            detail_parts.append(f"CVSS: {cvss_score}")
+        
+        detail_info = "；".join(detail_parts) if detail_parts else ""
+        
+        message = f"在 {url} 发现 {risk_level.upper()} 风险漏洞：{vuln_name}"
+        if detail_info:
+            message += f"（{detail_info}）"
+        if description:
+            message += f"。描述：{description[:100]}{'...' if len(description) > 100 else ''}"
+        
         return self.create_notification(
             type=notif_type,
             category=NotificationCategory.SECURITY.value,
-            title=f"发现{risk_level.upper()}风险漏洞：{vuln_name}",
-            message=f"在 {url} 发现 {risk_level} 级别漏洞：{vuln_name}",
+            title=f"[{risk_level.upper()}] {vuln_name}",
+            message=message,
             extra_data={
                 "action": "vulnerability_found",
                 "task_id": task_id,
                 "vulnerability_name": vuln_name,
                 "risk_level": risk_level,
-                "url": url
+                "url": url,
+                "vuln_type": vuln_type,
+                "description": description,
+                "remediation": remediation,
+                "cvss_score": cvss_score,
+                "parameter": parameter,
+                "method": method,
+                "affected_asset": affected_asset,
+                "location_path": location_path,
             },
             priority=priority
+        )
+    
+    def _handle_vulnerability_summary(self, event: NotificationEvent) -> Notification:
+        """
+        处理漏洞扫描结果汇总事件
+        
+        在扫描完成后，按严重级别汇总所有发现的漏洞信息。
+        """
+        task_id = event.data.get("task_id", "Unknown")
+        display_id = event.data.get("display_id", task_id)
+        target_url = event.data.get("target_url", "Unknown target")
+        total_count = event.data.get("total_count", 0)
+        severity_counts = event.data.get("severity_counts", {})
+        top_vulnerabilities = event.data.get("top_vulnerabilities", [])
+        scan_duration = event.data.get("scan_duration", 0)
+        scan_range = event.data.get("scan_range", {})
+        
+        if total_count == 0:
+            return self.create_notification(
+                type=NotificationType.SUCCESS.value,
+                category=NotificationCategory.SECURITY.value,
+                title=f"扫描 #{display_id} 完成：未发现漏洞",
+                message=f"目标 {target_url} 的扫描已完成，耗时 {scan_duration:.1f}s，未发现安全漏洞。",
+                extra_data={
+                    "action": "vulnerability_summary",
+                    "task_id": task_id,
+                    "display_id": display_id,
+                    "target_url": target_url,
+                    "total_count": 0,
+                    "scan_duration": scan_duration,
+                },
+                priority=NotificationPriority.LOW.value
+            )
+        
+        parts = []
+        for level in ["critical", "high", "medium", "low", "info"]:
+            count = severity_counts.get(level, 0)
+            if count > 0:
+                level_labels = {
+                    "critical": "严重", "high": "高危",
+                    "medium": "中危", "low": "低危", "info": "信息"
+                }
+                parts.append(f"{level_labels.get(level, level)}: {count}")
+        
+        vuln_summary = "，".join(parts)
+        
+        top_details = ""
+        if top_vulnerabilities:
+            top_details = "\n".join(
+                f"  [{v.get('severity', '?')}] {v.get('name', '未知')} @ {v.get('url', '?')}"
+                for v in top_vulnerabilities[:5]
+            )
+        
+        overall_risk = NotificationPriority.HIGH.value
+        if severity_counts.get("critical", 0) > 0:
+            overall_risk = NotificationPriority.CRITICAL.value
+        elif severity_counts.get("high", 0) > 0:
+            overall_risk = NotificationPriority.HIGH.value
+        elif severity_counts.get("medium", 0) > 0:
+            overall_risk = NotificationPriority.MEDIUM.value
+        else:
+            overall_risk = NotificationPriority.LOW.value
+        
+        message = f"目标 {target_url} 扫描完成，共发现 {total_count} 个漏洞（{vuln_summary}）"
+        if top_details:
+            message += f"\nTOP漏洞：\n{top_details}"
+        
+        return self.create_notification(
+            type=NotificationType.WARNING.value,
+            category=NotificationCategory.SECURITY.value,
+            title=f"扫描 #{display_id} 漏洞汇总：发现 {total_count} 个漏洞",
+            message=message,
+            extra_data={
+                "action": "vulnerability_summary",
+                "task_id": task_id,
+                "display_id": display_id,
+                "target_url": target_url,
+                "total_count": total_count,
+                "severity_counts": severity_counts,
+                "top_vulnerabilities": top_vulnerabilities,
+                "scan_duration": scan_duration,
+                "scan_range": scan_range,
+                "overall_risk": overall_risk,
+            },
+            priority=overall_risk
         )
     
     def _handle_user_event(self, event: NotificationEvent) -> Optional[Notification]:
@@ -952,6 +1213,93 @@ def notify_password_changed(username: str, operator: str = "用户") -> Notifica
     )
 
 
+async def notify_scan_created(task_id: int, display_id: int, target_url: str, scan_strategy: str = "default"):
+    """
+    扫描任务创建通知（便捷函数）
+    
+    Args:
+        task_id: 任务ID
+        display_id: 显示ID
+        target_url: 目标URL
+        scan_strategy: 扫描策略
+    """
+    await notification_service.emit_event("scan.created", {
+        "task_id": task_id,
+        "display_id": display_id,
+        "target_url": target_url,
+        "scan_strategy": scan_strategy,
+    }, source="task_api")
+
+
+async def notify_scan_started(
+    task_id: int,
+    display_id: int,
+    target_url: str,
+    scan_strategy: str = "default",
+    scan_range: Dict[str, Any] = None,
+    target_paths: List[str] = None,
+    target_vuln_types: List[str] = None,
+    target_parameters: List[str] = None,
+):
+    """
+    扫描启动通知（便捷函数）
+    
+    Args:
+        task_id: 任务ID
+        display_id: 显示ID
+        target_url: 目标URL
+        scan_strategy: 扫描策略
+        scan_range: 扫描范围详细信息
+        target_paths: 定向路径
+        target_vuln_types: 定向漏洞类型
+        target_parameters: 定向参数
+    """
+    scan_range_data = scan_range or {}
+    if target_paths:
+        scan_range_data["paths"] = target_paths
+    if target_vuln_types:
+        scan_range_data["vuln_types"] = target_vuln_types
+    if target_parameters:
+        scan_range_data["parameters"] = target_parameters
+    
+    await notification_service.emit_event("scan.started", {
+        "task_id": task_id,
+        "display_id": display_id,
+        "target_url": target_url,
+        "scan_strategy": scan_strategy,
+        "scan_range": scan_range_data,
+        "started_at": datetime.now().isoformat(),
+    }, source="scanner")
+
+
+async def notify_scan_in_progress(
+    task_id: int,
+    display_id: int,
+    progress: int = 0,
+    current_stage: str = "扫描中",
+    send_notification: bool = False,
+):
+    """
+    扫描进行中通知（便捷函数）
+    
+    默认不创建通知以避免过多通知，仅WebSocket推送进度更新。
+    
+    Args:
+        task_id: 任务ID
+        display_id: 显示ID
+        progress: 进度百分比 (0-100)
+        current_stage: 当前扫描阶段
+        send_notification: 是否创建通知记录
+    """
+    await notification_service.emit_event("scan.in_progress", {
+        "task_id": task_id,
+        "display_id": display_id,
+        "progress": progress,
+        "current_stage": current_stage,
+        "send_notification": send_notification,
+    }, source="scanner")
+
+
 async def notify_scan_completed(task_id: int, target_url: str, vulnerabilities_found: int, duration_seconds: float):
     """
     扫描完成通知（便捷函数）
@@ -995,4 +1343,39 @@ async def notify_vulnerability_found(task_id: int, vulnerability_data: Dict[str,
     await notification_service.emit_event("vulnerability.found", {
         "task_id": task_id,
         **vulnerability_data
+    }, source="scanner")
+
+
+async def notify_vulnerability_summary(
+    task_id: int,
+    display_id: int,
+    target_url: str,
+    total_count: int,
+    severity_counts: Dict[str, int],
+    top_vulnerabilities: List[Dict[str, Any]] = None,
+    scan_duration: float = 0,
+    scan_range: Dict[str, Any] = None,
+):
+    """
+    漏洞扫描结果汇总通知（便捷函数）
+    
+    Args:
+        task_id: 任务ID
+        display_id: 显示ID
+        target_url: 目标URL
+        total_count: 漏洞总数
+        severity_counts: 各严重级别漏洞数量，如 {"critical": 2, "high": 5, "medium": 3}
+        top_vulnerabilities: TOP漏洞列表
+        scan_duration: 扫描时长
+        scan_range: 扫描范围
+    """
+    await notification_service.emit_event("vulnerability.summary", {
+        "task_id": task_id,
+        "display_id": display_id,
+        "target_url": target_url,
+        "total_count": total_count,
+        "severity_counts": severity_counts,
+        "top_vulnerabilities": top_vulnerabilities or [],
+        "scan_duration": scan_duration,
+        "scan_range": scan_range or {},
     }, source="scanner")

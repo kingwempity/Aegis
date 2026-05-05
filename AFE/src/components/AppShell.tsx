@@ -100,12 +100,14 @@ const AppShell: React.FC<AppShellProps> = ({
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [selectedNotifyCategory, setSelectedNotifyCategory] = useState<string>('all');
 
   // 获取通知列表
-  const fetchNotifications = useCallback(async () => {
+  const fetchNotifications = useCallback(async (category?: string) => {
     try {
       setNotificationsLoading(true);
-      const response = await api.getNotifications();
+      const cat = category !== 'all' ? category : undefined;
+      const response = await api.getNotifications(cat);
       setNotifications(response.notifications);
       setUnreadCount(response.unread_count);
     } catch (error) {
@@ -193,12 +195,46 @@ const AppShell: React.FC<AppShellProps> = ({
 
   const resolvedNavItems = propNavItems.length > 0 ? propNavItems : fallbackNavItems;
 
-  const getNotificationIcon = (type: string) => {
+  const getNotificationIcon = (type: string, priority?: string, category?: string) => {
+    // 安全类通知按优先级/严重程度显示颜色
+    if (category === 'security') {
+      if (priority === 'critical') return <AlertCircle size={16} className="text-red-600" />;
+      if (priority === 'high') return <AlertCircle size={16} className="text-red-500" />;
+      if (priority === 'medium') return <AlertCircle size={16} className="text-orange-500" />;
+      if (priority === 'low') return <AlertCircle size={16} className="text-yellow-500" />;
+    }
+    // 扫描类通知
+    if (category === 'scan') {
+      if (type === 'error') return <AlertCircle size={16} className="text-red-500" />;
+      if (type === 'warning') return <AlertCircle size={16} className="text-orange-500" />;
+      return <CheckCircle size={16} className="text-blue-500" />;
+    }
     switch (type) {
+      case 'error': return <AlertCircle size={16} className="text-red-500" />;
       case 'success': return <CheckCircle size={16} className="text-green-500" />;
       case 'warning': return <AlertCircle size={16} className="text-yellow-500" />;
       default: return <AlertCircle size={16} className="text-blue-500" />;
     }
+  };
+
+  const getCategoryLabel = (category: string) => {
+    const labels: Record<string, string> = {
+      'user_management': '用户管理',
+      'scan': '扫描任务',
+      'system': '系统',
+      'security': '安全',
+    };
+    return labels[category] || category;
+  };
+
+  const getCategoryColor = (category: string) => {
+    const colors: Record<string, string> = {
+      'user_management': 'bg-blue-100 text-blue-700',
+      'scan': 'bg-purple-100 text-purple-700',
+      'system': 'bg-gray-100 text-gray-700',
+      'security': 'bg-red-100 text-red-700',
+    };
+    return colors[category] || 'bg-gray-100 text-gray-700';
   };
 
   return (
@@ -358,35 +394,71 @@ const AppShell: React.FC<AppShellProps> = ({
                 
                 {/* 通知下拉面板 */}
                 {showNotifications && (
-                  <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50">
+                  <div className="absolute right-0 top-full mt-2 w-96 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50">
                     <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                      <h3 className="font-semibold text-gray-800">通知</h3>
+                      <h3 className="font-semibold text-gray-800">消息中心</h3>
                       {unreadCount > 0 && (
                         <span className="text-xs text-[#ff6b00] font-medium">{unreadCount} 条未读</span>
                       )}
                     </div>
+                    {/* 分类筛选标签 */}
+                    <div className="px-3 py-2 border-b border-gray-50 flex gap-1 overflow-x-auto">
+                      {[
+                        { key: 'all', label: '全部' },
+                        { key: 'security', label: '安全' },
+                        { key: 'scan', label: '扫描' },
+                        { key: 'user_management', label: '用户' },
+                        { key: 'system', label: '系统' },
+                      ].map(tab => (
+                        <button
+                          key={tab.key}
+                          onClick={() => {
+                            setSelectedNotifyCategory(tab.key);
+                            fetchNotifications(tab.key);
+                          }}
+                          className={`px-2.5 py-1 text-xs rounded-full font-medium whitespace-nowrap transition-colors ${
+                            selectedNotifyCategory === tab.key
+                              ? 'bg-[#ff6b00] text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
                     <div className="max-h-80 overflow-y-auto">
-                      {notifications.map((notification) => (
+                      {notifications.length === 0 ? (
+                        <div className="py-10 text-center text-gray-400">
+                          <Bell size={36} className="mx-auto mb-2 text-gray-300" />
+                          <p className="text-sm">暂无通知</p>
+                        </div>
+                      ) : (
+                        notifications.map((notification) => (
                         <div 
                           key={notification.id}
                           onClick={() => markAsRead(notification.id)}
                           className={`px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer ${
-                            !notification.read ? 'bg-orange-50/50' : ''
+                            !notification.read ? 'bg-orange-50/30' : ''
                           }`}
                         >
                           <div className="flex items-start gap-3">
-                            <div className="mt-0.5">{getNotificationIcon(notification.type)}</div>
+                            <div className="mt-0.5">{getNotificationIcon(notification.type, notification.priority, notification.category)}</div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-800">{notification.title}</p>
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span className={`px-1.5 py-0.5 text-xs rounded-full font-medium ${getCategoryColor(notification.category)}`}>
+                                  {getCategoryLabel(notification.category)}
+                                </span>
+                              </div>
+                              <p className="text-sm font-medium text-gray-800 leading-tight">{notification.title}</p>
                               <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{notification.message}</p>
                               <p className="text-xs text-gray-400 mt-1">{notification.time}</p>
                             </div>
                             {!notification.read && (
-                              <div className="w-2 h-2 bg-[#ff6b00] rounded-full mt-1.5"></div>
+                              <div className="w-2 h-2 bg-[#ff6b00] rounded-full mt-1.5 flex-shrink-0"></div>
                             )}
                           </div>
                         </div>
-                      ))}
+                      )))}
                     </div>
                     <div className="px-4 py-3 border-t border-gray-100 flex gap-2">
                       {unreadCount > 0 && (
@@ -424,7 +496,7 @@ const AppShell: React.FC<AppShellProps> = ({
           onClick={() => setShowAllNotifications(false)}
         >
           <div 
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden"
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* 模态框头部 */}
@@ -434,7 +506,7 @@ const AppShell: React.FC<AppShellProps> = ({
                   <Bell size={24} className="text-[#ff6b00]" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-gray-800">全部通知</h2>
+                  <h2 className="text-xl font-bold text-gray-800">消息中心</h2>
                   <p className="text-sm text-gray-500">共 {notifications.length} 条通知</p>
                 </div>
               </div>
@@ -456,6 +528,32 @@ const AppShell: React.FC<AppShellProps> = ({
               </div>
             </div>
             
+            {/* 分类筛选标签 */}
+            <div className="px-6 py-2 border-b border-gray-50 flex gap-2 bg-gray-50/50">
+              {[
+                { key: 'all', label: '全部' },
+                { key: 'security', label: '安全漏洞' },
+                { key: 'scan', label: '扫描任务' },
+                { key: 'user_management', label: '用户管理' },
+                { key: 'system', label: '系统通知' },
+              ].map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => {
+                    setSelectedNotifyCategory(tab.key);
+                    fetchNotifications(tab.key);
+                  }}
+                  className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${
+                    selectedNotifyCategory === tab.key
+                      ? 'bg-[#ff6b00] text-white shadow-sm'
+                      : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            
             {/* 模态框内容 */}
             <div className="max-h-[60vh] overflow-y-auto">
               {notifications.length === 0 ? (
@@ -469,19 +567,59 @@ const AppShell: React.FC<AppShellProps> = ({
                     key={notification.id}
                     onClick={() => markAsRead(notification.id)}
                     className={`px-6 py-4 border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer ${
-                      !notification.read ? 'bg-orange-50/50' : ''
+                      !notification.read ? 'bg-orange-50/30' : ''
                     }`}
                   >
                     <div className="flex items-start gap-4">
-                      <div className="mt-1">{getNotificationIcon(notification.type)}</div>
+                      <div className="mt-1">{getNotificationIcon(notification.type, notification.priority, notification.category)}</div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-base font-semibold text-gray-800">{notification.title}</p>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${getCategoryColor(notification.category)}`}>
+                            {getCategoryLabel(notification.category)}
+                          </span>
+                          {notification.priority && (
+                            <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${
+                              notification.priority === 'critical' ? 'bg-red-100 text-red-700' :
+                              notification.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                              notification.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-gray-100 text-gray-600'
+                            }`}>
+                              {notification.priority === 'critical' ? '严重' :
+                               notification.priority === 'high' ? '高危' :
+                               notification.priority === 'medium' ? '中等' :
+                               notification.priority === 'low' ? '低' : notification.priority}
+                            </span>
+                          )}
                           {!notification.read && (
                             <span className="px-2 py-0.5 text-xs bg-[#ff6b00]/10 text-[#ff6b00] rounded-full font-medium">未读</span>
                           )}
                         </div>
-                        <p className="text-sm text-gray-600 mt-1">{notification.message}</p>
+                        <p className="text-base font-semibold text-gray-800">{notification.title}</p>
+                        <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">{notification.message}</p>
+                        {notification.extra_data && notification.category === 'security' && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {notification.extra_data.vuln_type && (
+                              <span className="px-2 py-0.5 text-xs bg-blue-50 text-blue-600 rounded">
+                                类型: {notification.extra_data.vuln_type}
+                              </span>
+                            )}
+                            {notification.extra_data.cvss_score != null && (
+                              <span className="px-2 py-0.5 text-xs bg-purple-50 text-purple-600 rounded">
+                                CVSS: {notification.extra_data.cvss_score}
+                              </span>
+                            )}
+                            {notification.extra_data.method && (
+                              <span className="px-2 py-0.5 text-xs bg-gray-50 text-gray-600 rounded">
+                                {notification.extra_data.method}
+                              </span>
+                            )}
+                            {notification.extra_data.parameter && (
+                              <span className="px-2 py-0.5 text-xs bg-cyan-50 text-cyan-600 rounded">
+                                参数: {notification.extra_data.parameter}
+                              </span>
+                            )}
+                          </div>
+                        )}
                         <p className="text-xs text-gray-400 mt-2">{notification.time}</p>
                       </div>
                     </div>

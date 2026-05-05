@@ -233,6 +233,8 @@ export interface Notification {
   time: string;
   read: boolean;
   extra_data?: Record<string, any>;
+  priority?: 'low' | 'medium' | 'high' | 'critical';
+  delivery_status?: 'pending' | 'delivered' | 'failed';
 }
 
 export interface NotificationListResponse {

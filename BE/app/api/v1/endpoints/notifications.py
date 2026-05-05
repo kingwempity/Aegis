@@ -26,9 +26,13 @@ from app.services.notification_service import (
     NotificationType,
     NotificationCategory,
     NotificationPriority,
+    notify_scan_created,
+    notify_scan_started,
+    notify_scan_in_progress,
     notify_scan_completed,
     notify_scan_failed,
-    notify_vulnerability_found
+    notify_vulnerability_found,
+    notify_vulnerability_summary
 )
 
 logger = logging.getLogger(__name__)
@@ -415,6 +419,149 @@ async def test_vulnerability_found_notification(
         
     except Exception as e:
         logger.error(f"Failed to emit vulnerability found notification: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/test-scan-started")
+async def test_scan_started_notification(
+    task_id: int = 123,
+    display_id: int = 1,
+    target_url: str = "https://example.com",
+    scan_strategy: str = "attack_validation",
+):
+    """
+    测试扫描启动通知（便捷端点）
+    
+    用于快速验证扫描启动通知功能是否正常工作。
+    
+    Args:
+        task_id: 任务ID
+        display_id: 显示ID
+        target_url: 目标URL
+        scan_strategy: 扫描策略
+        
+    Returns:
+        dict: 操作结果
+    """
+    try:
+        await notify_scan_started(
+            task_id=task_id,
+            display_id=display_id,
+            target_url=target_url,
+            scan_strategy=scan_strategy,
+            target_paths=["/admin", "/api"],
+            target_vuln_types=["xss", "sqli"],
+            target_parameters=["id", "query"],
+        )
+        
+        return {
+            "success": True,
+            "message": f"Scan started notification emitted for task #{display_id}",
+            "data": {
+                "task_id": task_id,
+                "display_id": display_id,
+                "target_url": target_url,
+                "scan_strategy": scan_strategy,
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to emit scan started notification: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/test-vulnerability-summary")
+async def test_vulnerability_summary_notification(
+    task_id: int = 123,
+    display_id: int = 1,
+    target_url: str = "https://example.com",
+):
+    """
+    测试漏洞汇总通知（便捷端点）
+    
+    Args:
+        task_id: 任务ID
+        display_id: 显示ID
+        target_url: 目标URL
+        
+    Returns:
+        dict: 操作结果
+    """
+    try:
+        await notify_vulnerability_summary(
+            task_id=task_id,
+            display_id=display_id,
+            target_url=target_url,
+            total_count=8,
+            severity_counts={
+                "critical": 1,
+                "high": 3,
+                "medium": 2,
+                "low": 2,
+                "info": 0,
+            },
+            top_vulnerabilities=[
+                {"name": "SQL Injection", "severity": "high", "url": f"{target_url}/search"},
+                {"name": "XSS Reflected", "severity": "medium", "url": f"{target_url}/comment"},
+                {"name": "Path Traversal", "severity": "high", "url": f"{target_url}/download"},
+            ],
+            scan_duration=120.5,
+            scan_range={"paths": ["/admin", "/api"], "vuln_types": ["xss", "sqli"]},
+        )
+        
+        return {
+            "success": True,
+            "message": f"Vulnerability summary notification emitted for task #{display_id}",
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to emit vulnerability summary notification: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/test-scan-in-progress")
+async def test_scan_in_progress_notification(
+    task_id: int = 123,
+    display_id: int = 1,
+    progress: int = 50,
+    current_stage: str = "正在进行XSS扫描...",
+    send_notification: bool = True,
+):
+    """
+    测试扫描进行中通知（便捷端点）
+    
+    Args:
+        task_id: 任务ID
+        display_id: 显示ID
+        progress: 进度 (0-100)
+        current_stage: 当前阶段描述
+        send_notification: 是否创建通知记录
+        
+    Returns:
+        dict: 操作结果
+    """
+    try:
+        await notify_scan_in_progress(
+            task_id=task_id,
+            display_id=display_id,
+            progress=progress,
+            current_stage=current_stage,
+            send_notification=send_notification,
+        )
+        
+        return {
+            "success": True,
+            "message": f"Scan in progress notification emitted for task #{display_id}: {progress}%",
+            "data": {
+                "task_id": task_id,
+                "display_id": display_id,
+                "progress": progress,
+                "current_stage": current_stage,
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to emit scan in progress notification: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

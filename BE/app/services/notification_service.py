@@ -200,6 +200,7 @@ class NotificationService:
         self._background_worker: Optional[threading.Thread] = None
         self._worker_loop: Optional[asyncio.AbstractEventLoop] = None
         self._worker_running = False
+        self._worker_loop_ready = threading.Event()  # 事件循环就绪信号
         
         self._register_default_handlers()
         self._start_background_worker()
@@ -252,7 +253,7 @@ class NotificationService:
         后台工作线程的主循环
         
         在独立线程中运行事件循环，从队列中消费通知任务并执行。
-        使用共享的事件循环避免资源泄漏。
+        使用 run_forever() 让事件循环持续运行，通过 call_soon_threadsafe(stop()) 实现优雅退出。
         """
         self._worker_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._worker_loop)
@@ -260,27 +261,17 @@ class NotificationService:
         try:
             logger.info(f"Worker thread {threading.current_thread().name} started with event loop")
             
-            while self._worker_running:
-                try:
-                    # 从队列中获取任务，设置超时以便定期检查 _worker_running 标志
-                    task = self._notification_queue.get(timeout=1.0)
-                    
-                    if task is None:  # 哨兵值，用于停止worker
-                        break
-                    
-                    # 在共享事件循环中执行异步任务
-                    if not self._worker_loop.is_closed():
-                        asyncio.ensure_future(self._process_queued_task(task), loop=self._worker_loop)
-                        
-                except Exception as e:
-                    if isinstance(e, Exception) and "empty" not in str(e).lower():
-                        logger.debug(f"Worker queue get error: {e}")
-                    continue
-                    
+            # 信号通知外部线程：事件循环已就绪
+            self._worker_loop_ready.set()
+            
+            # 启动事件循环，让它一直运行
+            self._worker_loop.run_forever()
+            
         except Exception as e:
             logger.error(f"Worker loop runner error: {e}", exc_info=True)
         finally:
             try:
+                # 取消所有未完成的任务
                 pending = asyncio.all_tasks(self._worker_loop)
                 for task in pending:
                     task.cancel()
@@ -294,6 +285,22 @@ class NotificationService:
             
             logger.info("Worker thread stopped and event loop closed")
     
+    def stop_background_worker(self):
+        """停止后台工作线程"""
+        if self._worker_loop is not None and not self._worker_loop.is_closed():
+            # 使用 call_soon_threadsafe 安全地从外部线程调用 stop()
+            self._worker_loop.call_soon_threadsafe(self._worker_loop.stop)
+            logger.info("Signaled worker event loop to stop")
+        
+        self._worker_running = False
+        
+        if self._background_worker and self._background_worker.is_alive():
+            self._background_worker.join(timeout=5.0)
+            if self._background_worker.is_alive():
+                logger.warning("Background worker did not stop gracefully")
+        
+        logger.info("Background worker stop completed")
+    
     async def _process_queued_task(self, task: Tuple[str, Dict[str, Any], str]):
         """
         处理队列中的通知任务
@@ -304,16 +311,16 @@ class NotificationService:
         event_type, data, source = task
         try:
             await self.emit_event(event_type, data, source)
-            logger.info(f"Processed queued event: {event_type} from {source}")
+            logger.info(f"✅ [Worker] Processed queued event: {event_type} from {source}")
         except Exception as e:
-            logger.error(f"Failed to process queued event {event_type}: {e}", exc_info=True)
+            logger.error(f"❌ [Worker] Failed to process queued event {event_type}: {e}", exc_info=True)
     
     def emit_event_from_thread(self, event_type: str, data: Dict[str, Any], source: str = "external_thread"):
         """
         从外部线程安全地发射事件（线程安全接口）
         
-        此方法设计用于从非asyncio上下文（如Celery worker、普通线程）
-        安全地触发通知事件。它将任务放入队列，由后台工作线程处理。
+        使用 run_coroutine_threadsafe 将异步任务安全提交到运行中的事件循环。
+        通过 threading.Event 等待事件循环就绪，避免竞争条件。
         
         Args:
             event_type: 事件类型
@@ -328,24 +335,30 @@ class NotificationService:
             ...     source="celery_worker"
             ... )
         """
-        if not self._worker_running or self._background_worker is None or not self._background_worker.is_alive():
-            logger.warning("Background worker not available, attempting to restart...")
+        # 确保后台工作线程已启动且运行中
+        if self._background_worker is None or not self._background_worker.is_alive():
+            logger.info("Background worker not available, restarting...")
             self._start_background_worker()
         
-        self._notification_queue.put((event_type, data, source))
-        logger.debug(f"Queued event '{event_type}' from {source} for background processing")
-    
-    def stop_background_worker(self):
-        """停止后台工作线程"""
-        self._worker_running = False
-        self._notification_queue.put(None)  # 发送哨兵值
+        # 等待事件循环就绪信号，超时后放弃
+        if not self._worker_loop_ready.wait(timeout=5.0):
+            logger.error("Timeout waiting for worker event loop to be ready")
+            return
         
-        if self._background_worker and self._background_worker.is_alive():
-            self._background_worker.join(timeout=5.0)
-            if self._background_worker.is_alive():
-                logger.warning("Background worker did not stop gracefully")
+        # 检查事件循环是否有效
+        if self._worker_loop is None or self._worker_loop.is_closed():
+            logger.error("Worker event loop is not available or closed")
+            return
         
-        logger.info("Background worker stop requested")
+        # 使用 run_coroutine_threadsafe 安全提交异步任务
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                self._process_queued_task((event_type, data, source)),
+                self._worker_loop
+            )
+            logger.debug(f"✅ [Emit] Submitted event '{event_type}' from {source} to event loop")
+        except Exception as e:
+            logger.error(f"❌ [Emit] Failed to submit event '{event_type}': {e}", exc_info=True)
     
     def register_event_handler(
         self,

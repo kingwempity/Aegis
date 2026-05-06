@@ -22,8 +22,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://aegis-redis:6379/0")
-FASTAPI_URL = os.getenv("FASTAPI_URL", "").rstrip("/") or None
-NOTIFICATION_API_URL = f"{FASTAPI_URL}/api/v1/notifications/events/emit" if FASTAPI_URL else None
+# 通知回调地址：FastAPI 后端服务地址
+# 默认值 'http://localhost:8000' 适用于开发环境，生产环境请通过 FASTAPI_URL 环境变量配置
+_FASTAPI_ENV = os.getenv("FASTAPI_URL", "").rstrip("/")
+if not _FASTAPI_ENV:
+    logger.warning("FASTAPI_URL 未配置，使用默认值 'http://localhost:8000'（仅适用于开发环境）")
+FASTAPI_URL = _FASTAPI_ENV if _FASTAPI_ENV else "http://localhost:8000"
+NOTIFICATION_API_URL = f"{FASTAPI_URL}/api/v1/notifications/events/emit"
 # 同进程模式下直接导入通知服务（用于 _run_scan_in_background 场景）
 # 如果导入失败（独立 Celery Worker 进程），则回退到 HTTP 回调
 try:
@@ -36,31 +41,14 @@ celery_app = Celery("aegis_worker", broker=REDIS_URL, backend=REDIS_URL)
 
 def _emit_notification(event_type: str, data: Dict[str, Any], source: str = "scanner_worker"):
     """
-    智能通知发射：自动选择最优路径。
-    
-    策略：
-    1. 同进程模式（_run_scan_in_background 回退路径）→ 直接调用 notification_service 内存队列
-    2. 跨进程模式（Celery Worker 独立进程）→ HTTP 回调到 FastAPI API
+    智能通知发射：优先通过 HTTP 回调通知 FastAPI，失败时回退到同进程内存调用。
     
     Args:
         event_type: 事件类型
         data: 事件数据
         source: 事件源标识
     """
-    # 策略1：尝试同进程直接调用（适用于 _run_scan_in_background 场景）
-    try:
-        from app.services.notification_service import notification_service
-        notification_service.emit_event_from_thread(
-            event_type=event_type,
-            data=data,
-            source=source
-        )
-        logger.info(f"✅ [Notification] Direct emit success: {event_type}")
-        return
-    except Exception as e:
-        logger.debug(f"[Notification] Direct emit not available ({e}), trying HTTP callback...")
-    
-    # 策略2：跨进程 HTTP 回调（适用于独立 Celery Worker 进程）
+    # 策略1：HTTP 回调到 FastAPI（适用于 Celery Worker 和 _run_scan_in_background）
     if NOTIFICATION_API_URL:
         try:
             response = httpx.post(
@@ -73,12 +61,25 @@ def _emit_notification(event_type: str, data: Dict[str, Any], source: str = "sca
                 timeout=5.0,
             )
             if response.status_code == 200:
-                logger.info(f"✅ [Notification] HTTP callback success: {event_type} -> FastAPI")
+                logger.info(f"✅ [Notification] HTTP callback success: {event_type}")
                 return
             else:
                 logger.warning(f"⚠️ [Notification] HTTP callback failed ({response.status_code}): {event_type}")
         except Exception as e:
-            logger.warning(f"⚠️ [Notification] HTTP callback error for {event_type}: {e}")
+            logger.warning(f"[Notification] HTTP callback not available ({e}), trying direct emit...")
+    
+    # 策略2：同进程直接调用（回退方案）
+    try:
+        from app.services.notification_service import notification_service
+        notification_service.emit_event_from_thread(
+            event_type=event_type,
+            data=data,
+            source=source
+        )
+        logger.info(f"✅ [Notification] Direct emit success: {event_type}")
+        return
+    except Exception as e:
+        logger.warning(f"[Notification] Direct emit failed: {e}")
     
     # 所有策略均失败
     logger.error(f"❌ [Notification] ALL methods failed for event: {event_type}")

@@ -14,6 +14,7 @@ info:
 
 requests:
   # CVE-2017-12794 Django XSS 特定检测
+  # 注意：不能使用 %00 (NUL字符)，因为数据库会拒绝插入包含NUL的字符串
   - method: GET
     id: cve-2017-12794
     preconditions:
@@ -42,6 +43,11 @@ requests:
         words:
           - "aegismarker"
         part: body
+    # 排除不适用的绕过技术
+    excluded_bypass_techniques:
+      - null_byte_injection
+      - line_break_injection
+      - tab_injection
 
   - method: GET
     preconditions:

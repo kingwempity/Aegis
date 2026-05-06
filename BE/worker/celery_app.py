@@ -24,6 +24,13 @@ logger = logging.getLogger(__name__)
 REDIS_URL = os.getenv("REDIS_URL", "redis://aegis-redis:6379/0")
 FASTAPI_URL = os.getenv("FASTAPI_URL", "").rstrip("/") or None
 NOTIFICATION_API_URL = f"{FASTAPI_URL}/api/v1/notifications/events/emit" if FASTAPI_URL else None
+# 同进程模式下直接导入通知服务（用于 _run_scan_in_background 场景）
+# 如果导入失败（独立 Celery Worker 进程），则回退到 HTTP 回调
+try:
+    from app.services.notification_service import notification_service as _notif_service
+    _IN_PROCESS_NOTIFICATION = True
+except Exception:
+    _IN_PROCESS_NOTIFICATION = False
 celery_app = Celery("aegis_worker", broker=REDIS_URL, backend=REDIS_URL)
 
 

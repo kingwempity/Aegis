@@ -121,6 +121,7 @@ services:
       - LLM_API_KEY=${LLM_API_KEY}
       - LLM_BASE_URL=${LLM_BASE_URL:-https://api.siliconflow.cn/v1}
       - LLM_MODEL=${LLM_MODEL:-deepseek-ai/DeepSeek-R1-Distill-Qwen-7B}
+      - FASTAPI_URL=http://aegis-api:8000
     depends_on:
       aegis-db:
         condition: service_healthy

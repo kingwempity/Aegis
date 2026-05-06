@@ -101,8 +101,10 @@ const AppShell: React.FC<AppShellProps> = ({
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [selectedNotifyCategory, setSelectedNotifyCategory] = useState<string>('all');
+  const wsRef = useRef<WebSocket | null>(null);
+  const wsReconnectTimerRef = useRef<number | undefined>(undefined);
 
-  // 获取通知列表
+  // 获取通知列表 (HTTP 轮询作为降级方案)
   const fetchNotifications = useCallback(async (category?: string) => {
     try {
       setNotificationsLoading(true);
@@ -117,11 +119,112 @@ const AppShell: React.FC<AppShellProps> = ({
     }
   }, []);
 
-  // 初始加载通知
+  // 建立 WebSocket 实时连接
+  const connectWebSocket = useCallback(() => {
+    // 如果已有连接则不重复建立
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      return;
+    }
+
+    // 根据当前页面协议和主机构建 WebSocket URL
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/notifications`;
+
+    try {
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('[AppShell] WebSocket connected:', wsUrl);
+        // 连接成功后立即刷新一次通知，获取所有未读
+        fetchNotifications();
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          
+          if (message.type === 'notification') {
+            // 实时推送的新通知
+            const newNotification: Notification = message.data;
+            console.log('[AppShell] 🔔 New notification received via WebSocket:', newNotification.title);
+
+            setNotifications(prev => {
+              // 防止重复添加（用 id 去重）
+              if (prev.some(n => n.id === newNotification.id)) {
+                return prev;
+              }
+              return [newNotification, ...prev];
+            });
+            // 仅在通知为未读状态时才增加未读计数
+            if (!newNotification.read) {
+              setUnreadCount(prev => prev + 1);
+            }
+          } else if (message.type === 'heartbeat') {
+            // 心跳消息，忽略
+          } else if (message.type === 'connection_established') {
+            console.log('[AppShell] WebSocket connection confirmed:', message.data);
+          } else if (message.type === 'unread_count') {
+            // 未读数更新
+            setUnreadCount(message.data.unread_count);
+          }
+        } catch (e) {
+          console.error('[AppShell] Failed to parse WebSocket message:', e);
+        }
+      };
+
+      ws.onclose = (event) => {
+        console.log('[AppShell] WebSocket disconnected, code:', event.code);
+        wsRef.current = null;
+        // 延迟 5 秒后重连
+        wsReconnectTimerRef.current = setTimeout(() => {
+          console.log('[AppShell] Attempting WebSocket reconnect...');
+          connectWebSocket();
+        }, 5000);
+      };
+
+      ws.onerror = (error) => {
+        console.error('[AppShell] WebSocket error:', error);
+        ws.close();
+      };
+    } catch (error) {
+      console.error('[AppShell] Failed to create WebSocket:', error);
+      // 连接失败，5 秒后重试
+      wsReconnectTimerRef.current = setTimeout(() => {
+        connectWebSocket();
+      }, 5000);
+    }
+  }, [fetchNotifications]);
+
+  // WebSocket 生命周期管理
   useEffect(() => {
-    fetchNotifications();
-    // 每30秒刷新一次通知
-    const interval = setInterval(fetchNotifications, 30000);
+    // 建立 WebSocket 连接
+    connectWebSocket();
+
+    // 清理函数：关闭 WebSocket 连接和重连定时器
+    return () => {
+      if (wsRef.current) {
+        // 标记为手动关闭，避免触发 onclose 重连
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      if (wsReconnectTimerRef.current) {
+        clearTimeout(wsReconnectTimerRef.current);
+        wsReconnectTimerRef.current = undefined;
+      }
+    };
+  }, [connectWebSocket]);
+
+  // 兜底轮询：WebSocket 不可用时的降级方案（60秒间隔，比之前的30秒长）
+  useEffect(() => {
+    // 如果 WebSocket 连接成功，降低轮询频率
+    const interval = setInterval(() => {
+      // 仅当 WebSocket 未连接时才主动轮询
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        fetchNotifications();
+      }
+    }, 60000);
     return () => clearInterval(interval);
   }, [fetchNotifications]);
 

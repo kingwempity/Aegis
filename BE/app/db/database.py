@@ -32,10 +32,10 @@ def get_engine_with_retry():
             # 测试连接
             with temp_engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
-            print(f"✓ Successfully connected to database at {host}")
+            print(f" Successfully connected to database at {host}")
             return temp_engine
         except Exception as e:
-            print(f"⚠ Failed to connect to database at {host}: {e}")
+            print(f" Failed to connect to database at {host}: {e}")
             last_exception = e
             continue
     

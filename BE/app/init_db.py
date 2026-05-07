@@ -75,14 +75,14 @@ def migrate_vulnerabilities_table():
                         
                         conn.execute(text(sql))
                         conn.commit()
-                        logger.info(f"✅ 添加新列: {col_name}")
+                        logger.info(f"[OK] 添加新列: {col_name}")
                     except Exception as e:
                         if "duplicate column" in str(e).lower() or "already exists" in str(e).lower():
-                            logger.info(f"⏭️ 列已存在: {col_name}")
+                            logger.info(f"[SKIP] 列已存在: {col_name}")
                         else:
-                            logger.warning(f"⚠️ 添加列失败 {col_name}: {e}")
+                            logger.warning(f"[WARN] 添加列失败 {col_name}: {e}")
                 else:
-                    logger.debug(f"⏭️ 列已存在: {col_name}")
+                    logger.debug(f"[SKIP] 列已存在: {col_name}")
         
         logger.info("数据库字段迁移完成")
         

@@ -143,11 +143,11 @@ class ReportGenerator:
         summary = self._get_summary(task)
         
         lines = []
-        lines.append("# 🛡️ Aegis 漏洞检测报告")
+        lines.append("#  Aegis 漏洞检测报告")
         lines.append("")
         lines.append("---")
         lines.append("")
-        lines.append("## 📋 扫描信息")
+        lines.append("##  扫描信息")
         lines.append("")
         lines.append(f"| 项目 | 值 |")
         lines.append("|------|-----|")
@@ -159,33 +159,33 @@ class ReportGenerator:
         lines.append("")
         
         # 漏洞统计
-        lines.append("## 📊 漏洞统计")
+        lines.append("##  漏洞统计")
         lines.append("")
         lines.append(f"| 风险等级 | 数量 | 状态 |")
         lines.append("|----------|------|------|")
-        lines.append(f"| 🔴 严重 | {summary['critical']} | {'⚠️ 需立即修复' if summary['critical'] > 0 else '✅ 无'} |")
-        lines.append(f"| 🟠 高危 | {summary['high']} | {'⚠️ 需优先修复' if summary['high'] > 0 else '✅ 无'} |")
-        lines.append(f"| 🟡 中危 | {summary['medium']} | {'📋 建议修复' if summary['medium'] > 0 else '✅ 无'} |")
-        lines.append(f"| 🟢 低危 | {summary['low']} | {'📝 可选修复' if summary['low'] > 0 else '✅ 无'} |")
-        lines.append(f"| ℹ️ 信息 | {summary['info']} | - |")
+        lines.append(f"|  严重 | {summary['critical']} | {' 需立即修复' if summary['critical'] > 0 else ' 无'} |")
+        lines.append(f"|  高危 | {summary['high']} | {' 需优先修复' if summary['high'] > 0 else ' 无'} |")
+        lines.append(f"|  中危 | {summary['medium']} | {' 建议修复' if summary['medium'] > 0 else ' 无'} |")
+        lines.append(f"|  低危 | {summary['low']} | {' 可选修复' if summary['low'] > 0 else ' 无'} |")
+        lines.append(f"| ℹ 信息 | {summary['info']} | - |")
         lines.append(f"| **总计** | **{summary['total']}** | - |")
         lines.append("")
         
         # 漏洞详情
-        lines.append("## 🔍 漏洞详情")
+        lines.append("##  漏洞详情")
         lines.append("")
         
         if not task.vulnerabilities:
-            lines.append("🎉 **太棒了！当前报告未发现漏洞。**")
+            lines.append(" **太棒了！当前报告未发现漏洞。**")
         else:
             for idx, vuln in enumerate(task.vulnerabilities, start=1):
                 severity_emoji = {
-                    'critical': '🔴',
-                    'high': '🟠',
-                    'medium': '🟡',
-                    'low': '🟢',
-                    'info': 'ℹ️'
-                }.get((vuln.severity or 'info').lower(), 'ℹ️')
+                    'critical': '',
+                    'high': '',
+                    'medium': '',
+                    'low': '',
+                    'info': 'ℹ'
+                }.get((vuln.severity or 'info').lower(), 'ℹ')
                 
                 lines.append(f"### {idx}. {severity_emoji} [{vuln.severity.upper() if vuln.severity else 'N/A'}] {vuln.vuln_name or vuln.vuln_type or '未知漏洞'}")
                 lines.append("")
@@ -203,14 +203,14 @@ class ReportGenerator:
                 lines.append("")
                 
                 if vuln.description:
-                    lines.append("**📝 漏洞描述**")
+                    lines.append("** 漏洞描述**")
                     lines.append("")
                     lines.append(vuln.description)
                     lines.append("")
                 
                 # 攻击路径
                 if vuln.attack_path:
-                    lines.append("**🎯 模拟攻击路径**")
+                    lines.append("** 模拟攻击路径**")
                     lines.append("")
                     if isinstance(vuln.attack_path, dict) and vuln.attack_path.get('steps'):
                         for step_idx, step in enumerate(vuln.attack_path['steps'], start=1):
@@ -228,7 +228,7 @@ class ReportGenerator:
                 
                 # 攻击载荷
                 if vuln.payload:
-                    lines.append("**💉 攻击载荷 (Payload)**")
+                    lines.append("** 攻击载荷 (Payload)**")
                     lines.append("")
                     encoding_info = ""
                     if vuln.evidence and isinstance(vuln.evidence, dict):
@@ -243,7 +243,7 @@ class ReportGenerator:
                 # HTTP 请求详情
                 if vuln.attack_path and isinstance(vuln.attack_path, dict) and vuln.attack_path.get('request'):
                     req = vuln.attack_path['request']
-                    lines.append("**📡 HTTP 请求详情**")
+                    lines.append("** HTTP 请求详情**")
                     lines.append("")
                     lines.append("```http")
                     lines.append(f"{req.get('method', 'GET')} {req.get('url', '')}")
@@ -258,7 +258,7 @@ class ReportGenerator:
                 
                 # 攻击证据
                 if vuln.evidence:
-                    lines.append("**🔎 攻击证据**")
+                    lines.append("** 攻击证据**")
                     lines.append("")
                     if isinstance(vuln.evidence, dict):
                         if vuln.evidence.get('matchers'):
@@ -281,7 +281,7 @@ class ReportGenerator:
                 
                 # 修复建议
                 if vuln.remediation:
-                    lines.append("**✅ 修复建议**")
+                    lines.append("** 修复建议**")
                     lines.append("")
                     lines.append(f"> {vuln.remediation}")
                     lines.append("")
@@ -450,12 +450,12 @@ class ReportGenerator:
         
         # 标题
         ws_overview.merge_cells('A1:D1')
-        ws_overview['A1'] = "🛡️ Aegis Web应用程序漏洞检测报告"
+        ws_overview['A1'] = " Aegis Web应用程序漏洞检测报告"
         ws_overview['A1'].font = Font(bold=True, size=18)
         ws_overview['A1'].alignment = Alignment(horizontal='center')
         
         # 基本信息
-        ws_overview['A3'] = "📋 基本信息"
+        ws_overview['A3'] = " 基本信息"
         ws_overview['A3'].font = subheader_font
         ws_overview.merge_cells('A3:D3')
         ws_overview['A3'].fill = subheader_fill
@@ -476,27 +476,27 @@ class ReportGenerator:
         
         # 漏洞统计
         row = len(basic_info) + 5
-        ws_overview[f'A{row}'] = "📊 漏洞统计"
+        ws_overview[f'A{row}'] = " 漏洞统计"
         ws_overview[f'A{row}'].font = subheader_font
         ws_overview.merge_cells(f'A{row}:D{row}')
         ws_overview[f'A{row}'].fill = subheader_fill
         
         vuln_stats = [
             ("总漏洞数", summary["total"]),
-            ("🔴 严重", summary["critical"]),
-            ("🟠 高危", summary["high"]),
-            ("🟡 中危", summary["medium"]),
-            ("🟢 低危", summary["low"]),
-            ("ℹ️ 信息", summary["info"]),
+            (" 严重", summary["critical"]),
+            (" 高危", summary["high"]),
+            (" 中危", summary["medium"]),
+            (" 低危", summary["low"]),
+            ("ℹ 信息", summary["info"]),
         ]
         
         # 风险等级颜色
         risk_colors = {
-            "🔴 严重": "dc3545",
-            "🟠 高危": "fd7e14",
-            "🟡 中危": "ffc107",
-            "🟢 低危": "28a745",
-            "ℹ️ 信息": "17a2b8",
+            " 严重": "dc3545",
+            " 高危": "fd7e14",
+            " 中危": "ffc107",
+            " 低危": "28a745",
+            "ℹ 信息": "17a2b8",
         }
         
         for idx, (label, value) in enumerate(vuln_stats, start=row+1):
@@ -767,10 +767,10 @@ class ReportGenerator:
                     success, msg = try_register(font_path, name, idx)
                     logger.info(f"尝试 {font_path} (index={idx}): {msg}")
                     if success:
-                        logger.info(f"✅ 中文字体注册成功: {font_path}")
+                        logger.info(f" 中文字体注册成功: {font_path}")
                         return True
             
-            logger.error("❌ 所有中文字体注册尝试均失败，将使用默认字体")
+            logger.error(" 所有中文字体注册尝试均失败，将使用默认字体")
             return False
         
         font_registered = register_chinese_font()
@@ -888,7 +888,7 @@ class ReportGenerator:
         page_width = A4[0] - 40*mm
         
         header_data = [[
-            Paragraph("<b>🛡️ Web应用程序漏洞检测报告</b>", title_style),
+            Paragraph("<b> Web应用程序漏洞检测报告</b>", title_style),
         ], [
             Paragraph("Aegis Security Scanner | 自动化漏洞检测与攻击验证系统", subtitle_style),
         ]]
@@ -1027,7 +1027,7 @@ class ReportGenerator:
         stats_table.setStyle(TableStyle(stats_style_commands))
         
         story.append(Spacer(1, 16))
-        story.append(Paragraph("📊 漏洞统计摘要", section_title_style))
+        story.append(Paragraph(" 漏洞统计摘要", section_title_style))
         story.append(stats_table)
         
         risk_summary_data = [[
@@ -1050,7 +1050,7 @@ class ReportGenerator:
         
         if task.vulnerabilities:
             story.append(Spacer(1, 16))
-            story.append(Paragraph("🔍 漏洞详情", section_title_style))
+            story.append(Paragraph(" 漏洞详情", section_title_style))
             
             for idx, vuln in enumerate(task.vulnerabilities, start=1):
                 severity_display = self._get_severity_display(vuln.severity)
@@ -1148,7 +1148,7 @@ class ReportGenerator:
                 story.append(Spacer(1, 10))
         else:
             story.append(Spacer(1, 16))
-            no_vuln_data = [[Paragraph("<font size=14 color='#16a34a'>✅ </font><b>未发现任何漏洞</b>", 
+            no_vuln_data = [[Paragraph("<font size=14 color='#16a34a'> </font><b>未发现任何漏洞</b>", 
                                         ParagraphStyle('NoVuln', parent=normal_style, alignment=1, fontSize=13))],
                            [Paragraph("目标应用程序在本次扫描中未检测到安全漏洞。", 
                                       ParagraphStyle('NoVulnDesc', parent=small_style, alignment=1))]]

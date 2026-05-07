@@ -1968,7 +1968,7 @@ class AttackPathSearchAlgorithm:
             self._closed_set.add(current.node_id)
             self._nodes_visited += 1
             
-            logger.debug(f"🔍 扩展节点: {current.node_id}, f={current.f_cost:.3f}, g={current.g_cost:.3f}, h={current.h_cost:.3f}")
+            logger.debug(f" 扩展节点: {current.node_id}, f={current.f_cost:.3f}, g={current.g_cost:.3f}, h={current.h_cost:.3f}")
             
             # 判断是否到达目标节点
             if self._is_target(current, target_node):
@@ -2018,7 +2018,7 @@ class AttackPathSearchAlgorithm:
         # 将起始节点加入优先队列
         heapq.heappush(self._open_list, start_node)
         
-        logger.debug(f"🚀 初始化搜索: 起点={start_node.node_id}, 终点={target_node.node_id}")
+        logger.debug(f" 初始化搜索: 起点={start_node.node_id}, 终点={target_node.node_id}")
     
     def _expand_node(self, current: AttackPathNode, target: AttackPathNode,
                     adjacency_func: Callable[[AttackPathNode], List[AttackPathNode]],
@@ -2076,7 +2076,7 @@ class AttackPathSearchAlgorithm:
             # 加入优先队列
             heapq.heappush(self._open_list, neighbor)
             
-            logger.debug(f"  ➕ 添加节点: {neighbor.node_id}, f={neighbor.f_cost:.3f}, g={neighbor.g_cost:.3f}, h={neighbor.h_cost:.3f}")
+            logger.debug(f"   添加节点: {neighbor.node_id}, f={neighbor.f_cost:.3f}, g={neighbor.g_cost:.3f}, h={neighbor.h_cost:.3f}")
     
     def _is_target(self, node: AttackPathNode, target: AttackPathNode) -> bool:
         """
@@ -2128,7 +2128,7 @@ class AttackPathSearchAlgorithm:
         
         search_time = time.time() - self._start_time
         
-        logger.info(f"✅ 搜索成功: 路径长度={len(path)}, 总代价={target_node.g_cost:.3f}, "
+        logger.info(f" 搜索成功: 路径长度={len(path)}, 总代价={target_node.g_cost:.3f}, "
                    f"扩展节点={self._nodes_expanded}, 耗时={search_time:.3f}s")
         
         return AttackPathResult(
@@ -2157,7 +2157,7 @@ class AttackPathSearchAlgorithm:
         """
         search_time = time.time() - self._start_time
         
-        logger.warning(f"❌ 搜索失败: 扩展节点={self._nodes_expanded}, 耗时={search_time:.3f}s")
+        logger.warning(f" 搜索失败: 扩展节点={self._nodes_expanded}, 耗时={search_time:.3f}s")
         
         return AttackPathResult(
             success=False,

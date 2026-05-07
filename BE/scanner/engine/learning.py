@@ -459,11 +459,11 @@ class PatternLearner:
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(knowledge, f, indent=2, ensure_ascii=False)
             
-            logger.info(f"✅ 知识库已导出到 {filepath}")
+            logger.info(f" 知识库已导出到 {filepath}")
             return True
             
         except Exception as e:
-            logger.error(f"❌ 导出知识库失败: {e}")
+            logger.error(f" 导出知识库失败: {e}")
             return False
 
 
@@ -501,7 +501,7 @@ class FeedbackSystem:
         # 趋势数据
         self.recent_trends: List[Dict[str, Any]] = []
         
-        logger.info("📊 反馈系统已初始化")
+        logger.info(" 反馈系统已初始化")
     
     def record_feedback(self, 
                         strategy_name: str,
@@ -744,7 +744,7 @@ class MultiArmedBandit:
         self.arms: Dict[str, Dict[str, float]] = {}  # arm -> {rewards, counts, ucb}
         self.total_pulls = 0
         
-        logger.info(f"🎰 多臂老虎机初始化 (exploration={exploration_factor})")
+        logger.info(f" 多臂老虎机初始化 (exploration={exploration_factor})")
     
     def add_arm(self, arm_name: str, initial_value: float = 0.0) -> None:
         """添加一个策略选项（arm）"""
@@ -866,7 +866,7 @@ class AdaptiveStrategyEngine:
         self.adaptation_count = 0
         self.last_adaptation: Optional[float] = None
         
-        logger.info("🧠 自适应策略引擎已初始化")
+        logger.info(" 自适应策略引擎已初始化")
     
     def _initialize_default_strategies(self) -> None:
         """初始化默认策略"""
@@ -1086,17 +1086,17 @@ class AdaptiveStrategyEngine:
         if anomaly_type == "success_rate_drop":
             # 成功率下降，切换到更保守的策略
             if self.current_strategy == "aggressive":
-                logger.info("🔄 自适应：成功率下降，切换到平衡策略")
+                logger.info(" 自适应：成功率下降，切换到平衡策略")
                 self.current_strategy = "balanced"
                 
         elif anomaly_type == "high_block_rate":
             # 高封禁率，启用隐秘模式
-            logger.info("🔄 自适应：高封禁率，切换到隐秘策略")
+            logger.info(" 自适应：高封禁率，切换到隐秘策略")
             self.current_strategy = "stealthy"
             
         elif anomaly_type == "response_time_spike":
             # 响应时间增加，减少并发和超时
-            logger.info("⏱️ 自适应：响应时间增加，调整参数")
+            logger.info(" 自适应：响应时间增加，调整参数")
         
         self.adaptation_count += 1
         self.last_adaptation = time.time()
@@ -1150,7 +1150,7 @@ class LearningEngine:
         if enable_persistence:
             self._load_existing_knowledge()
         
-        logger.info(f"📚 LearningEngine 已初始化 (persistence={enable_persistence})")
+        logger.info(f" LearningEngine 已初始化 (persistence={enable_persistence})")
     
     def _load_existing_knowledge(self) -> None:
         """加载已有的知识库"""
@@ -1159,10 +1159,10 @@ class LearningEngine:
                 with open(self.knowledge_path, 'r', encoding='utf-8') as f:
                     knowledge = json.load(f)
                 
-                logger.info(f"✅ 已加载已有知识库 ({os.path.getsize(self.knowledge_path)} bytes)")
+                logger.info(f" 已加载已有知识库 ({os.path.getsize(self.knowledge_path)} bytes)")
                 
             except Exception as e:
-                logger.warning(f"⚠️ 加载知识库失败: {e}")
+                logger.warning(f" 加载知识库失败: {e}")
     
     async def learn_from_scan_session(self, 
                                       scan_results: List[Dict[str, Any]],
@@ -1233,7 +1233,7 @@ class LearningEngine:
         if self.enable_persistence:
             self.pattern_learner.export_knowledge(self.knowledge_path)
         
-        logger.info(f"📚 学习完成: 处理{learning_report['records_processed']}条记录, "
+        logger.info(f" 学习完成: 处理{learning_report['records_processed']}条记录, "
                    f"发现{learning_report['new_patterns_learned']}个新模式")
         
         return learning_report
@@ -1359,11 +1359,11 @@ class LearningEngine:
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(all_knowledge, f, indent=2, ensure_ascii=False)
             
-            logger.info(f"✅ 完整知识库已导出到 {filepath}")
+            logger.info(f" 完整知识库已导出到 {filepath}")
             return True
             
         except Exception as e:
-            logger.error(f"❌ 导出失败: {e}")
+            logger.error(f" 导出失败: {e}")
             return False
 
 

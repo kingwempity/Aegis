@@ -32,7 +32,7 @@ class LLMProvider:
 
     def __init__(self, model: str = None, base_url: str = None, api_key: str = None):
         if not OPENAI_AVAILABLE:
-            logger.error("❌ 未安装 'openai' Python 包。请在运行环境执行: pip install openai")
+            logger.error(" 未安装 'openai' Python 包。请在运行环境执行: pip install openai")
             self.client = None
             return
 
@@ -42,11 +42,11 @@ class LLMProvider:
         self.model = model or os.getenv("LLM_MODEL", self.DEFAULT_MODEL)
 
         if not self.api_key:
-            logger.warning("⚠️ 未设置 API Key，请通过环境变量 LLM_API_KEY 或参数 api_key 传入")
+            logger.warning(" 未设置 API Key，请通过环境变量 LLM_API_KEY 或参数 api_key 传入")
             self.client = None
             return
 
-        logger.info(f"🤖 初始化 LLMProvider: BaseURL={self.base_url}, Model={self.model}")
+        logger.info(f" 初始化 LLMProvider: BaseURL={self.base_url}, Model={self.model}")
 
         try:
             self.client = OpenAI(
@@ -54,7 +54,7 @@ class LLMProvider:
                 api_key=self.api_key
             )
         except Exception as e:
-            logger.error(f"❌ 初始化 OpenAI 客户端失败: {e}")
+            logger.error(f" 初始化 OpenAI 客户端失败: {e}")
             self.client = None
 
     def _sanitize_base_url(self, url: str) -> str:
@@ -197,28 +197,28 @@ DECISION RULES:
             )
 
             raw_content = response.choices[0].message.content
-            logger.debug(f"📝 LLM 原始响应: {raw_content[:200]}...")
+            logger.debug(f" LLM 原始响应: {raw_content[:200]}...")
 
             if not raw_content or not raw_content.strip():
-                logger.error("❌ LLM 返回空响应")
+                logger.error(" LLM 返回空响应")
                 return {"action": "continue", "reason": "LLM 返回空响应", "confidence": 0.0}
 
             content = self._clean_json_content(raw_content)
 
             try:
                 result = json.loads(content)
-                logger.debug(f"✅ JSON 解析成功：{result}")
+                logger.debug(f" JSON 解析成功：{result}")
             except json.JSONDecodeError as json_err:
-                logger.error(f"❌ JSON 解析失败：{json_err}")
+                logger.error(f" JSON 解析失败：{json_err}")
                 logger.error(f"   清理后的内容：{content[:300]}")
                 
-                logger.info("🔧 尝试从自然语言中提取 JSON...")
+                logger.info(" 尝试从自然语言中提取 JSON...")
                 result = self._extract_json_from_natural_language(raw_content)
                 
                 if result:
-                    logger.info(f"✅ 从自然语言中提取到 JSON: action={result['action']}, path={result['next_target_path']}")
+                    logger.info(f" 从自然语言中提取到 JSON: action={result['action']}, path={result['next_target_path']}")
                 else:
-                    logger.error("❌ 自然语言提取也失败了")
+                    logger.error(" 自然语言提取也失败了")
                     return {"action": "continue", "reason": f"JSON 解析错误：{str(json_err)}", "confidence": 0.0}
 
             result["action"] = self._extract_valid_action(result.get("action", "continue"))

@@ -68,14 +68,14 @@ def migrate_vulnerabilities_table():
                         sql = f"ALTER TABLE vulnerabilities ADD COLUMN {col_name} {col_type}"
                         conn.execute(text(sql))
                         conn.commit()
-                        logger.info(f"✅ 添加新列: {col_name}")
+                        logger.info(f" 添加新列: {col_name}")
                     except Exception as e:
                         if "duplicate column" in str(e).lower() or "already exists" in str(e).lower():
-                            logger.info(f"⏭️ 列已存在: {col_name}")
+                            logger.info(f" 列已存在: {col_name}")
                         else:
-                            logger.warning(f"⚠️ 添加列失败 {col_name}: {e}")
+                            logger.warning(f" 添加列失败 {col_name}: {e}")
                 else:
-                    logger.debug(f"⏭️ 列已存在: {col_name}")
+                    logger.debug(f" 列已存在: {col_name}")
         
         logger.info("数据库字段迁移完成")
         
@@ -104,7 +104,7 @@ def migrate_scan_tasks_display_id():
                 else:
                     conn.execute(text("ALTER TABLE scan_tasks ADD COLUMN display_id INT NULL"))
                 conn.commit()
-                logger.info("✅ 已添加字段: scan_tasks.display_id")
+                logger.info(" 已添加字段: scan_tasks.display_id")
 
             # 按创建顺序重建连续 display_id（1..N）
             task_ids = conn.execute(
@@ -116,7 +116,7 @@ def migrate_scan_tasks_display_id():
                     {"display_id": index, "task_id": row[0]}
                 )
             conn.commit()
-            logger.info(f"✅ 已回填 display_id，共处理 {len(task_ids)} 条任务记录")
+            logger.info(f" 已回填 display_id，共处理 {len(task_ids)} 条任务记录")
 
             # 创建唯一索引（如果不存在）
             index_names = {idx["name"] for idx in inspector.get_indexes("scan_tasks")}
@@ -126,7 +126,7 @@ def migrate_scan_tasks_display_id():
                     text(f"CREATE UNIQUE INDEX {unique_index_name} ON scan_tasks(display_id)")
                 )
                 conn.commit()
-                logger.info("✅ 已创建唯一索引: scan_tasks.display_id")
+                logger.info(" 已创建唯一索引: scan_tasks.display_id")
 
     except Exception as e:
         logger.warning(f"display_id 迁移检查失败: {e}")

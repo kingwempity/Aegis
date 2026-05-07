@@ -432,7 +432,7 @@ class ScannerEngine:
                 self._phase2_enabled = True
                 logger.info("🎯 攻击模拟器已初始化")
             except Exception as e:
-                logger.warning(f"⚠️ 攻击模拟器初始化失败: {e}")
+                logger.warning(f"🎯 攻击模拟器初始化失败: {e}")
                 self._attack_simulator = None
             
             try:

@@ -336,7 +336,7 @@ class RuleEngine:
 
     def _load_external_config(self, config_path: Optional[str]) -> None:
         if not config_path or not os.path.exists(config_path):
-            logger.warning("⚠️ 规则配置文件不存在: %s", config_path)
+            logger.warning(" 规则配置文件不存在: %s", config_path)
             return
 
         try:
@@ -346,7 +346,7 @@ class RuleEngine:
                 else:
                     raw = yaml.safe_load(fh) or {}
         except Exception as exc:
-            logger.warning("⚠️ 规则配置加载失败 %s: %s", config_path, exc)
+            logger.warning(" 规则配置加载失败 %s: %s", config_path, exc)
             return
 
         # 重新初始化以完全由配置文件驱动，而不是合并（除非配置文件中缺失）
@@ -362,7 +362,7 @@ class RuleEngine:
             self._detection_rules = {}
             self._merge_detection_rules(raw["detection_rules"])
             
-        logger.info("🧩 已成功加载外部规则配置: %s (框架数=%d, 排除规则数=%d, 检测规则数=%d)", 
+        logger.info(" 已成功加载外部规则配置: %s (框架数=%d, 排除规则数=%d, 检测规则数=%d)", 
                     config_path, len(self._framework_signatures), len(self._exclusion_rules), len(self._detection_rules))
 
     def _merge_framework_signatures(self, raw_signatures: Dict[str, Any]) -> None:

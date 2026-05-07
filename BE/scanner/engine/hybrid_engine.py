@@ -41,7 +41,7 @@ class HybridScannerEngine:
         
     async def run(self) -> List[Dict[str, Any]]:
         """执行混合扫描"""
-        logger.info(f"🚀 启动混合扫描引擎: {self.target} (模式: {self.strategy})")
+        logger.info(f" 启动混合扫描引擎: {self.target} (模式: {self.strategy})")
         
         scanner_strategy = self.kwargs.get('scanner_strategy', self.mode_config.scanner_strategy)
         max_concurrent = self.kwargs.get('max_concurrent', self.mode_config.max_concurrent)
@@ -62,7 +62,7 @@ class HybridScannerEngine:
         
         # === 阶段1: ScannerEngine 扫描 ===
         logger.info("=" * 60)
-        logger.info("📡 阶段1: ScannerEngine 扫描...")
+        logger.info(" 阶段1: ScannerEngine 扫描...")
         logger.info("=" * 60)
         
         scanner = ScannerEngine(
@@ -81,8 +81,8 @@ class HybridScannerEngine:
         fast_vulns = await scanner.run()
         recon_info = scanner.get_framework_detection_result()
         
-        logger.info(f"✅ 阶段1完成: 发现 {len(fast_vulns)} 个漏洞")
-        logger.info(f"📦 框架检测: {recon_info.get('detected_frameworks', [])}")
+        logger.info(f" 阶段1完成: 发现 {len(fast_vulns)} 个漏洞")
+        logger.info(f" 框架检测: {recon_info.get('detected_frameworks', [])}")
         
         # === 阶段2: AttackSimulator 智能探索 (仅配置启用时) ===
         smart_vulns = []
@@ -91,7 +91,7 @@ class HybridScannerEngine:
             
             if detected_frameworks:
                 logger.info("=" * 60)
-                logger.info(f"🤖 阶段2: AttackSimulator 智能探索 (策略: {self.mode_config.simulator_strategy})...")
+                logger.info(f" 阶段2: AttackSimulator 智能探索 (策略: {self.mode_config.simulator_strategy})...")
                 logger.info("=" * 60)
                 
                 simulator = AttackSimulator(
@@ -114,20 +114,20 @@ class HybridScannerEngine:
                 try:
                     smart_result = await simulator.run_simulation()
                     smart_vulns = smart_result.get('vulnerabilities', [])
-                    logger.info(f"✅ 阶段2完成: 发现 {len(smart_vulns)} 个漏洞")
+                    logger.info(f" 阶段2完成: 发现 {len(smart_vulns)} 个漏洞")
                 except Exception as e:
-                    logger.warning(f"⚠️ 阶段2失败: {e}")
+                    logger.warning(f" 阶段2失败: {e}")
                     smart_vulns = []
             else:
-                logger.info("⏭️ 跳过阶段2: 无框架检测结果")
+                logger.info(" 跳过阶段2: 无框架检测结果")
         else:
-            logger.info("⏭️ 跳过阶段2: 定向模式不需要LLM探索")
+            logger.info(" 跳过阶段2: 定向模式不需要LLM探索")
         
         # === 合并并去重结果 ===
         merged_vulns = self._merge_and_deduplicate(fast_vulns, smart_vulns)
         
         logger.info("=" * 60)
-        logger.info(f"🎯 混合扫描完成: 共发现 {len(merged_vulns)} 个漏洞")
+        logger.info(f" 混合扫描完成: 共发现 {len(merged_vulns)} 个漏洞")
         logger.info(f"   - 阶段1 (ScannerEngine): {len(fast_vulns)} 个")
         logger.info(f"   - 阶段2 (AttackSimulator): {len(smart_vulns)} 个")
         logger.info(f"   - 合并后 (去重): {len(merged_vulns)} 个")

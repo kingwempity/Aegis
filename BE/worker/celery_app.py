@@ -61,10 +61,10 @@ def _emit_notification(event_type: str, data: Dict[str, Any], source: str = "sca
                 timeout=5.0,
             )
             if response.status_code == 200:
-                logger.info(f"✅ [Notification] HTTP callback success: {event_type}")
+                logger.info(f" [Notification] HTTP callback success: {event_type}")
                 return
             else:
-                logger.warning(f"⚠️ [Notification] HTTP callback failed ({response.status_code}): {event_type}")
+                logger.warning(f" [Notification] HTTP callback failed ({response.status_code}): {event_type}")
         except Exception as e:
             logger.warning(f"[Notification] HTTP callback not available ({e}), trying direct emit...")
     
@@ -76,13 +76,13 @@ def _emit_notification(event_type: str, data: Dict[str, Any], source: str = "sca
             data=data,
             source=source
         )
-        logger.info(f"✅ [Notification] Direct emit success: {event_type}")
+        logger.info(f" [Notification] Direct emit success: {event_type}")
         return
     except Exception as e:
         logger.warning(f"[Notification] Direct emit failed: {e}")
     
     # 所有策略均失败
-    logger.error(f"❌ [Notification] ALL methods failed for event: {event_type}")
+    logger.error(f" [Notification] ALL methods failed for event: {event_type}")
 
 
 def get_risk_level(severity_str: str) -> str:
@@ -246,7 +246,7 @@ def execute_scan_task(
     start_time = time.time()
     
     logger.info("=" * 60)
-    logger.info(f"🚀 [Worker] 启动模拟攻击引擎 (模式: {scan_strategy})")
+    logger.info(f" [Worker] 启动模拟攻击引擎 (模式: {scan_strategy})")
     logger.info(f"   任务 ID: {task_id}")
     logger.info(f"   目标 URL: {target_url}")
     logger.info(f"   策略：{scan_strategy}")
@@ -264,7 +264,7 @@ def execute_scan_task(
         # 更新状态 -> RUNNING
         task = db.query(ScanTask).filter(ScanTask.id == task_id).first()
         if not task:
-            logger.error(f"❌ [Worker] 任务不存在：{task_id}")
+            logger.error(f" [Worker] 任务不存在：{task_id}")
             return
         
         task.status = "RUNNING"
@@ -288,7 +288,7 @@ def execute_scan_task(
         )
 
         # === 使用混合扫描引擎 ===
-        logger.info("🔧 [Worker] 初始化 HybridScannerEngine...")
+        logger.info(" [Worker] 初始化 HybridScannerEngine...")
         engine = HybridScannerEngine(
             target=target_url,
             strategy=scan_strategy,
@@ -298,7 +298,7 @@ def execute_scan_task(
         )
         
         # 执行混合扫描
-        logger.info("🎯 [Worker] 开始执行混合扫描...")
+        logger.info(" [Worker] 开始执行混合扫描...")
         # 兼容 Python 3.6
         if hasattr(asyncio, 'run'):
             found_vulns = asyncio.run(engine.run())
@@ -311,7 +311,7 @@ def execute_scan_task(
         # 保存漏洞结果
         vuln_count = len(found_vulns)
         if vuln_count > 0:
-            logger.info(f"🔴 [Worker] 发现 {vuln_count} 个确认漏洞:")
+            logger.info(f" [Worker] 发现 {vuln_count} 个确认漏洞:")
             
             for idx, v in enumerate(found_vulns, 1):
                 # 智能推断漏洞类型
@@ -407,7 +407,7 @@ def execute_scan_task(
                 logger.info(f"      Payload: {payload[:100]}")
                 logger.info(f"      分析：{v.get('llm_analysis')}")
         else:
-            logger.info("ℹ️  [Worker] 未发现漏洞")
+            logger.info("ℹ  [Worker] 未发现漏洞")
         
         # 更新状态 -> COMPLETED
         task.status = "COMPLETED"
@@ -461,12 +461,12 @@ def execute_scan_task(
             )
         
         logger.info("=" * 60)
-        logger.info(f"✅ [Worker] 模拟攻击任务完成")
+        logger.info(f" [Worker] 模拟攻击任务完成")
         logger.info(f"   耗时：{execution_time:.2f} 秒")
         logger.info("=" * 60)
 
     except Exception as e:
-        error_msg = f"❌ [Worker] 引擎异常：{e}"
+        error_msg = f" [Worker] 引擎异常：{e}"
         logger.error(error_msg)
         logger.error(traceback.format_exc())
         if task:

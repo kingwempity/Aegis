@@ -253,7 +253,7 @@
         }
         
         .attack-path-title::before {
-            content: "🎯";
+            content: "";
         }
         
         .attack-chain {
@@ -420,7 +420,7 @@
         }
         
         .remediation h5::before {
-            content: "✓";
+            content: "";
         }
         
         .remediation p {
@@ -467,7 +467,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🛡️ Aegis 安全扫描报告</h1>
+            <h1> Aegis 安全扫描报告</h1>
             <div class="subtitle">Web应用程序漏洞检测系统</div>
         </div>
         
@@ -495,31 +495,31 @@
         </div>
         
         <div class="target-info">
-            <h2>📋 扫描信息</h2>
+            <h2> 扫描信息</h2>
             <div class="info-grid">
                 <div class="info-item">
-                    <div class="icon">🌐</div>
+                    <div class="icon"></div>
                     <div class="content">
                         <div class="label">目标 URL</div>
                         <div class="value">{{ task.target_url }}</div>
                     </div>
                 </div>
                 <div class="info-item">
-                    <div class="icon">📅</div>
+                    <div class="icon"></div>
                     <div class="content">
                         <div class="label">扫描时间</div>
                         <div class="value">{{ task.created_at.strftime('%Y-%m-%d %H:%M:%S') if task.created_at else 'N/A' }}</div>
                     </div>
                 </div>
                 <div class="info-item">
-                    <div class="icon">⚙️</div>
+                    <div class="icon"></div>
                     <div class="content">
                         <div class="label">扫描策略</div>
                         <div class="value">{{ task.scan_strategy or 'default' }}</div>
                     </div>
                 </div>
                 <div class="info-item">
-                    <div class="icon">📊</div>
+                    <div class="icon"></div>
                     <div class="content">
                         <div class="label">任务状态</div>
                         <div class="value">{{ task.status }}</div>
@@ -529,7 +529,7 @@
         </div>
         
         <div class="content">
-            <h2 class="section-title">🔍 漏洞详情</h2>
+            <h2 class="section-title"> 漏洞详情</h2>
             
             {% if vulns %}
                 {% for v in vulns %}
@@ -735,7 +735,7 @@
                 {% endfor %}
             {% else %}
                 <div class="no-vulns">
-                    <div class="icon">🎉</div>
+                    <div class="icon"></div>
                     <h3>太棒了！未发现任何漏洞</h3>
                     <p>目标应用程序在本次扫描中未检测到安全漏洞。</p>
                 </div>

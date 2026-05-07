@@ -311,9 +311,9 @@ class NotificationService:
         event_type, data, source = task
         try:
             await self.emit_event(event_type, data, source)
-            logger.info(f"✅ [Worker] Processed queued event: {event_type} from {source}")
+            logger.info(f"[WORKER] Processed queued event: {event_type} from {source}")
         except Exception as e:
-            logger.error(f"❌ [Worker] Failed to process queued event {event_type}: {e}", exc_info=True)
+            logger.error(f"[WORKER] Failed to process queued event {event_type}: {e}", exc_info=True)
     
     def emit_event_from_thread(self, event_type: str, data: Dict[str, Any], source: str = "external_thread"):
         """
@@ -356,9 +356,9 @@ class NotificationService:
                 self._process_queued_task((event_type, data, source)),
                 self._worker_loop
             )
-            logger.debug(f"✅ [Emit] Submitted event '{event_type}' from {source} to event loop")
+            logger.debug(f"[EMIT] Submitted event '{event_type}' from {source} to event loop")
         except Exception as e:
-            logger.error(f"❌ [Emit] Failed to submit event '{event_type}': {e}", exc_info=True)
+            logger.error(f"[EMIT] Failed to submit event '{event_type}': {e}", exc_info=True)
     
     def register_event_handler(
         self,

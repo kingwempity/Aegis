@@ -229,7 +229,7 @@ Aegis 安全扫描系统
         
         <!-- 头部 -->
         <div style="background: linear-gradient(135deg, #ff6b00 0%, #ff8c00 100%); padding: 30px 20px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">🛡️ Aegis 安全扫描系统</h1>
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;"> Aegis 安全扫描系统</h1>
         </div>
         
         <!-- 内容区 -->
@@ -246,8 +246,8 @@ Aegis 安全扫描系统
             
             <div style="background-color: #fff3e0; border-left: 4px solid #ff6b00; padding: 15px 20px; margin: 25px 0; border-radius: 0 8px 8px 0;">
                 <p style="color: #e65100; font-size: 13px; margin: 0; line-height: 1.6;">
-                    ⏰ <strong>验证码有效期为 5 分钟</strong>，请尽快使用。<br>
-                    🔒 如非本人操作，请忽略此邮件，您的账户安全不会受到影响。
+                     <strong>验证码有效期为 5 分钟</strong>，请尽快使用。<br>
+                     如非本人操作，请忽略此邮件，您的账户安全不会受到影响。
                 </p>
             </div>
         </div>

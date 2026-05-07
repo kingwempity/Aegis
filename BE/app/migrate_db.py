@@ -39,12 +39,12 @@ if DB_PATH.startswith("mysql"):
                 try:
                     conn.execute(text(sql))
                     conn.commit()
-                    print(f"✅ 执行成功: {sql[:50]}...")
+                    print(f"[OK] 执行成功: {sql[:50]}...")
                 except Exception as e:
                     if "Duplicate column" in str(e) or "already exists" in str(e):
-                        print(f"⏭️ 列已存在，跳过: {sql[:50]}...")
+                        print(f"[SKIP] 列已存在，跳过: {sql[:50]}...")
                     else:
-                        print(f"⚠️ 执行失败: {sql[:50]}... - {e}")
+                        print(f"[ERROR] 执行失败: {sql[:50]}... - {e}")
 
             # 回填连续 display_id
             task_ids = conn.execute(text("SELECT id FROM scan_tasks ORDER BY created_at ASC, id ASC")).fetchall()
@@ -59,14 +59,14 @@ if DB_PATH.startswith("mysql"):
             try:
                 conn.execute(text("CREATE UNIQUE INDEX idx_scan_tasks_display_id_unique ON scan_tasks(display_id)"))
                 conn.commit()
-                print("✅ display_id 唯一索引创建完成")
+                print("[OK] display_id 唯一索引创建完成")
             except Exception as e:
                 if "Duplicate key name" in str(e) or "already exists" in str(e):
-                    print("⏭️ display_id 唯一索引已存在")
+                    print("[SKIP] display_id 唯一索引已存在")
                 else:
-                    print(f"⚠️ display_id 唯一索引创建失败: {e}")
+                    print(f"[ERROR] display_id 唯一索引创建失败: {e}")
         
-        print("✅ MySQL 数据库迁移完成")
+        print("[OK] MySQL 数据库迁移完成")
     
     if __name__ == "__main__":
         migrate_mysql()
@@ -108,14 +108,14 @@ else:
                     sql = f"ALTER TABLE {target_table} ADD COLUMN {col_name} {col_type}"
                     cursor.execute(sql)
                     conn.commit()
-                    print(f"✅ 添加列: {col_name}")
+                    print(f"[OK] 添加列: {col_name}")
                 except sqlite3.OperationalError as e:
                     if "duplicate column name" in str(e).lower():
-                        print(f"⏭️ 列已存在: {col_name}")
+                        print(f"[SKIP] 列已存在: {col_name}")
                     else:
-                        print(f"⚠️ 添加列失败 {col_name}: {e}")
+                        print(f"[ERROR] 添加列失败 {col_name}: {e}")
             else:
-                print(f"⏭️ 列已存在: {col_name}")
+                print(f"[SKIP] 列已存在: {col_name}")
 
         # 回填连续 display_id
         cursor.execute("SELECT id FROM scan_tasks ORDER BY created_at ASC, id ASC")
@@ -128,12 +128,12 @@ else:
         try:
             cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_scan_tasks_display_id_unique ON scan_tasks(display_id)")
             conn.commit()
-            print("✅ display_id 唯一索引创建完成")
+            print("[OK] display_id 唯一索引创建完成")
         except sqlite3.OperationalError as e:
-            print(f"⚠️ display_id 唯一索引创建失败: {e}")
+            print(f"[ERROR] display_id 唯一索引创建失败: {e}")
         
         conn.close()
-        print("✅ SQLite 数据库迁移完成")
+        print("[OK] SQLite 数据库迁移完成")
     
     if __name__ == "__main__":
         migrate_sqlite()

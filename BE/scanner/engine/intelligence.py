@@ -363,7 +363,7 @@ class TargetModeler:
         
         self._models_created += 1
         
-        logger.info(f"🎯 目标模型已构建 (ID={model.model_id}, "
+        logger.info(f" 目标模型已构建 (ID={model.model_id}, "
                    f"风险评分={model.overall_risk_score:.1f})")
         
         return model
@@ -704,7 +704,7 @@ class AdvancedWAFFingerprinter:
         """
         fingerprint = EnhancedWAFFingerprint()
         
-        logger.info(f"🛡️ 开始WAF指纹识别: {target}")
+        logger.info(f" 开始WAF指纹识别: {target}")
         
         try:
             # 1. 发送正常请求获取基线
@@ -728,12 +728,12 @@ class AdvancedWAFFingerprinter:
             
             self._fingerprints_created += 1
             
-            logger.info(f"✅ WAF指纹完成: type={fingerprint.waf_type}, "
+            logger.info(f" WAF指纹完成: type={fingerprint.waf_type}, "
                        f"strength={fingerprint.protection_strength.value}, "
                        f"bypass={fingerprint.bypass_difficulty.value}")
             
         except Exception as e:
-            logger.error(f"❌ WAF指纹识别失败: {e}")
+            logger.error(f" WAF指纹识别失败: {e}")
             fingerprint.confidence = 0.0
         
         return fingerprint
@@ -1186,24 +1186,24 @@ class IntelligenceModule:
             "overall_assessment": {},
         }
         
-        logger.info("\n🧠 开始完整情报分析...")
+        logger.info("\n 开始完整情报分析...")
         
         # 1. 目标建模
         if recon_result:
-            logger.info("📊 [1/3] 构建目标模型...")
+            logger.info(" [1/3] 构建目标模型...")
             target_model = self.target_modeler.build_model(recon_result)
             report["target_model"] = target_model.to_dict()
             self.models_built += 1
         
         # 2. WAF指纹识别
-        logger.info("🛡️ [2/3] WAF指纹识别...")
+        logger.info(" [2/3] WAF指纹识别...")
         waf_fp = await self.waf_fingerprinter.fingerprint_waf(target, client)
         report["waf_intelligence"] = waf_fp.to_dict()
         self.waf_fingerprints += 1
         
         # 3. 行为分析（如果有历史请求数据）
         if recon_result and hasattr(recon_result, 'entry_points'):
-            logger.info("📈 [3/3] 行为模式分析...")
+            logger.info(" [3/3] 行为模式分析...")
             # 这里可以添加实际的行为分析逻辑
             behavior_report = {"message": "行为分析需要更多请求数据"}
             report["behavior_analysis"] = behavior_report
@@ -1212,7 +1212,7 @@ class IntelligenceModule:
         # 4. 综合评估
         report["overall_assessment"] = self._generate_overall_assessment(report)
         
-        logger.info("✅ 情报分析完成\n")
+        logger.info(" 情报分析完成\n")
         
         return report
     

@@ -916,7 +916,7 @@ class ReconEngine:
         Returns:
             完整的侦察结果
         """
-        logger.info(f"🔍 开始深度侦察: {target}")
+        logger.info(f" 开始深度侦察: {target}")
         start_time = time.time()
         
         result = ReconResult(target_url=target)
@@ -995,12 +995,12 @@ class ReconEngine:
             result.third_party_components = self._identify_third_party_components(resp.text)
             
             elapsed = time.time() - start_time
-            logger.info(f"✅ 侦察完成 ({elapsed:.2f}s): 发现 {len(result.technologies)} 个技术, "
+            logger.info(f" 侦察完成 ({elapsed:.2f}s): 发现 {len(result.technologies)} 个技术, "
                        f"WAF={result.waf_fingerprint.waf_type.value}, "
                        f"架构={result.architecture.value}")
             
         except Exception as e:
-            logger.error(f"❌ 侦察失败: {e}")
+            logger.error(f" 侦察失败: {e}")
             result.comments_or_debug_info.append(f"Recon Error: {str(e)}")
         
         return result
@@ -1033,7 +1033,7 @@ class ReconEngine:
 
             for pattern in sig['patterns']:
                 if not pattern or not pattern.strip():
-                    logger.debug(f"⚠️ 技术栈 {tech_name} 包含空的正则模式，跳过")
+                    logger.debug(f" 技术栈 {tech_name} 包含空的正则模式，跳过")
                     continue
 
                 try:
@@ -1041,7 +1041,7 @@ class ReconEngine:
                         matches.append(pattern)
                         confidence += 0.15
                 except re.error as regex_err:
-                    logger.warning(f"⚠️ 正则表达式错误 [{tech_name}/{pattern[:30]}]: {regex_err}")
+                    logger.warning(f" 正则表达式错误 [{tech_name}/{pattern[:30]}]: {regex_err}")
                     continue
             
             # 尝试提取版本

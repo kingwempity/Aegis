@@ -1,26 +1,47 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { api, getApiResourceUrl, type Report, type ReportPreview, type ReportPreviewVulnerability } from '../api';
 import { getScanStrategyMeta } from '../utils/scanStrategy';
-import { Trash2, Download, ChevronDown, X, ChevronRight, CheckCircle, XCircle, Clock, Zap, Target, Code, FileText, AlertTriangle } from './Icons';
+import { Trash2, Download, ChevronDown, X, ChevronRight, CheckCircle, XCircle, Clock, Zap, Target, Code, FileText, AlertTriangle, Globe, FileEdit, BarChart3 } from './Icons';
 import ValidationWorkflow from './ValidationWorkflow';
 import AttackChainTimeline from './AttackChainTimeline';
 
 type ExportFormat = 'html' | 'pdf' | 'markdown' | 'excel' | 'json';
 
+const EXPORT_ICON_TYPES = {
+  GLOBE: 'globe',
+  FILE: 'file',
+  EDIT: 'edit',
+  CHART: 'chart',
+  CODE: 'code',
+} as const;
+
+type ExportIconType = typeof EXPORT_ICON_TYPES[keyof typeof EXPORT_ICON_TYPES];
+
 interface ExportFormatOption {
   value: ExportFormat;
   label: string;
-  icon: string;
+  icon: ExportIconType;
   description: string;
 }
 
 const EXPORT_FORMATS: ExportFormatOption[] = [
-  { value: 'html', label: 'HTML', icon: '🌐', description: '网页格式，可直接在浏览器中查看' },
-  { value: 'pdf', label: 'PDF', icon: '📄', description: '文档格式，适合打印和存档' },
-  { value: 'markdown', label: 'Markdown', icon: '📝', description: '纯文本格式，可导入到其他工具' },
-  { value: 'excel', label: 'Excel', icon: '📊', description: '表格格式，适合数据分析和筛选' },
-  { value: 'json', label: 'JSON', icon: '{ }', description: '数据格式，适合程序处理和集成' },
+  { value: 'html', label: 'HTML', icon: EXPORT_ICON_TYPES.GLOBE, description: '网页格式，可直接在浏览器中查看' },
+  { value: 'pdf', label: 'PDF', icon: EXPORT_ICON_TYPES.FILE, description: '文档格式，适合打印和存档' },
+  { value: 'markdown', label: 'Markdown', icon: EXPORT_ICON_TYPES.EDIT, description: '纯文本格式，可导入到其他工具' },
+  { value: 'excel', label: 'Excel', icon: EXPORT_ICON_TYPES.CHART, description: '表格格式，适合数据分析和筛选' },
+  { value: 'json', label: 'JSON', icon: EXPORT_ICON_TYPES.CODE, description: '数据格式，适合程序处理和集成' },
 ];
+
+const getExportIcon = (iconType: ExportIconType): React.ReactNode => {
+  const iconMap: Record<ExportIconType, React.ReactNode> = {
+    [EXPORT_ICON_TYPES.GLOBE]: <Globe size={18} />,
+    [EXPORT_ICON_TYPES.FILE]: <FileText size={18} />,
+    [EXPORT_ICON_TYPES.EDIT]: <FileEdit size={18} />,
+    [EXPORT_ICON_TYPES.CHART]: <BarChart3 size={18} />,
+    [EXPORT_ICON_TYPES.CODE]: <Code size={18} />,
+  };
+  return iconMap[iconType] ?? <FileText size={18} />;
+};
 
 const VULN_BATCH_SIZE = 10;
 const INITIAL_VULN_COUNT = 10;
@@ -126,7 +147,7 @@ const ReportCard: React.FC<ReportCardProps> = ({
                   onClick={() => onExportReport(report.task_id, format.value)}
                   className="w-full px-3 py-2.5 flex items-center gap-3 hover:bg-orange-50 transition-colors text-left"
                 >
-                  <span className="text-lg">{format.icon}</span>
+                  <span className="text-[#ff6b00]">{getExportIcon(format.icon)}</span>
                   <div className="flex-1">
                     <div className="text-sm font-medium text-[#2d3343]">{format.label}</div>
                     <div className="text-xs text-gray-400">{format.description}</div>

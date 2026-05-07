@@ -345,81 +345,81 @@ const AppShell: React.FC<AppShellProps> = ({
       {/* ==================== 侧边栏 ==================== */}
       <aside
         className={`
-          ${isSidebarOpen ? 'w-64' : 'w-20'}
-          h-full bg-[#1a1c23] flex flex-col shadow-2xl z-30
-          transition-all duration-300 ease-in-out relative
+          ${isSidebarOpen ? 'w-64' : 'w-16'}
+          h-full bg-awvs-sidebar flex flex-col shadow-2xl z-30
+          transition-all duration-300 ease-in-out relative border-r border-awvs-border
         `}
       >
         {/* Logo 区域 */}
-        <div className="px-6 py-8 flex items-center gap-3 overflow-hidden">
-          <div className="w-10 h-10 rounded-xl flex-shrink-0 bg-gradient-to-br from-[#ff6b00] to-[#ff8c00] p-0.5 shadow-lg shadow-orange-500/30">
-            <div className="w-full h-full rounded-[10px] bg-[#2a2d3a] flex items-center justify-center overflow-hidden">
+        <div className="px-4 py-6 flex items-center gap-3 overflow-hidden border-b border-awvs-border">
+          <div className="w-8 h-8 rounded-lg flex-shrink-0 bg-gradient-to-br from-awvs-medium to-awvs-high p-0.5 shadow-lg shadow-orange-500/20">
+            <div className="w-full h-full rounded-[6px] bg-awvs-sidebar flex items-center justify-center overflow-hidden">
               <img 
                 src="/logo.png" 
                 alt="Aegis Logo" 
-                className="w-full h-full rounded-[10px] object-cover"
+                className="w-full h-full rounded-[6px] object-cover"
               />
             </div>
           </div>
-          <span className={`text-white text-xl font-bold tracking-tight transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>
+          <span className={`text-white text-lg font-semibold tracking-tight transition-all duration-300 whitespace-nowrap ${isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0 overflow-hidden'}`}>
             Aegis
           </span>
         </div>
 
         {/* 导航菜单 */}
-        <div className="flex-1 overflow-y-auto py-2 scrollbar-hide">
-          {resolvedNavItems.map((item, index) => {
-            if (item.variant === 'section-header') {
+        <div className="flex-1 overflow-y-auto py-3 scrollbar-hide">
+          <div className="px-3 mb-2">
+            {resolvedNavItems.map((item, index) => {
+              if (item.variant === 'section-header') {
+                return (
+                  <div key={`${item.label}-${index}`} className={`px-3 pt-4 pb-2 text-[10px] tracking-wider text-awvs-text-muted font-semibold uppercase transition-all duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'}`}>
+                    {item.label}
+                  </div>
+                );
+              }
+
+              const Icon = typeof item.icon === 'string' ? iconMap[item.icon] : item.icon;
+
               return (
-                <div key={`${item.label}-${index}`} className="px-4 pt-4 pb-2 text-xs tracking-wider text-gray-500 font-semibold">
-                  {item.label}
-                </div>
+                <button
+                  key={`${item.label}-${index}`}
+                  onClick={item.onClick}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left mb-0.5 ${
+                    item.active
+                      ? 'bg-gradient-to-r from-awvs-medium to-awvs-high text-white shadow-lg shadow-orange-500/20'
+                      : 'text-awvs-text-muted hover:bg-awvs-sidebar/80 hover:text-awvs-text-primary'
+                  }`}
+                >
+                  {Icon ? <Icon size={18} strokeWidth={item.active ? 2.5 : 1.5} className="flex-shrink-0" /> : null}
+                  <span className={`transition-all duration-300 whitespace-nowrap ${isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0 overflow-hidden'}`}>{item.label}</span>
+                </button>
               );
-            }
-
-            const Icon = typeof item.icon === 'string' ? iconMap[item.icon] : item.icon;
-
-            return (
-              <button
-                key={`${item.label}-${index}`}
-                onClick={item.onClick}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all text-left ${
-                  item.active
-                    ? 'bg-[#ff6b00] text-white shadow-lg shadow-orange-200'
-                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
-                }`}
-              >
-                {Icon ? <Icon size={20} strokeWidth={item.active ? 3 : 2} /> : null}
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
+            })}
+          </div>
         </div>
 
         {/* 侧边栏底部 */}
-        <div className="p-6 border-t border-gray-800/50 space-y-2">
-          {/* 修改密码按钮 */}
+        <div className="p-3 border-t border-[#1e2d3d] space-y-1">
           <button 
             onClick={() => setShowChangePassword(true)}
-            className="w-full flex items-center gap-3 text-[#8a92a6] hover:text-white cursor-pointer transition-colors overflow-hidden"
+            className="w-full flex items-center gap-3 text-[#6b7a8d] hover:text-white cursor-pointer transition-colors overflow-hidden px-3 py-2.5 rounded-lg hover:bg-[#1a2742]"
           >
             <div className="flex-shrink-0">
-              <KeyRound size={20} />
+              <KeyRound size={18} />
             </div>
-            <span className={`text-sm font-medium transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>
+            <span className={`text-sm font-medium transition-all duration-300 whitespace-nowrap ${isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0 overflow-hidden'}`}>
               修改密码
             </span>
           </button>
           
-          {/* 退出登录按钮 */}
           <button 
             onClick={onLogout}
-            className="w-full flex items-center gap-3 text-[#8a92a6] hover:text-white cursor-pointer transition-colors overflow-hidden"
+            className="w-full flex items-center gap-3 text-[#6b7a8d] hover:text-red-400 cursor-pointer transition-colors overflow-hidden px-3 py-2.5 rounded-lg hover:bg-[#1a2742]"
           >
             <div className="flex-shrink-0">
-              <LogOut size={20} />
+              <LogOut size={18} />
             </div>
-            <span className={`text-sm font-medium transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>
+            <span className={`text-sm font-medium transition-all duration-300 whitespace-nowrap ${isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0 overflow-hidden'}`}>
               退出登录
             </span>
           </button>
@@ -429,47 +429,47 @@ const AppShell: React.FC<AppShellProps> = ({
       {/* ==================== 主内容区域 ==================== */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* ==================== 顶部导航栏 ==================== */}
-        <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-8 z-20 shadow-sm">
+        <header className="h-14 bg-white border-b border-[#e2e8f0] flex items-center justify-between px-6 z-20 shadow-sm">
           <div className="flex items-center gap-4">
             {/* 折叠按钮 */}
             <button
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 transition-colors"
+              className="p-1.5 hover:bg-[#f1f5f9] rounded-lg text-[#64748b] transition-colors"
             >
-              <svg className={`w-6 h-6 transition-transform duration-300 ${isSidebarOpen ? '' : 'rotate-180'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg className={`w-5 h-5 transition-transform duration-300 ${isSidebarOpen ? '' : 'rotate-180'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <line x1="3" y1="12" x2="21" y2="12" />
                 <line x1="3" y1="6" x2="21" y2="6" />
                 <line x1="3" y1="18" x2="21" y2="18" />
               </svg>
             </button>
 
-            {/* 搜索框占位 */}
+            {/* 搜索框 */}
             <div className="relative hidden md:block ml-2">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
+              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-[#94a3b8]">
                 <Search size={16} />
               </span>
               <input
                 type="text"
-                placeholder="搜索..."
-                className="pl-10 pr-4 py-1.5 bg-gray-50 border-none rounded-lg text-sm focus:ring-2 focus:ring-[#ff6b00]/20 w-64 outline-none"
+                placeholder="搜索目标、任务或漏洞..."
+                className="pl-10 pr-4 py-1.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg text-sm focus:ring-2 focus:ring-[#ff6b00]/20 focus:border-[#ff6b00] w-72 outline-none transition-all"
               />
             </div>
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4">
             {/* 新建扫描按钮 */}
             <button
               onClick={onNewScan}
-              className="bg-[#ff6b00] text-white px-5 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-[#e66000] transition-all shadow-lg shadow-orange-500/20"
+              className="bg-gradient-to-r from-[#ff6b00] to-[#ff8c00] text-white px-4 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-2 hover:from-[#e66000] hover:to-[#e67a00] transition-all shadow-md shadow-orange-500/20"
             >
-              <Plus size={16} strokeWidth={3} />
+              <Plus size={16} strokeWidth={2.5} />
               新建验证
             </button>
 
-            <div className="h-6 w-px bg-gray-200 mx-2"></div>
+            <div className="h-5 w-px bg-[#e2e8f0] mx-1"></div>
 
             {/* 图标按钮组 */}
-            <div className="flex items-center gap-4 text-gray-500">
+            <div className="flex items-center gap-3 text-[#64748b]">
               <button 
                 onClick={() => setShowHelpModal(true)}
                 className="text-sm font-medium hover:text-[#ff6b00] transition-colors hidden sm:block"
@@ -478,34 +478,34 @@ const AppShell: React.FC<AppShellProps> = ({
               </button>
               <button 
                 onClick={() => setShowHelpModal(true)}
-                className="p-2 hover:bg-gray-50 rounded-lg transition-colors"
+                className="p-1.5 hover:bg-[#f1f5f9] rounded-lg transition-colors"
               >
-                <HelpCircle size={20} />
+                <HelpCircle size={18} />
               </button>
               <div className="relative" ref={notificationRef}>
                 <button 
                   onClick={() => setShowNotifications(!showNotifications)}
-                  className="relative p-2 hover:bg-gray-50 rounded-lg transition-colors"
+                  className="relative p-1.5 hover:bg-[#f1f5f9] rounded-lg transition-colors"
                 >
-                  <Bell size={20} />
+                  <Bell size={18} />
                   {unreadCount > 0 && (
-                    <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white text-white text-xs flex items-center justify-center">
-                      {unreadCount}
+                    <span className="absolute top-0.5 right-0.5 w-4 h-4 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center font-semibold">
+                      {unreadCount > 99 ? '99+' : unreadCount}
                     </span>
                   )}
                 </button>
                 
                 {/* 通知下拉面板 */}
                 {showNotifications && (
-                  <div className="absolute right-0 top-full mt-2 w-96 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50">
-                    <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                      <h3 className="font-semibold text-gray-800">消息中心</h3>
+                  <div className="absolute right-0 top-full mt-2 w-[380px] bg-white rounded-xl shadow-2xl border border-[#e2e8f0] overflow-hidden z-50">
+                    <div className="px-4 py-3 border-b border-[#e2e8f0] flex items-center justify-between bg-[#f8fafc]">
+                      <h3 className="font-semibold text-[#1e293b]">消息中心</h3>
                       {unreadCount > 0 && (
-                        <span className="text-xs text-[#ff6b00] font-medium">{unreadCount} 条未读</span>
+                        <span className="text-xs text-[#ff6b00] font-semibold">{unreadCount} 条未读</span>
                       )}
                     </div>
                     {/* 分类筛选标签 */}
-                    <div className="px-3 py-2 border-b border-gray-50 flex gap-1 overflow-x-auto">
+                    <div className="px-3 py-2 border-b border-[#f1f5f9] flex gap-1.5 overflow-x-auto">
                       {[
                         { key: 'all', label: '全部' },
                         { key: 'security', label: '安全' },
@@ -519,10 +519,10 @@ const AppShell: React.FC<AppShellProps> = ({
                             setSelectedNotifyCategory(tab.key);
                             fetchNotifications(tab.key);
                           }}
-                          className={`px-2.5 py-1 text-xs rounded-full font-medium whitespace-nowrap transition-colors ${
+                          className={`px-2.5 py-1 text-xs rounded-md font-medium whitespace-nowrap transition-all ${
                             selectedNotifyCategory === tab.key
-                              ? 'bg-[#ff6b00] text-white'
-                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                              ? 'bg-[#ff6b00] text-white shadow-sm'
+                              : 'bg-[#f1f5f9] text-[#64748b] hover:bg-[#e2e8f0]'
                           }`}
                         >
                           {tab.label}
@@ -531,8 +531,8 @@ const AppShell: React.FC<AppShellProps> = ({
                     </div>
                     <div className="max-h-80 overflow-y-auto">
                       {notifications.length === 0 ? (
-                        <div className="py-10 text-center text-gray-400">
-                          <Bell size={36} className="mx-auto mb-2 text-gray-300" />
+                        <div className="py-10 text-center text-[#94a3b8]">
+                          <Bell size={32} className="mx-auto mb-2 text-[#cbd5e1]" />
                           <p className="text-sm">暂无通知</p>
                         </div>
                       ) : (
@@ -540,41 +540,41 @@ const AppShell: React.FC<AppShellProps> = ({
                         <div 
                           key={notification.id}
                           onClick={() => markAsRead(notification.id)}
-                          className={`px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer ${
-                            !notification.read ? 'bg-orange-50/30' : ''
+                          className={`px-4 py-3 border-b border-[#f1f5f9] hover:bg-[#f8fafc] transition-colors cursor-pointer ${
+                            !notification.read ? 'bg-orange-50/50' : ''
                           }`}
                         >
                           <div className="flex items-start gap-3">
                             <div className="mt-0.5">{getNotificationIcon(notification.type, notification.priority, notification.category)}</div>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-0.5">
-                                <span className={`px-1.5 py-0.5 text-xs rounded-full font-medium ${getCategoryColor(notification.category)}`}>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${getCategoryColor(notification.category)}`}>
                                   {getCategoryLabel(notification.category)}
                                 </span>
                               </div>
-                              <p className="text-sm font-medium text-gray-800 leading-tight">{notification.title}</p>
-                              <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{notification.message}</p>
-                              <p className="text-xs text-gray-400 mt-1">{notification.time}</p>
+                              <p className="text-sm font-semibold text-[#1e293b] leading-tight">{notification.title}</p>
+                              <p className="text-xs text-[#64748b] mt-0.5 line-clamp-2">{notification.message}</p>
+                              <p className="text-xs text-[#94a3b8] mt-1">{notification.time}</p>
                             </div>
                             {!notification.read && (
-                              <div className="w-2 h-2 bg-[#ff6b00] rounded-full mt-1.5 flex-shrink-0"></div>
+                              <div className="w-2 h-2 bg-[#ff6b00] rounded-full mt-2 flex-shrink-0"></div>
                             )}
                           </div>
                         </div>
                       )))}
                     </div>
-                    <div className="px-4 py-3 border-t border-gray-100 flex gap-2">
+                    <div className="px-4 py-3 border-t border-[#e2e8f0] bg-[#f8fafc] flex gap-2">
                       {unreadCount > 0 && (
                         <button 
                           onClick={markAllAsRead}
-                          className="flex-1 text-center text-sm text-gray-500 font-medium hover:text-gray-700 transition-colors"
+                          className="flex-1 text-center text-sm text-[#64748b] font-medium hover:text-[#1e293b] transition-colors"
                         >
                           全部已读
                         </button>
                       )}
                       <button 
                         onClick={handleViewAllNotifications}
-                        className="flex-1 text-center text-sm text-[#ff6b00] font-medium hover:text-[#e66000] transition-colors"
+                        className="flex-1 text-center text-sm text-[#ff6b00] font-semibold hover:text-[#e66000] transition-colors"
                       >
                         查看全部
                       </button>
@@ -587,7 +587,7 @@ const AppShell: React.FC<AppShellProps> = ({
         </header>
 
         {/* ==================== 内容滚动区域 ==================== */}
-        <main className="flex-1 overflow-y-auto p-8 bg-[#f8f9fa]">
+        <main className="flex-1 overflow-y-auto p-6 bg-[#f5f6f8]">
           {children}
         </main>
       </div>
@@ -595,22 +595,22 @@ const AppShell: React.FC<AppShellProps> = ({
       {/* ==================== 全部通知模态框 ==================== */}
       {showAllNotifications && (
         <div 
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
           onClick={() => setShowAllNotifications(false)}
         >
           <div 
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 overflow-hidden"
+            className="bg-white rounded-xl shadow-2xl w-full max-w-3xl mx-4 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* 模态框头部 */}
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="px-6 py-4 border-b border-[#e2e8f0] flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-[#ff6b00]/10 rounded-lg flex items-center justify-center">
-                  <Bell size={24} className="text-[#ff6b00]" />
+                  <Bell size={22} className="text-[#ff6b00]" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-gray-800">消息中心</h2>
-                  <p className="text-sm text-gray-500">共 {notifications.length} 条通知</p>
+                  <h2 className="text-lg font-bold text-[#1e293b]">消息中心</h2>
+                  <p className="text-sm text-[#64748b]">共 {notifications.length} 条通知</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -624,9 +624,9 @@ const AppShell: React.FC<AppShellProps> = ({
                 )}
                 <button 
                   onClick={() => setShowAllNotifications(false)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="p-2 hover:bg-[#f1f5f9] rounded-lg transition-colors"
                 >
-                  <X size={20} className="text-gray-500" />
+                  <X size={20} className="text-[#64748b]" />
                 </button>
               </div>
             </div>

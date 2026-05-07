@@ -91,56 +91,56 @@ const formatDuration = (seconds: number): string => {
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-4 flex-1">
           <div>
-            <h2 className="text-2xl font-bold text-[#2d3343]">模拟攻击验证任务</h2>
-            <p className="mt-1 text-sm text-gray-400">跟踪攻击载荷验证、证据链留存与可利用性证明。</p>
+            <h2 className="text-xl font-bold text-[#1e293b]">模拟攻击验证任务</h2>
+            <p className="mt-1 text-sm text-[#64748b]">跟踪攻击载荷验证、证据链留存与可利用性证明。</p>
           </div>
           <div className="relative flex-1 max-w-md">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-4 w-4 text-gray-400" />
+              <Search className="h-4 w-4 text-[#94a3b8]" />
             </div>
             <input
               type="text"
               placeholder="搜索目标 URL 或 显示ID（如 #12）..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-xl text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#ff6b00]/20 focus:border-[#ff6b00] transition-all"
+              className="block w-full pl-10 pr-3 py-2 border border-[#e2e8f0] rounded-lg text-sm placeholder-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-[#ff6b00]/20 focus:border-[#ff6b00] transition-all bg-white"
             />
           </div>
         </div>
         <button 
           onClick={onCreateTask}
-          className="px-6 py-2.5 bg-[#ff6b00] text-white rounded-xl font-bold text-sm hover:bg-[#e66000] transition-all shadow-lg shadow-orange-200 flex items-center gap-2"
+          className="px-5 py-2 bg-gradient-to-r from-[#ff6b00] to-[#ff8c00] text-white rounded-lg font-semibold text-sm hover:from-[#e66000] hover:to-[#e67a00] transition-all shadow-md shadow-orange-500/20 flex items-center gap-2"
         >
-          <Plus size={16} strokeWidth={3} />
+          <Plus size={16} strokeWidth={2.5} />
           新建验证
         </button>
       </div>
 
       {/* Task Table */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-[#e2e8f0] overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-100">
-              <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">ID</th>
-              <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">目标 URL</th>
-              <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">验证模式</th>
-              <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">状态</th>
-              <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">进度</th>
-              <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">创建时间</th>
-              <th className="px-8 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider text-right">操作</th>
+            <tr className="bg-[#f8fafc] border-b border-[#e2e8f0]">
+              <th className="px-6 py-3.5 text-xs font-semibold text-[#64748b] uppercase tracking-wider">ID</th>
+              <th className="px-6 py-3.5 text-xs font-semibold text-[#64748b] uppercase tracking-wider">目标 URL</th>
+              <th className="px-6 py-3.5 text-xs font-semibold text-[#64748b] uppercase tracking-wider">验证模式</th>
+              <th className="px-6 py-3.5 text-xs font-semibold text-[#64748b] uppercase tracking-wider">状态</th>
+              <th className="px-6 py-3.5 text-xs font-semibold text-[#64748b] uppercase tracking-wider">进度</th>
+              <th className="px-6 py-3.5 text-xs font-semibold text-[#64748b] uppercase tracking-wider">创建时间</th>
+              <th className="px-6 py-3.5 text-xs font-semibold text-[#64748b] uppercase tracking-wider text-right">操作</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-[#f1f5f9]">
             {loading && tasks.length === 0 ? (
-              <tr><td colSpan={7} className="px-8 py-12 text-center text-gray-400">加载中...</td></tr>
+              <tr><td colSpan={7} className="px-6 py-12 text-center text-[#94a3b8]">加载中...</td></tr>
             ) : filteredTasks.length === 0 ? (
-              <tr><td colSpan={7} className="px-8 py-12 text-center text-gray-400">暂无匹配的验证任务</td></tr>
+              <tr><td colSpan={7} className="px-6 py-12 text-center text-[#94a3b8]">暂无匹配的验证任务</td></tr>
             ) : (
               filteredTasks.map((task) => (
-                <tr key={task.id} className="hover:bg-gray-50/50 transition-colors align-top">
-                  <td className="px-8 py-5 text-xs font-bold text-gray-400">#{task.display_id}</td>
-                  <td className="px-8 py-5 font-bold text-[#2d3343]">{task.target_url}</td>
-                  <td className="px-8 py-5">
+                <tr key={task.id} className="hover:bg-[#f8fafc] transition-colors align-top">
+                  <td className="px-6 py-4 text-xs font-bold text-[#64748b]">#{task.display_id}</td>
+                  <td className="px-6 py-4 font-semibold text-[#1e293b] font-mono text-sm">{task.target_url}</td>
+                  <td className="px-6 py-4">
                     {(() => {
                       const strategy = getScanStrategyMeta(task.scan_strategy);
                       const actualDuration = task.status === 'COMPLETED' && task.duration_seconds 
@@ -148,18 +148,18 @@ const formatDuration = (seconds: number): string => {
                         : null;
                       const estimatedDuration = strategy.estimatedResults.duration;
                       const speedDisplay = actualDuration 
-                        ? <span className="text-xs font-bold text-green-600">{actualDuration}</span>
+                        ? <span className="text-xs font-semibold text-green-600">{actualDuration}</span>
                         : task.status === 'RUNNING'
-                          ? <span className="text-xs font-bold text-blue-600">{strategy.speed}</span>
-                          : <span className="text-xs text-gray-400">{strategy.speed}</span>;
+                          ? <span className="text-xs font-semibold text-blue-600">{strategy.speed}</span>
+                          : <span className="text-xs text-[#64748b]">{strategy.speed}</span>;
                       return (
                         <div className="flex flex-col gap-1">
-                          <span className="inline-flex w-fit rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-[#c25b00]">
+                          <span className="inline-flex w-fit rounded-md bg-orange-50 px-2.5 py-1 text-xs font-semibold text-[#c25b00]">
                             {strategy.label}
                           </span>
                           {speedDisplay}
                           {actualDuration && (
-                            <div className="text-[10px] text-gray-400">
+                            <div className="text-[10px] text-[#94a3b8]">
                               预计: {estimatedDuration}
                             </div>
                           )}
@@ -167,45 +167,45 @@ const formatDuration = (seconds: number): string => {
                       );
                     })()}
                   </td>
-                  <td className="px-8 py-5">{getStatusBadge(task.status)}</td>
-                  <td className="px-8 py-5">
-                    <div className="flex items-center gap-3 w-48">
-                      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <td className="px-6 py-4">{getStatusBadge(task.status)}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3 w-40">
+                      <div className="flex-1 h-1.5 bg-[#e2e8f0] rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-[#ff6b00] transition-all duration-500" 
                           style={{ width: `${task.progress || (task.status === 'COMPLETED' ? 100 : 0)}%` }}
                         ></div>
                       </div>
-                      <span className="text-xs font-bold text-gray-400">{task.progress || (task.status === 'COMPLETED' ? 100 : 0)}%</span>
+                      <span className="text-xs font-semibold text-[#64748b]">{task.progress || (task.status === 'COMPLETED' ? 100 : 0)}%</span>
                     </div>
                   </td>
-                  <td className="px-8 py-5 text-gray-400 text-xs">{new Date(task.created_at).toLocaleString()}</td>
-                  <td className="px-8 py-5 text-right">
+                  <td className="px-6 py-4 text-[#64748b] text-xs">{new Date(task.created_at).toLocaleString()}</td>
+                  <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
                       {task.status === 'RUNNING' && (
                         <button 
                           onClick={() => handleStopTask(task.id)}
-                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          className="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors"
                           title="停止任务"
                         >
-                          <StopSquare size={20} />
+                          <StopSquare size={18} />
                         </button>
                       )}
                       {task.status === 'COMPLETED' && (
                         <button 
                           onClick={() => onViewReport && onViewReport(task.id)}
-                          className="p-2 text-[#ff6b00] hover:bg-orange-50 rounded-lg transition-colors" 
+                          className="p-1.5 text-[#ff6b00] hover:bg-orange-50 rounded-md transition-colors" 
                           title="查看报告"
                         >
-                          <Eye size={20} />
+                          <Eye size={18} />
                         </button>
                       )}
                       <button 
                         onClick={() => handleDeleteTask(task)}
-                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        className="p-1.5 text-[#94a3b8] hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
                         title="删除任务"
                       >
-                        <Trash2 size={20} strokeWidth={2} />
+                        <Trash2 size={18} strokeWidth={1.5} />
                       </button>
                     </div>
                   </td>

@@ -7,26 +7,27 @@ export default {
   theme: {
     extend: {
       colors: {
-        // AWVS 风格色彩系统
+        // AWVS 专业风格色彩系统
         'awvs': {
           // 漏洞严重等级
-          'critical': '#ff4d4f',  // 高危 - 红色
-          'high': '#ff7a45',      // 高危变体
-          'medium': '#ffa940',    // 中危 - 橙色
-          'low': '#1890ff',       // 低危 - 蓝色
-          'info': '#52c41a',      // 信息 - 绿色
+          'critical': '#dc2626',
+          'high': '#ea580c',
+          'medium': '#ca8a04',
+          'low': '#2563eb',
+          'info': '#52c41a',
           
           // 背景和文本
-          'bg-dark': '#1f1f1f',   // 深色背景
-          'bg-light': '#f5f5f5',  // 浅色背景
-          'sidebar': '#2d2d2d',   // 侧边栏
-          'card': '#ffffff',      // 卡片
-          'border': '#e8e8e8',    // 边框
+          'bg-dark': '#1e293b',
+          'bg-light': '#f8fafc',
+          'sidebar': '#1e293b',
+          'card': '#ffffff',
+          'border': '#e2e8f0',
+          'header': '#ffffff',
           
           // 文本
-          'text-primary': '#000000',
-          'text-secondary': '#595959',
-          'text-muted': '#8c8c8c',
+          'text-primary': '#1e293b',
+          'text-secondary': '#64748b',
+          'text-muted': '#94a3b8',
           'text-light': '#ffffff',
         }
       },

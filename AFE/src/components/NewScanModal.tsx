@@ -103,7 +103,7 @@ const NewScanModal: React.FC<NewScanModalProps> = ({ isOpen, onClose, onSuccess 
               {scanStrategy === 'focused_probe' && (
                 <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-5 space-y-4">
                   <h4 className="text-sm font-bold text-[#2d3343] flex items-center gap-2">
-                    <span className="text-blue-500">🎯</span>
+                    <span className="text-blue-500"></span>
                     定向验证配置
                   </h4>
                   <div className="flex flex-col gap-2">
@@ -191,10 +191,10 @@ const NewScanModal: React.FC<NewScanModalProps> = ({ isOpen, onClose, onSuccess 
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { icon: '🎯', label: '预计漏洞', value: activeStrategy.estimatedResults.vulns },
-                    { icon: '⏱️', label: '执行时间', value: activeStrategy.estimatedResults.duration },
-                    { icon: '💣', label: '攻击载荷', value: activeStrategy.estimatedResults.payloads },
-                    { icon: '🔗', label: '攻击路径', value: activeStrategy.estimatedResults.attackPaths },
+                    { icon: '', label: '预计漏洞', value: activeStrategy.estimatedResults.vulns },
+                    { icon: '⏱', label: '执行时间', value: activeStrategy.estimatedResults.duration },
+                    { icon: '', label: '攻击载荷', value: activeStrategy.estimatedResults.payloads },
+                    { icon: '', label: '攻击路径', value: activeStrategy.estimatedResults.attackPaths },
                   ].map((item) => (
                     <div
                       key={item.label}
@@ -224,8 +224,8 @@ const NewScanModal: React.FC<NewScanModalProps> = ({ isOpen, onClose, onSuccess 
                     activeStrategy.riskLevel === 'medium' ? 'bg-yellow-100' :
                     'bg-green-100'
                   }`}>
-                    {activeStrategy.riskLevel === 'high' ? '⚠️' :
-                     activeStrategy.riskLevel === 'medium' ? '⚡' : '✅'}
+                    {activeStrategy.riskLevel === 'high' ? '' :
+                     activeStrategy.riskLevel === 'medium' ? '' : ''}
                   </div>
                   <div className="flex-1">
                     <div className={`text-sm font-bold mb-1 ${
@@ -280,8 +280,8 @@ const NewScanModal: React.FC<NewScanModalProps> = ({ isOpen, onClose, onSuccess 
                       </div>
                       <p className="mt-2 text-xs leading-5 text-gray-500">{option.useCase}</p>
                       <div className="mt-2 flex items-center gap-3 text-[11px] text-gray-400">
-                        <span>📊 {option.scope}</span>
-                        <span>⏱️ {option.speed}</span>
+                        <span> {option.scope}</span>
+                        <span>⏱ {option.speed}</span>
                       </div>
                     </button>
                   );
@@ -293,9 +293,9 @@ const NewScanModal: React.FC<NewScanModalProps> = ({ isOpen, onClose, onSuccess 
                 <h5 className="text-xs font-bold text-gray-500 mb-3">模式快速对比</h5>
                 <div className="space-y-2 text-xs">
                   {[
-                    { mode: '模拟攻击验证', desc: '日常首选，平衡之选', emoji: '⚖️' },
-                    { mode: '全量攻击验证', desc: '全面审计，深度保障', emoji: '🔍' },
-                    { mode: '定向漏洞验证', desc: '精准打击，快速响应', emoji: '🎯' },
+                    { mode: '模拟攻击验证', desc: '日常首选，平衡之选', emoji: '' },
+                    { mode: '全量攻击验证', desc: '全面审计，深度保障', emoji: '' },
+                    { mode: '定向漏洞验证', desc: '精准打击，快速响应', emoji: '' },
                   ].map((item) => (
                     <div key={item.mode} className="flex items-center gap-2 text-gray-600">
                       <span>{item.emoji}</span>

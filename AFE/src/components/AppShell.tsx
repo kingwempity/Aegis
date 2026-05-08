@@ -147,7 +147,7 @@ const AppShell: React.FC<AppShellProps> = ({
           if (message.type === 'notification') {
             // 实时推送的新通知
             const newNotification: Notification = message.data;
-            console.log('[AppShell] 🔔 New notification received via WebSocket:', newNotification.title);
+            console.log('[AppShell]  New notification received via WebSocket:', newNotification.title);
 
             setNotifications(prev => {
               // 防止重复添加（用 id 去重）

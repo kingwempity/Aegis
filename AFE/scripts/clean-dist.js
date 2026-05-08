@@ -26,10 +26,10 @@ async function cleanDist() {
       }
     }
     
-    console.log('✓ dist directory cleaned (preserving .user.ini)');
+    console.log(' dist directory cleaned (preserving .user.ini)');
   } catch (error) {
     if (error.code === 'ENOENT') {
-      console.log('✓ dist directory does not exist, skipping clean');
+      console.log(' dist directory does not exist, skipping clean');
     } else {
       console.error('Error cleaning dist:', error);
       process.exit(1);

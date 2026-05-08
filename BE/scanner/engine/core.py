@@ -67,14 +67,14 @@ try:
     from scanner.engine.intelligence import IntelligenceModule
     PHASE2_AVAILABLE = True
 except ImportError as e:
-    logger.debug(f"⚠️ Phase 2 模块导入失败: {e}")
+    logger.debug(f" Phase 2 模块导入失败: {e}")
     AttackSimulator = None
     SimulationResult = None
     ExploitationEngine = None
     IntelligenceModule = None
     PHASE2_AVAILABLE = False
 except Exception as e:
-    logger.warning(f"⚠️ Phase 2 模块加载异常: {e}")
+    logger.warning(f" Phase 2 模块加载异常: {e}")
     AttackSimulator = None
     SimulationResult = None
     ExploitationEngine = None
@@ -95,7 +95,7 @@ try:
     )
     PHASE3_AVAILABLE = True
 except ImportError as e:
-    logger.debug(f"⚠️ Phase 3 模块导入失败: {e}")
+    logger.debug(f" Phase 3 模块导入失败: {e}")
     LearningEngine = None
     PatternLearner = None
     FeedbackSystem = None
@@ -105,7 +105,7 @@ except ImportError as e:
     StrategyProfile = None
     PHASE3_AVAILABLE = False
 except Exception as e:
-    logger.warning(f"⚠️ Phase 3 模块加载异常: {e}")
+    logger.warning(f" Phase 3 模块加载异常: {e}")
     LearningEngine = None
     PatternLearner = None
     FeedbackSystem = None
@@ -350,15 +350,15 @@ class ScannerEngine:
                     resolved_plugin_dir = fb
                     break
             else:
-                logger.error(f"❌ 插件目录无法定位: {plugin_dir}")
+                logger.error(f" 插件目录无法定位: {plugin_dir}")
         
-        logger.info(f"📂 插件目录: {resolved_plugin_dir}")
+        logger.info(f" 插件目录: {resolved_plugin_dir}")
         
         from scanner.engine.parser import TemplateParser
         self.plugins = TemplateParser.load_plugins(resolved_plugin_dir)
         
         plugin_ids = [p.get('id', 'unknown') for p in self.plugins]
-        logger.info(f"📋 已加载 {len(self.plugins)} 个插件: {plugin_ids}")
+        logger.info(f" 已加载 {len(self.plugins)} 个插件: {plugin_ids}")
         
         self.script_generator = AttackScriptGenerator(strategy=strategy)
         self.path_explorer = AttackPathExplorer(learning_enabled=enable_learning)
@@ -371,7 +371,7 @@ class ScannerEngine:
         self._semaphore: Optional[asyncio.Semaphore] = None
         
         self._rule_engine = RuleEngine(config_path=rules_config_path)
-        logger.info("🛡️ 规则引擎已初始化（跨框架误报防护已启用）")
+        logger.info(" 规则引擎已初始化（跨框架误报防护已启用）")
         
         self._detected_frameworks: List[FrameworkType] = []
         self._framework_confidence: Dict[FrameworkType, float] = {}
@@ -390,30 +390,30 @@ class ScannerEngine:
         try:
             from scanner.engine.recon import ReconEngine as _ReconEngine
             self._recon_engine = _ReconEngine(max_depth=self.max_depth, timeout=self.timeout)
-            logger.info("🔍 深度侦察引擎已初始化")
+            logger.info(" 深度侦察引擎已初始化")
             self._simulation_enabled = True
         except ImportError as e:
-            logger.warning(f"⚠️ 侦察模块导入失败（深度侦察功能不可用）: {e}")
+            logger.warning(f" 侦察模块导入失败（深度侦察功能不可用）: {e}")
             self._recon_engine = None
         except Exception as e:
-            logger.error(f"❌ 侦察引擎初始化失败: {e}")
+            logger.error(f" 侦察引擎初始化失败: {e}")
             self._recon_engine = None
         
         try:
             from scanner.engine.weaponizer import Weaponizer as _Weaponizer
             self._weaponizer = _Weaponizer(strategy=strategy)
-            logger.info("⚔️ 智能武器化器已初始化")
+            logger.info(" 智能武器化器已初始化")
         except ImportError as e:
-            logger.warning(f"⚠️ 武器化模块导入失败（智能Payload合成不可用）: {e}")
+            logger.warning(f" 武器化模块导入失败（智能Payload合成不可用）: {e}")
             self._weaponizer = None
         except Exception as e:
-            logger.error(f"❌ 武器化器初始化失败: {e}")
+            logger.error(f" 武器化器初始化失败: {e}")
             self._weaponizer = None
         
         if self._simulation_enabled:
-            logger.info("✅ Phase 1 模拟攻击增强功能已启用")
+            logger.info(" Phase 1 模拟攻击增强功能已启用")
         else:
-            logger.info("ℹ️ 运行于兼容模式（使用原有扫描逻辑）")
+            logger.info("ℹ 运行于兼容模式（使用原有扫描逻辑）")
         
         # Phase 2: 初始化高级模拟攻击模块（可选）
         self._attack_simulator = None
@@ -430,27 +430,27 @@ class ScannerEngine:
                     timeout=self.timeout,
                 )
                 self._phase2_enabled = True
-                logger.info("🎯 攻击模拟器已初始化")
+                logger.info(" 攻击模拟器已初始化")
             except Exception as e:
-                logger.warning(f"🎯 攻击模拟器初始化失败: {e}")
+                logger.warning(f" 攻击模拟器初始化失败: {e}")
                 self._attack_simulator = None
             
             try:
                 self._exploitation_engine = ExploitationEngine(strategy=strategy)
-                logger.info("💥 利用引擎已初始化")
+                logger.info(" 利用引擎已初始化")
             except Exception as e:
-                logger.warning(f"⚠️ 利用引擎初始化失败: {e}")
+                logger.warning(f" 利用引擎初始化失败: {e}")
             
             try:
                 self._intelligence_module = IntelligenceModule()
-                logger.info("🧠 情报模块已初始化")
+                logger.info(" 情报模块已初始化")
             except Exception as e:
-                logger.warning(f"⚠️ 情报模块初始化失败: {e}")
+                logger.warning(f" 情报模块初始化失败: {e}")
         
         if self._phase2_enabled and self._attack_simulator:
-            logger.info("🚀 Phase 2 高级模拟攻击功能已启用")
+            logger.info(" Phase 2 高级模拟攻击功能已启用")
         else:
-            logger.debug("ℹ️ Phase 2 功能不可用，使用Phase 1能力")
+            logger.debug("ℹ Phase 2 功能不可用，使用Phase 1能力")
         
         # Phase 3: 初始化智能学习模块（可选）
         self._learning_engine = None
@@ -460,7 +460,7 @@ class ScannerEngine:
         if PHASE3_AVAILABLE:
             try:
                 self._learning_engine = LearningEngine(enable_persistence=True)
-                logger.info("📚 学习引擎已初始化（支持模式学习和策略优化）")
+                logger.info(" 学习引擎已初始化（支持模式学习和策略优化）")
                 
                 # 安全连接学习引擎到攻击模拟器（双重空值保护）
                 # 检查1: 确保攻击模拟器存在且不为None
@@ -473,25 +473,25 @@ class ScannerEngine:
                     # 尝试设置属性（可能攻击模拟器不支持该属性）
                     try:
                         self._attack_simulator.learning_engine = self._learning_engine
-                        logger.info("🔗 学习引擎已成功连接到攻击模拟器")
+                        logger.info(" 学习引擎已成功连接到攻击模拟器")
                     except AttributeError:
-                        logger.debug("ℹ️ 攻击模拟器不支持learning_engine属性（正常降级）")
+                        logger.debug("ℹ 攻击模拟器不支持learning_engine属性（正常降级）")
                 
                 elif self._attack_simulator is None:
-                    logger.debug("⏭️ 攻击模拟器未初始化，跳过连接")
+                    logger.debug("⏭ 攻击模拟器未初始化，跳过连接")
                 else:
-                    logger.debug("⏭️ Phase 2 不可用或学习引擎未初始化")
+                    logger.debug("⏭ Phase 2 不可用或学习引擎未初始化")
                 
                 self._phase3_enabled = True
                 
             except Exception as e:
-                logger.warning(f"⚠️ 学习引擎初始化失败: {e}")
+                logger.warning(f" 学习引擎初始化失败: {e}")
                 self._learning_engine = None
         
         if self._phase3_enabled and self._learning_engine:
-            logger.info("🧠 Phase 3 智能学习功能已启用 - Aegis现在具备自我进化能力！")
+            logger.info(" Phase 3 智能学习功能已启用 - Aegis现在具备自我进化能力！")
         else:
-            logger.debug("ℹ️ Phase 3 功能不可用，使用Phase 1-2能力")
+            logger.debug("ℹ Phase 3 功能不可用，使用Phase 1-2能力")
     
     async def run(self) -> List[Dict[str, Any]]:
         """
@@ -502,7 +502,7 @@ class ScannerEngine:
         self._stats.start_time = time.time()
         self._semaphore = asyncio.Semaphore(self.max_concurrent)
         
-        logger.info(f"🚀 开始扫描目标: {self.target}")
+        logger.info(f" 开始扫描目标: {self.target}")
         
         async with httpx.AsyncClient(
             verify=False,
@@ -531,7 +531,7 @@ class ScannerEngine:
         
         # 生成最终报告摘要
         if self._recon_result:
-            logger.info(f"📊 侦察摘要: "
+            logger.info(f" 侦察摘要: "
                        f"技术栈={len(self._recon_result.technologies)}个, "
                        f"WAF={self._recon_result.waf_fingerprint.waf_type.value}, "
                        f"架构={self._recon_result.architecture.value}, "
@@ -585,7 +585,7 @@ class ScannerEngine:
                 f"conf={self._framework_confidence.get(fw, 0):.2f})"
                 for fw in self._detected_frameworks
             )
-            logger.info(f"🔍 框架检测结果: [{fw_info}]" if fw_info else "🔍 框架检测结果: 未识别已知框架")
+            logger.info(f" 框架检测结果: [{fw_info}]" if fw_info else " 框架检测结果: 未识别已知框架")
             
             self._log_judgment(
                 phase="initial_probe",
@@ -599,7 +599,7 @@ class ScannerEngine:
                 result="success",
             )
         except Exception as e:
-            logger.warning(f"⚠️ 初始探测失败: {e}")
+            logger.warning(f" 初始探测失败: {e}")
             self._context = AttackContext(target_url=self.target)
             self._log_judgment(
                 phase="initial_probe", plugin_id="N/A",
@@ -620,11 +620,11 @@ class ScannerEngine:
         """
         # 检查侦察引擎是否可用（降级策略）
         if not self._recon_engine:
-            logger.info("⏭️ 跳过深度侦察（侦察引擎未初始化）")
+            logger.info("⏭ 跳过深度侦察（侦察引擎未初始化）")
             return
         
         try:
-            logger.info("🔬 开始深度侦察...")
+            logger.info(" 开始深度侦察...")
             
             # 执行深度侦察
             self._recon_result = await self._recon_engine.deep_recon(self.target, client)
@@ -647,17 +647,17 @@ class ScannerEngine:
                     self._context.waf_type = self._recon_result.waf_fingerprint.waf_type.value
             
             logger.info(
-                f"✅ 深度侦察完成:\n"
-                f"  📌 主框架: {self._recon_result.primary_framework or '未识别'}\n"
-                f"  💾 数据库: {self._recon_result.primary_database or '未识别'}\n"
-                f"  🛡️ WAF类型: {self._recon_result.waf_fingerprint.vendor_name or '未检测到'} "
+                f" 深度侦察完成:\n"
+                f"   主框架: {self._recon_result.primary_framework or '未识别'}\n"
+                f"   数据库: {self._recon_result.primary_database or '未识别'}\n"
+                f"   WAF类型: {self._recon_result.waf_fingerprint.vendor_name or '未检测到'} "
                 f"(强度:{self._recon_result.waf_fingerprint.protection_level.value})\n"
-                f"  🏗️ 架构: {self._recon_result.architecture.value}\n"
-                f"  🔐 认证: {self._recon_result.auth_mechanism.value}\n"
-                f"  🔗 入口点: {len(self._recon_result.entry_points)}个\n"
-                f"  📦 组件: {len(self._recon_result.third_party_components)}个\n"
-                f"  ⚠️ 缺失安全头: {len(self._recon_result.missing_security_headers)}个\n"
-                f"  🐛 调试信息: {len(self._recon_result.comments_or_debug_info)}条"
+                f"   架构: {self._recon_result.architecture.value}\n"
+                f"   认证: {self._recon_result.auth_mechanism.value}\n"
+                f"   入口点: {len(self._recon_result.entry_points)}个\n"
+                f"   组件: {len(self._recon_result.third_party_components)}个\n"
+                f"   缺失安全头: {len(self._recon_result.missing_security_headers)}个\n"
+                f"   调试信息: {len(self._recon_result.comments_or_debug_info)}条"
             )
             
             # 记录侦察结果到日志
@@ -681,7 +681,7 @@ class ScannerEngine:
             )
             
         except Exception as e:
-            logger.warning(f"⚠️ 深度侦察失败: {e}")
+            logger.warning(f" 深度侦察失败: {e}")
             self._log_judgment(
                 phase="deep_recon", plugin_id="N/A",
                 action="target_analysis", details={"error": str(e)}, result="failed",
@@ -803,7 +803,7 @@ class ScannerEngine:
             # 生产环境请注释掉以下两行
             if plugin_id in ("thinkphp-sqli", "django-cve-2017-12794", "in-sqlijection"):
                 can_execute, execute_reason = True, f"VULHUB调试: 强制执行 {plugin_id}"
-                logger.info(f"🔧 VULHUB调试模式: 插件 {plugin_id} 将被强制执行 (原因: {execute_reason})")
+                logger.info(f" VULHUB调试模式: 插件 {plugin_id} 将被强制执行 (原因: {execute_reason})")
             
             self._log_judgment(
                 phase="plugin_gate",
@@ -817,7 +817,7 @@ class ScannerEngine:
                 result="allow" if can_execute else "skip",
             )
             if not can_execute:
-                logger.info(f"⏭️ 跳过插件 {plugin_id}: {execute_reason}")
+                logger.info(f"⏭ 跳过插件 {plugin_id}: {execute_reason}")
                 continue
 
             self._get_attack_execution(plugin)
@@ -841,12 +841,12 @@ class ScannerEngine:
                             },
                             result="suppress",
                         )
-                        logger.info(f"🛑 插件 {plugin_id} 阶段阻断: {block_reason}")
+                        logger.info(f" 插件 {plugin_id} 阶段阻断: {block_reason}")
                         self._finalize_attack_execution(plugin, "blocked", block_reason)
                         break
                     success = await self._scan_with_plugin(client, plugin, req)
                     if not success:
-                        logger.info(f"🛑 插件 {plugin.get('id')} 步骤未命中 matchers，中断后续请求")
+                        logger.info(f" 插件 {plugin.get('id')} 步骤未命中 matchers，中断后续请求")
                         self._finalize_attack_execution(plugin, "partial", self._get_plugin_state(plugin_id).get("LastSequentialFailure") or "阶段未完成")
                         break
                 else:
@@ -1038,7 +1038,7 @@ class ScannerEngine:
                                 )
                                 
                                 logger.debug(
-                                    f"🔍 漏洞验证 [{plugin_id}]: "
+                                    f" 漏洞验证 [{plugin_id}]: "
                                     f"url={url}, is_valid={is_valid}, reason={validation_reason}"
                                 )
                                 
@@ -1091,7 +1091,7 @@ class ScannerEngine:
                                     final_report = False
                                     final_reason = f"验证未通过: {validation_reason}"
                                     logger.info(
-                                        f"🛡️ 跨框架误报拦截: [{plugin_id}] @ {url} - {validation_reason}"
+                                        f" 跨框架误报拦截: [{plugin_id}] @ {url} - {validation_reason}"
                                     )
                                 elif adjusted_confidence < rule_min_confidence:
                                     final_report = False
@@ -1099,7 +1099,7 @@ class ScannerEngine:
                                         f"置信度不足: {adjusted_confidence:.3f} < {rule_min_confidence:.3f}"
                                     )
                                     logger.info(
-                                        f"🔵 低置信度过滤: [{plugin_id}] conf={adjusted_confidence:.3f} @ {url}"
+                                        f" 低置信度过滤: [{plugin_id}] conf={adjusted_confidence:.3f} @ {url}"
                                     )
                                 elif evidence_count < rule_required_evidence:
                                     final_report = False
@@ -1107,7 +1107,7 @@ class ScannerEngine:
                                         f"证据不足: {evidence_count} < {rule_required_evidence}"
                                     )
                                     logger.info(
-                                        f"🔵 证据不足过滤: [{plugin_id}] evidence={evidence_count} @ {url}"
+                                        f" 证据不足过滤: [{plugin_id}] evidence={evidence_count} @ {url}"
                                     )
                                 else:
                                     final_report = True
@@ -1185,7 +1185,7 @@ class ScannerEngine:
                                     self._vulnerabilities.append(result)
                                     self._stats.vulnerabilities_found += 1
                                     
-                                    level = "🔴" if adjusted_confidence > 0.6 else "🟡" if adjusted_confidence > 0.3 else "🔵"
+                                    level = "" if adjusted_confidence > 0.6 else "" if adjusted_confidence > 0.3 else ""
                                     logger.info(
                                         f"{level} 确认漏洞 [{adjusted_confidence:.1%}]: "
                                         f"{result.vuln_name} @ {url} (证据={evidence_count})"
@@ -1288,7 +1288,7 @@ class ScannerEngine:
                 keyword_matches = sum(1 for kw in waf_keywords if kw in body_lower)
                 
                 if keyword_matches >= 2:
-                    logger.debug(f"🛡️ 检测到WAF拦截: {status_code} ({reason}), "
+                    logger.debug(f" 检测到WAF拦截: {status_code} ({reason}), "
                                f"关键词匹配={keyword_matches}")
                     return True
         
@@ -1428,7 +1428,7 @@ class ScannerEngine:
                 return last_resp, elapsed
                 
         except Exception as e:
-            logger.debug(f"⚠️ 初始请求失败: {e}")
+            logger.debug(f" 初始请求失败: {e}")
         
         # 如果没有目标上下文，无法进行智能重试
         if not self._target_context:
@@ -1468,7 +1468,7 @@ class ScannerEngine:
                 
                 try:
                     logger.debug(
-                        f"🔄 智能重试 [{payload_obj.bypass_technique.value}]: "
+                        f" 智能重试 [{payload_obj.bypass_technique.value}]: "
                         f"confidence={payload_obj.confidence:.2f}"
                     )
                     
@@ -1479,7 +1479,7 @@ class ScannerEngine:
                     # 检查是否成功绕过
                     if not self._is_waf_blocked(retry_resp):
                         logger.info(
-                            f"✅ 绕过成功 [{payload_obj.bypass_technique.value}]: "
+                            f" 绕过成功 [{payload_obj.bypass_technique.value}]: "
                             f"{retry_resp.status_code}"
                         )
                         elapsed = (time.perf_counter() - start_time) * 1000.0
@@ -1488,11 +1488,11 @@ class ScannerEngine:
                     last_resp = retry_resp
                     
                 except Exception as e:
-                    logger.debug(f"⚠️ 重试失败 [{payload_obj.bypass_technique.value}]: {e}")
+                    logger.debug(f" 重试失败 [{payload_obj.bypass_technique.value}]: {e}")
                     continue
                     
         except Exception as e:
-            logger.warning(f"⚠️ Weaponizer合成失败: {e}")
+            logger.warning(f" Weaponizer合成失败: {e}")
         
         elapsed = (time.perf_counter() - start_time) * 1000.0
         return last_resp, elapsed
@@ -2128,7 +2128,7 @@ class ScannerEngine:
             if form_build_match:
                 form_build_id = form_build_match.group(1)
                 plugin_state["FormBuildId"] = form_build_id
-                logger.info(f"📋 提取到 form_build_id: {form_build_id}")
+                logger.info(f" 提取到 form_build_id: {form_build_id}")
         
         # 2. 尝试提取 Drupal form_token
         if is_register_context and resp.status_code < 400:
@@ -2139,20 +2139,20 @@ class ScannerEngine:
             if form_token_match:
                 form_token = form_token_match.group(1)
                 plugin_state["FormToken"] = form_token
-                logger.info(f"🔐 提取到 form_token: {form_token}")
+                logger.info(f" 提取到 form_token: {form_token}")
         
         # 3. 尝试提取 Drupal 典型的 sites/default/files/... 路径
         extracted_path = self._extract_upload_path(normalized_content) if has_upload_evidence else ""
         if extracted_path:
             plugin_state["ExtractedPath"] = extracted_path
-            logger.info(f"✨ 从响应中提取到动态路径: {extracted_path}")
+            logger.info(f" 从响应中提取到动态路径: {extracted_path}")
         
         # 4. 尝试提取上传后的文件名 (Drupal AJAX 响应)
         filename_match = re.search(r'"filename"\s*:\s*"([^"]+)"', normalized_content) if has_upload_evidence else None
         if filename_match:
             uploaded_filename = filename_match.group(1)
             plugin_state["UploadedFilename"] = uploaded_filename
-            logger.info(f"📎 提取到上传文件名: {uploaded_filename}")
+            logger.info(f" 提取到上传文件名: {uploaded_filename}")
         elif extracted_path:
             uploaded_filename = extracted_path.rsplit("/", 1)[-1]
             plugin_state["UploadedFilename"] = uploaded_filename
@@ -2163,11 +2163,11 @@ class ScannerEngine:
             token = csrf_match.group(1)
             if self._context:
                 self._context.csrf_token = token
-                logger.info(f"🔑 提取到 CSRF Token: {token}")
+                logger.info(f" 提取到 CSRF Token: {token}")
 
         # 6. 尝试提取 Django IntegrityError 信息
         if "IntegrityError" in normalized_content or "UNIQUE constraint failed" in normalized_content:
-            logger.info("🎯 检测到 Django 数据库错误，可能触发 CVE-2017-12794")
+            logger.info(" 检测到 Django 数据库错误，可能触发 CVE-2017-12794")
 
         # 7. 通用路径提取：从响应中提取所有可能的文件路径
         if not extracted_path:
@@ -2186,7 +2186,7 @@ class ScannerEngine:
                         gm = gm.lstrip("/")
                     if gm and len(gm) > 5 and not gm.endswith("/"):
                         plugin_state["ExtractedPath"] = gm
-                        logger.info(f"✨ 通用路径提取: {gm}")
+                        logger.info(f" 通用路径提取: {gm}")
                         break
                 if extracted_path:
                     break
@@ -2878,7 +2878,7 @@ class ScannerEngine:
         }
         self._judgment_log.append(record)
         logger.debug(
-            f"📝 判定日志 [{phase}] {plugin_id}/{action}: {result} - "
+            f" 判定日志 [{phase}] {plugin_id}/{action}: {result} - "
             f"{json.dumps(details, ensure_ascii=False)[:200]}"
         )
     

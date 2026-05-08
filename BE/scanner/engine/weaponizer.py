@@ -769,7 +769,7 @@ class Weaponizer:
         except ValueError:
             payload_category = PayloadCategory.GENERIC
         
-        logger.info(f"🔧 开始合成 {category.upper()} Payload (strategy={self.strategy}, "
+        logger.info(f"开始合成 {category.upper()} Payload (strategy={self.strategy}, "
                    f"framework={context.primary_framework}, "
                    f"WAF={context.waf_type})")
         
@@ -828,7 +828,7 @@ class Weaponizer:
                     self._synthesis_count += 1
                     
                 except Exception as e:
-                    logger.warning(f"⚠️ Payload合成失败 ({technique.value}): {e}")
+                    logger.warning(f"Payload合成失败 ({technique.value}): {e}")
                     continue
                 
                 if len(synthesized) >= max_payloads:
@@ -840,7 +840,7 @@ class Weaponizer:
         # 按置信度排序
         synthesized.sort(key=lambda p: p.confidence, reverse=True)
         
-        logger.info(f"✅ 合成完成: {len(synthesized)} 个 {category.upper()} Payload")
+        logger.info(f"合成完成: {len(synthesized)} 个 {category.upper()} Payload")
         
         return synthesized[:max_payloads]
     
@@ -894,7 +894,7 @@ class Weaponizer:
             },
         )
         
-        logger.info(f"📝 已生成 {language} Exploit: {vulnerability_type}")
+        logger.info(f"已生成 {language} Exploit: {vulnerability_type}")
         
         return exploit
     

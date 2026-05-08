@@ -210,7 +210,7 @@ const LabHome: React.FC = () => {
                 : 'text-gray-400 hover:text-white'
             }`}
           >
-            🎬 攻击演示
+             攻击演示
           </button>
           <button
             onClick={() => setActiveTab('remediation')}
@@ -220,7 +220,7 @@ const LabHome: React.FC = () => {
                 : 'text-gray-400 hover:text-white'
             }`}
           >
-            🔧 修复方案
+             修复方案
           </button>
           <button
             onClick={() => setActiveTab('learning')}
@@ -230,7 +230,7 @@ const LabHome: React.FC = () => {
                 : 'text-gray-400 hover:text-white'
             }`}
           >
-            📖 原理讲解
+             原理讲解
           </button>
         </div>
 
@@ -272,7 +272,7 @@ const LabHome: React.FC = () => {
                       {/* HTTP 请求 */}
                       {step.request && (
                         <div className="bg-[#252a3d] rounded-lg p-4">
-                          <h3 className="text-sm font-medium text-gray-400 mb-2">📡 HTTP 请求</h3>
+                          <h3 className="text-sm font-medium text-gray-400 mb-2"> HTTP 请求</h3>
                           <pre className="text-sm text-green-400 overflow-x-auto whitespace-pre-wrap">
                             {typeof step.request === 'object'
                               ? JSON.stringify(step.request, null, 2)
@@ -284,7 +284,7 @@ const LabHome: React.FC = () => {
                       {/* Payload */}
                       {step.payload && (
                         <div className="bg-[#252a3d] rounded-lg p-4 border border-red-500/30">
-                          <h3 className="text-sm font-medium text-red-400 mb-2">💥 恶意 Payload</h3>
+                          <h3 className="text-sm font-medium text-red-400 mb-2"> 恶意 Payload</h3>
                           <code className="text-sm text-red-300 block bg-[#1a1d2e] p-3 rounded overflow-x-auto">
                             {step.payload}
                           </code>
@@ -297,7 +297,7 @@ const LabHome: React.FC = () => {
                       {/* HTTP 响应 */}
                       {step.response && (
                         <div className="bg-[#252a3d] rounded-lg p-4">
-                          <h3 className="text-sm font-medium text-gray-400 mb-2">📥 HTTP 响应</h3>
+                          <h3 className="text-sm font-medium text-gray-400 mb-2"> HTTP 响应</h3>
                           <pre className="text-sm text-blue-400 overflow-x-auto whitespace-pre-wrap">
                             {typeof step.response === 'object'
                               ? JSON.stringify(step.response, null, 2)
@@ -309,7 +309,7 @@ const LabHome: React.FC = () => {
                       {/* 执行结果 */}
                       {step.result && (
                         <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
-                          <h3 className="text-sm font-medium text-green-400 mb-2">✅ 攻击结果</h3>
+                          <h3 className="text-sm font-medium text-green-400 mb-2"> 攻击结果</h3>
                           <p className="text-green-300">{step.result}</p>
                         </div>
                       )}
@@ -376,7 +376,7 @@ const LabHome: React.FC = () => {
                 {/* 漏洞原理 */}
                 {selectedScenario.learning.principle && (
                   <div>
-                    <h3 className="text-lg font-medium text-white mb-3">🔍 漏洞原理</h3>
+                    <h3 className="text-lg font-medium text-white mb-3"> 漏洞原理</h3>
                     <p className="text-gray-300 whitespace-pre-wrap">{selectedScenario.learning.principle}</p>
                   </div>
                 )}
@@ -400,7 +400,7 @@ const LabHome: React.FC = () => {
                 {/* 影响 */}
                 {selectedScenario.learning.impact && (
                   <div>
-                    <h3 className="text-lg font-medium text-white mb-3">⚠️ 安全影响</h3>
+                    <h3 className="text-lg font-medium text-white mb-3"> 安全影响</h3>
                     <p className="text-gray-300">{selectedScenario.learning.impact}</p>
                   </div>
                 )}
@@ -408,7 +408,7 @@ const LabHome: React.FC = () => {
                 {/* 参考资料 */}
                 {selectedScenario.learning.references && selectedScenario.learning.references.length > 0 && (
                   <div>
-                    <h3 className="text-lg font-medium text-white mb-3">📚 参考资料</h3>
+                    <h3 className="text-lg font-medium text-white mb-3"> 参考资料</h3>
                     <ul className="space-y-2">
                       {selectedScenario.learning.references.map((ref, index) => (
                         <li key={index}>
@@ -443,7 +443,7 @@ const LabHome: React.FC = () => {
       {/* 标题 */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-black flex items-center gap-3">
-          <span className="text-3xl">🧪</span>
+          <span className="text-3xl"></span>
           漏洞实验室
         </h1>
         <p className="text-gray-400 mt-2">

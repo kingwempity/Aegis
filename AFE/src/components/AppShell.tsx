@@ -384,14 +384,20 @@ const AppShell: React.FC<AppShellProps> = ({
                 <button
                   key={`${item.label}-${index}`}
                   onClick={item.onClick}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left mb-0.5 ${
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left mb-0.5 relative ${
                     item.active
                       ? 'bg-gradient-to-r from-awvs-medium to-awvs-high text-white shadow-lg shadow-orange-500/20'
                       : 'text-awvs-text-muted hover:bg-awvs-sidebar/80 hover:text-awvs-text-primary'
                   }`}
                 >
-                  {Icon ? <Icon size={18} strokeWidth={item.active ? 2.5 : 1.5} className="flex-shrink-0" /> : null}
-                  <span className={`transition-all duration-300 whitespace-nowrap ${isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0 overflow-hidden'}`}>{item.label}</span>
+                  {Icon ? (
+                    <Icon 
+                      size={20} 
+                      strokeWidth={item.active ? 2.5 : 1.5} 
+                      className={`flex-shrink-0 relative z-10 ${item.active ? 'text-white drop-shadow-sm' : ''}`} 
+                    />
+                  ) : null}
+                  <span className={`transition-all duration-300 whitespace-nowrap relative z-10 ${isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0 overflow-hidden'}`}>{item.label}</span>
                 </button>
               );
             })}

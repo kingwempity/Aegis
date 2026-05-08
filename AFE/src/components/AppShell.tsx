@@ -357,7 +357,7 @@ const AppShell: React.FC<AppShellProps> = ({
               <img
                 src="/logo.png"
                 alt="Aegis Logo"
-                className="w-full h-full rounded-[8px] object-contain p-1"
+                className="w-full h-full rounded-[8px] object-contain p-1 bg-awvs-primary"
               />
             </div>
           </div>

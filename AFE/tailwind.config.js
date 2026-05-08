@@ -9,6 +9,11 @@ export default {
       colors: {
         // AWVS 专业风格色彩系统
         'awvs': {
+          // 品牌主色
+          'primary': '#ff6b00',
+          'primary-hover': '#e66000',
+          'primary-light': '#ff8c00',
+
           // 漏洞严重等级
           'critical': '#dc2626',
           'high': '#ea580c',

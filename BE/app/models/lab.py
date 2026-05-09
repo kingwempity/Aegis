@@ -11,6 +11,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from sqlalchemy import String, Text, JSON, Integer, DateTime, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.dialects.postgresql import BIGINT
 
 from app.database import Base
 
@@ -31,6 +32,8 @@ class LabScenario(Base):
         remediation: 修复方案（JSON格式）
         learning: 学习资料（JSON格式）
         is_active: 是否启用
+        is_auto_generated: 是否自动生成
+        source_scan_task_id: 来源扫描任务 ID
         created_at: 创建时间
         updated_at: 更新时间
     """
@@ -66,6 +69,12 @@ class LabScenario(Base):
     )
     
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, comment="是否启用")
+    is_auto_generated: Mapped[bool] = mapped_column(
+        Boolean, default=False, comment="是否自动生成"
+    )
+    source_scan_task_id: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, comment="来源扫描任务 ID"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.now, comment="创建时间"
     )
@@ -91,6 +100,8 @@ class LabScenario(Base):
             "learning": self.learning or {},
             "tags": self.tags or [],
             "is_active": self.is_active,
+            "is_auto_generated": self.is_auto_generated,
+            "source_scan_task_id": self.source_scan_task_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

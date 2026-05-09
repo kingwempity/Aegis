@@ -114,6 +114,8 @@ class LabScenarioResponse(LabScenarioBase):
     remediation: List[Dict[str, Any]] = Field(default_factory=list, description="修复方案")
     learning: Dict[str, Any] = Field(default_factory=dict, description="学习资料")
     is_active: bool = Field(True, description="是否启用")
+    is_auto_generated: bool = Field(False, description="是否自动生成")
+    source_scan_task_id: Optional[int] = Field(None, description="来源扫描任务ID")
     created_at: Optional[datetime] = Field(None, description="创建时间")
     updated_at: Optional[datetime] = Field(None, description="更新时间")
 
@@ -136,3 +138,33 @@ class VulnTypeInfo(BaseModel):
     code: str = Field(..., description="类型代码")
     name: str = Field(..., description="类型名称")
     count: int = Field(0, description="该类型场景数量")
+
+
+class GenerateScenarioRequest(BaseModel):
+    """
+    手动触发场景生成请求 Schema。
+    """
+    scan_task_id: int = Field(..., description="扫描任务ID")
+    max_scenarios: int = Field(3, description="最多生成场景数", ge=1, le=10)
+    min_severity: str = Field("medium", description="最低严重级别")
+
+
+class GeneratedScenarioResult(BaseModel):
+    """
+    生成结果 Schema。
+    """
+    scenario_id: int = Field(..., description="场景ID")
+    name: str = Field(..., description="场景名称")
+    vuln_type: str = Field(..., description="漏洞类型")
+    success: bool = Field(True, description="是否成功")
+    error: Optional[str] = Field(None, description="错误信息")
+
+
+class GenerateScenarioResponse(BaseModel):
+    """
+    场景生成响应 Schema。
+    """
+    scan_task_id: int = Field(..., description="扫描任务ID")
+    generated_count: int = Field(..., description="成功生成数量")
+    total_vulns: int = Field(..., description="扫描发现的漏洞总数")
+    results: List[GeneratedScenarioResult] = Field(..., description="生成结果列表")

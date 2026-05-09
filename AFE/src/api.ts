@@ -619,6 +619,8 @@ export interface LabScenario {
   learning: Learning;
   tags: string[];
   is_active: boolean;
+  is_auto_generated?: boolean;
+  source_scan_task_id?: number;
   created_at?: string;
   updated_at?: string;
 }

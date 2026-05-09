@@ -11,16 +11,41 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+import asyncio
+import logging
 
 from app.database import get_db
 from app.models.lab import LabScenario, VULN_TYPES, DIFFICULTY_LEVELS
+from app.models.task import Vulnerability
 from app.schemas.lab import (
     LabScenarioCreate,
     LabScenarioUpdate,
     LabScenarioResponse,
     LabScenarioListResponse,
     VulnTypeInfo,
+    GenerateScenarioRequest,
+    GenerateScenarioResponse,
+    GeneratedScenarioResult,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def get_risk_level(severity_str: str) -> str:
+    """
+    将严重级别字符串转换为标准小写风险级别。
+    """
+    severity = severity_str.upper() if severity_str else ""
+    if severity == "CRITICAL":
+        return "critical"
+    elif severity == "HIGH":
+        return "high"
+    elif severity == "MEDIUM":
+        return "medium"
+    elif severity == "LOW":
+        return "low"
+    else:
+        return "info"
 
 router = APIRouter(tags=["Vulnerability Lab"])
 
@@ -282,3 +307,118 @@ async def get_difficulty_levels() -> dict:
         难度等级字典
     """
     return DIFFICULTY_LEVELS
+
+
+@router.post("/scenarios/generate-from-scan", response_model=GenerateScenarioResponse)
+async def generate_scenarios_from_scan(
+    request: GenerateScenarioRequest,
+    db: Session = Depends(get_db),
+) -> GenerateScenarioResponse:
+    """
+    从扫描结果手动生成 Vuln Lab 场景。
+    
+    通过 LLM 对指定扫描任务发现的漏洞进行总结，自动生成教学场景。
+    
+    Args:
+        request: 生成请求，包含 scan_task_id、max_scenarios、min_severity
+        db: 数据库会话
+        
+    Returns:
+        生成结果，包含成功数量和结果列表
+        
+    Raises:
+        HTTPException: 任务不存在或无漏洞时抛出404
+    """
+    vulns = (
+        db.query(Vulnerability)
+        .filter(Vulnerability.task_id == request.scan_task_id)
+        .all()
+    )
+    
+    if not vulns:
+        raise HTTPException(
+            status_code=404,
+            detail=f"任务 {request.scan_task_id} 未发现漏洞，无法生成场景"
+        )
+    
+    from scanner.engine.lab_generator import LabScenarioGenerator, SEVERITY_ORDER
+    
+    generator = LabScenarioGenerator()
+    min_severity_level = SEVERITY_ORDER.get(request.min_severity, 2)
+    
+    results: List[GeneratedScenarioResult] = []
+    generated_count = 0
+    
+    with db.begin():
+        for vuln in vulns:
+            if generated_count >= request.max_scenarios:
+                break
+            
+            vuln_severity = get_risk_level(getattr(vuln, 'severity', 'HIGH'))
+            vuln_severity_level = SEVERITY_ORDER.get(vuln_severity, 4)
+            
+            if vuln_severity_level > min_severity_level:
+                logger.info(f" 跳过场景生成: {vuln.url} (严重级别 {vuln_severity} 低于阈值 {request.min_severity})")
+                results.append(GeneratedScenarioResult(
+                    scenario_id=0,
+                    name="已跳过",
+                    vuln_type="unknown",
+                    success=False,
+                    error=f"严重级别 {vuln_severity} 低于阈值 {request.min_severity}"
+                ))
+                continue
+            
+            vuln_data = vuln.to_dict() if hasattr(vuln, 'to_dict') else vuln.__dict__
+            
+            try:
+                scenario_data = await generator.generate_from_vuln(vuln_data, scan_task_id=request.scan_task_id)
+                
+                if scenario_data:
+                    lab_scenario = LabScenario(
+                        name=scenario_data["name"],
+                        vuln_type=scenario_data["vuln_type"],
+                        difficulty=scenario_data["difficulty"],
+                        description=scenario_data.get("description", ""),
+                        attack_steps=scenario_data.get("attack_steps", []),
+                        remediation=scenario_data.get("remediation", []),
+                        learning=scenario_data.get("learning", {}),
+                        tags=scenario_data.get("tags", []),
+                        is_active=False,
+                        is_auto_generated=True,
+                        source_scan_task_id=request.scan_task_id,
+                    )
+                    db.add(lab_scenario)
+                    db.flush()
+                    
+                    generated_count += 1
+                    results.append(GeneratedScenarioResult(
+                        scenario_id=lab_scenario.id,
+                        name=lab_scenario.name,
+                        vuln_type=lab_scenario.vuln_type,
+                        success=True,
+                    ))
+                    logger.info(f"手动生成 Vuln Lab 场景: {lab_scenario.name}")
+                else:
+                    results.append(GeneratedScenarioResult(
+                        scenario_id=0,
+                        name="生成失败",
+                        vuln_type="unknown",
+                        success=False,
+                        error="LLM 返回空数据"
+                    ))
+            except Exception as e:
+                logger.warning(f"手动生成场景失败: {e}")
+                results.append(GeneratedScenarioResult(
+                    scenario_id=0,
+                    name="生成失败",
+                    vuln_type="unknown",
+                    success=False,
+                    error=str(e)
+                ))
+    
+    return GenerateScenarioResponse(
+        scan_task_id=request.scan_task_id,
+        generated_count=generated_count,
+        total_vulns=len(vulns),
+        results=results,
+    )

@@ -285,6 +285,124 @@ DECISION RULES:
         
         return result
 
+    def summarize_vuln_to_scenario_sync(self, vuln_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        同步版本：将漏洞验证结果总结为 Vuln Lab 教学场景。
+        适用于 Celery worker 等同步环境。
+        """
+        if not self.client:
+            logger.warning("LLM 客户端未就绪，无法生成场景总结")
+            return None
+
+        vuln_type = vuln_data.get("vuln_type", vuln_data.get("validation_log", {}).get("vuln_type", "Unknown"))
+        url = vuln_data.get("url", "N/A")
+        payload = vuln_data.get("payload", "N/A")
+        llm_analysis = vuln_data.get("llm_analysis", "无分析")
+        attack_path = vuln_data.get("attack_path", {})
+        attack_steps_raw = attack_path.get("steps", [])
+        evidence = vuln_data.get("evidence", {})
+        response_snippet = evidence.get("response_body_snippet", "")[:500]
+        
+        attack_steps_json = json.dumps(attack_steps_raw[:5], ensure_ascii=False, indent=2)
+
+        prompt = f"""You are a cybersecurity education expert. Convert this real vulnerability validation result into an educational lab scenario for teaching purposes.
+
+VULNERABILITY INFORMATION:
+- Type: {vuln_type}
+- Target URL: {url}
+- Payload Used: {payload}
+- LLM Analysis: {llm_analysis}
+- Response Evidence: {response_snippet}
+
+ATTACK STEPS (from validation):
+{attack_steps_json}
+
+Output ONLY valid JSON matching this exact structure:
+{{
+  "scenario_name": "Brief, descriptive name for the lab scenario",
+  "description": "Clear description of the vulnerability and its context",
+  "difficulty": "easy" or "medium" or "hard",
+  "attack_steps": [
+    {{
+      "step": 1,
+      "title": "Step title",
+      "description": "What this step does",
+      "request": {{"method": "GET", "url": "..."}},
+      "payload": "The actual payload used",
+      "payload_explanation": "Why this payload works",
+      "response": {{"status_code": 200, "body_snippet": "..."}},
+      "result": "What happened"
+    }}
+  ],
+  "remediation": [
+    {{
+      "title": "Remediation title",
+      "description": "How to fix this",
+      "code": "Code example showing the fix",
+      "language": "php" or "python" or "javascript" etc.
+    }}
+  ],
+  "learning": {{
+    "principle": "How this vulnerability works",
+    "cwe": "CWE ID like CWE-89",
+    "owasp": "OWASP category like A03:2021 Injection",
+    "impact": "Security impact description",
+    "references": ["https://example.com"]
+  }},
+  "tags": ["tag1", "tag2"]
+}}
+
+RULES:
+- Keep attack_steps concise (3-5 steps max)
+- Include real payload examples from the validation data
+- Remediation MUST include code examples
+- Learning section should be educational and thorough
+- Difficulty based on exploitation complexity
+- Output ONLY the JSON object, no markdown, no explanation"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a JSON generator. Output ONLY valid JSON. No markdown. No explanation. Just the JSON object."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=3000
+            )
+            
+            raw_content = response.choices[0].message.content
+            content = self._clean_json_content(raw_content)
+            result = json.loads(content)
+            
+            required_fields = ["scenario_name", "description", "difficulty", "attack_steps", "remediation", "learning"]
+            missing = [f for f in required_fields if f not in result]
+            if missing:
+                logger.warning(f"LLM 场景总结缺少字段: {missing}")
+                for field in missing:
+                    if field == "difficulty":
+                        result[field] = "medium"
+                    elif field in ("attack_steps", "remediation"):
+                        result[field] = []
+                    elif field == "learning":
+                        result[field] = {}
+                    else:
+                        result[field] = "未提供"
+            
+            if result.get("difficulty") not in ("easy", "medium", "hard"):
+                result["difficulty"] = "medium"
+            
+            logger.info(f"LLM 场景总结生成成功: {result.get('scenario_name')}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"LLM 场景总结失败: {e}")
+            return None
+
+    async def summarize_vuln_to_scenario(self, vuln_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """异步版本：将漏洞验证结果总结为 Vuln Lab 教学场景。"""
+        return self.summarize_vuln_to_scenario_sync(vuln_data)
+
     async def verify_vulnerability(self, evidence: Dict[str, Any]) -> Dict[str, Any]:
         if not self.client:
             return {"is_valid": True, "confidence": 0.5, "analysis": "LLM 未就绪，默认通过"}

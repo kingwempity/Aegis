@@ -25,9 +25,9 @@ const VULN_TYPE_NAMES: Record<string, string> = {
 
 // 难度颜色映射
 const DIFFICULTY_COLORS: Record<string, string> = {
-  easy: 'bg-green-500/20 text-green-400 border-green-500/30',
-  medium: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  hard: 'bg-red-500/20 text-red-400 border-red-500/30',
+  easy: 'bg-green-100 text-green-700 border-green-200',
+  medium: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+  hard: 'bg-red-100 text-red-700 border-red-200',
 };
 
 // 难度中文名
@@ -39,18 +39,18 @@ const DIFFICULTY_NAMES: Record<string, string> = {
 
 // 漏洞类型颜色
 const VULN_TYPE_COLORS: Record<string, string> = {
-  SQLI: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  XSS_REFLECTED: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  XSS_STORED: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  CMD_INJECTION: 'bg-red-500/20 text-red-400 border-red-500/30',
-  LFI: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  RFI: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  SSRF: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
-  XXE: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
-  PATH_TRAVERSAL: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
-  INFO_DISCLOSURE: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
-  OPEN_REDIRECT: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
-  CSRF: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+  SQLI: 'bg-blue-100 text-blue-700 border-blue-200',
+  XSS_REFLECTED: 'bg-orange-100 text-orange-700 border-orange-200',
+  XSS_STORED: 'bg-orange-100 text-orange-700 border-orange-200',
+  CMD_INJECTION: 'bg-red-100 text-red-700 border-red-200',
+  LFI: 'bg-purple-100 text-purple-700 border-purple-200',
+  RFI: 'bg-purple-100 text-purple-700 border-purple-200',
+  SSRF: 'bg-pink-100 text-pink-700 border-pink-200',
+  XXE: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+  PATH_TRAVERSAL: 'bg-teal-100 text-teal-700 border-teal-200',
+  INFO_DISCLOSURE: 'bg-gray-100 text-gray-700 border-gray-200',
+  OPEN_REDIRECT: 'bg-cyan-100 text-cyan-700 border-cyan-200',
+  CSRF: 'bg-amber-100 text-amber-700 border-amber-200',
 };
 
 interface AttackStep {
@@ -173,7 +173,7 @@ const LabHome: React.FC = () => {
         <div className="mb-6">
           <button
             onClick={handleBackToList}
-            className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-4"
+            className="flex items-center gap-2 text-awvs-text-secondary hover:text-awvs-primary transition-colors mb-4"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -183,12 +183,12 @@ const LabHome: React.FC = () => {
 
           <div className="flex items-start justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-white mb-2">{selectedScenario.name}</h1>
+              <h1 className="text-2xl font-bold text-awvs-text-primary mb-2">{selectedScenario.name}</h1>
               <div className="flex items-center gap-3">
-                <span className={`px-3 py-1 rounded-full text-xs font-medium border ${VULN_TYPE_COLORS[selectedScenario.vuln_type] || 'bg-gray-500/20 text-gray-400'}`}>
+                <span className={`px-3 py-1 rounded-full text-xs font-medium border ${VULN_TYPE_COLORS[selectedScenario.vuln_type] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
                   {VULN_TYPE_NAMES[selectedScenario.vuln_type] || selectedScenario.vuln_type}
                 </span>
-                <span className={`px-3 py-1 rounded-full text-xs font-medium border ${DIFFICULTY_COLORS[selectedScenario.difficulty] || 'bg-gray-500/20 text-gray-400'}`}>
+                <span className={`px-3 py-1 rounded-full text-xs font-medium border ${DIFFICULTY_COLORS[selectedScenario.difficulty] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
                   {DIFFICULTY_NAMES[selectedScenario.difficulty] || selectedScenario.difficulty}
                 </span>
               </div>
@@ -196,18 +196,18 @@ const LabHome: React.FC = () => {
           </div>
 
           {selectedScenario.description && (
-            <p className="text-gray-400 mt-4">{selectedScenario.description}</p>
+            <p className="text-awvs-text-secondary mt-4">{selectedScenario.description}</p>
           )}
         </div>
 
         {/* Tab 切换 */}
-        <div className="flex gap-1 mb-6 bg-[#1e2235] rounded-lg p-1">
+        <div className="flex gap-1 mb-6 bg-awvs-bg-light rounded-lg p-1 border border-awvs-border">
           <button
             onClick={() => setActiveTab('attack')}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               activeTab === 'attack'
-                ? 'bg-[#ff6b00] text-white'
-                : 'text-gray-400 hover:text-white'
+                ? 'bg-awvs-primary text-white'
+                : 'text-awvs-text-secondary hover:text-awvs-text-primary'
             }`}
           >
              攻击演示
@@ -216,8 +216,8 @@ const LabHome: React.FC = () => {
             onClick={() => setActiveTab('remediation')}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               activeTab === 'remediation'
-                ? 'bg-[#ff6b00] text-white'
-                : 'text-gray-400 hover:text-white'
+                ? 'bg-awvs-primary text-white'
+                : 'text-awvs-text-secondary hover:text-awvs-text-primary'
             }`}
           >
              修复方案
@@ -226,8 +226,8 @@ const LabHome: React.FC = () => {
             onClick={() => setActiveTab('learning')}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               activeTab === 'learning'
-                ? 'bg-[#ff6b00] text-white'
-                : 'text-gray-400 hover:text-white'
+                ? 'bg-awvs-primary text-white'
+                : 'text-awvs-text-secondary hover:text-awvs-text-primary'
             }`}
           >
              原理讲解
@@ -236,7 +236,7 @@ const LabHome: React.FC = () => {
 
         {/* 攻击演示 Tab */}
         {activeTab === 'attack' && (
-          <div className="bg-[#1e2235] rounded-lg p-6">
+          <div className="bg-white rounded-xl p-6 border border-awvs-border shadow-sm">
             {selectedScenario.attack_steps && selectedScenario.attack_steps.length > 0 ? (
               <>
                 {/* 步骤导航 */}
@@ -247,8 +247,8 @@ const LabHome: React.FC = () => {
                       onClick={() => setCurrentStep(index)}
                       className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                         currentStep === index
-                          ? 'bg-[#ff6b00] text-white'
-                          : 'bg-[#252a3d] text-gray-400 hover:text-white'
+                          ? 'bg-awvs-primary text-white'
+                          : 'bg-awvs-bg-light text-awvs-text-secondary hover:bg-awvs-border'
                       }`}
                     >
                       Step {step.step}: {step.title}
@@ -263,17 +263,17 @@ const LabHome: React.FC = () => {
                     <div className="space-y-6">
                       {/* 步骤描述 */}
                       {step.description && (
-                        <div className="bg-[#252a3d] rounded-lg p-4">
-                          <h3 className="text-sm font-medium text-gray-400 mb-2">步骤说明</h3>
-                          <p className="text-white">{step.description}</p>
+                        <div className="bg-awvs-bg-light rounded-lg p-4 border border-awvs-border">
+                          <h3 className="text-sm font-medium text-awvs-text-secondary mb-2">步骤说明</h3>
+                          <p className="text-awvs-text-primary">{step.description}</p>
                         </div>
                       )}
 
                       {/* HTTP 请求 */}
                       {step.request && (
-                        <div className="bg-[#252a3d] rounded-lg p-4">
-                          <h3 className="text-sm font-medium text-gray-400 mb-2"> HTTP 请求</h3>
-                          <pre className="text-sm text-green-400 overflow-x-auto whitespace-pre-wrap">
+                        <div className="bg-awvs-bg-light rounded-lg p-4 border border-awvs-border">
+                          <h3 className="text-sm font-medium text-awvs-text-secondary mb-2"> HTTP 请求</h3>
+                          <pre className="text-sm text-green-600 overflow-x-auto whitespace-pre-wrap bg-white p-3 rounded border border-awvs-border">
                             {typeof step.request === 'object'
                               ? JSON.stringify(step.request, null, 2)
                               : String(step.request)}
@@ -283,22 +283,22 @@ const LabHome: React.FC = () => {
 
                       {/* Payload */}
                       {step.payload && (
-                        <div className="bg-[#252a3d] rounded-lg p-4 border border-red-500/30">
-                          <h3 className="text-sm font-medium text-red-400 mb-2"> 恶意 Payload</h3>
-                          <code className="text-sm text-red-300 block bg-[#1a1d2e] p-3 rounded overflow-x-auto">
+                        <div className="bg-red-50 rounded-lg p-4 border border-red-200">
+                          <h3 className="text-sm font-medium text-red-600 mb-2"> 恶意 Payload</h3>
+                          <code className="text-sm text-red-700 block bg-white p-3 rounded border border-red-200 overflow-x-auto">
                             {step.payload}
                           </code>
                           {step.payload_explanation && (
-                            <p className="text-sm text-gray-400 mt-3">{step.payload_explanation}</p>
+                            <p className="text-sm text-awvs-text-secondary mt-3">{step.payload_explanation}</p>
                           )}
                         </div>
                       )}
 
                       {/* HTTP 响应 */}
                       {step.response && (
-                        <div className="bg-[#252a3d] rounded-lg p-4">
-                          <h3 className="text-sm font-medium text-gray-400 mb-2"> HTTP 响应</h3>
-                          <pre className="text-sm text-blue-400 overflow-x-auto whitespace-pre-wrap">
+                        <div className="bg-awvs-bg-light rounded-lg p-4 border border-awvs-border">
+                          <h3 className="text-sm font-medium text-awvs-text-secondary mb-2"> HTTP 响应</h3>
+                          <pre className="text-sm text-blue-600 overflow-x-auto whitespace-pre-wrap bg-white p-3 rounded border border-awvs-border">
                             {typeof step.response === 'object'
                               ? JSON.stringify(step.response, null, 2)
                               : String(step.response)}
@@ -308,9 +308,9 @@ const LabHome: React.FC = () => {
 
                       {/* 执行结果 */}
                       {step.result && (
-                        <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
-                          <h3 className="text-sm font-medium text-green-400 mb-2"> 攻击结果</h3>
-                          <p className="text-green-300">{step.result}</p>
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                          <h3 className="text-sm font-medium text-green-600 mb-2"> 攻击结果</h3>
+                          <p className="text-green-700">{step.result}</p>
                         </div>
                       )}
 
@@ -319,14 +319,14 @@ const LabHome: React.FC = () => {
                         <button
                           onClick={() => setCurrentStep(Math.max(0, currentStep - 1))}
                           disabled={currentStep === 0}
-                          className="px-4 py-2 bg-[#252a3d] text-gray-400 rounded-lg hover:bg-[#2d3348] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          className="px-4 py-2 bg-awvs-bg-light text-awvs-text-secondary rounded-lg hover:bg-awvs-border disabled:opacity-50 disabled:cursor-not-allowed transition-colors border border-awvs-border"
                         >
                           ← 上一步
                         </button>
                         <button
                           onClick={() => setCurrentStep(Math.min(selectedScenario.attack_steps.length - 1, currentStep + 1))}
                           disabled={currentStep === selectedScenario.attack_steps.length - 1}
-                          className="px-4 py-2 bg-[#ff6b00] text-white rounded-lg hover:bg-[#e65c00] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          className="px-4 py-2 bg-awvs-primary text-white rounded-lg hover:bg-awvs-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                           下一步 →
                         </button>
@@ -336,7 +336,7 @@ const LabHome: React.FC = () => {
                 })()}
               </>
             ) : (
-              <div className="text-center py-12 text-gray-500">
+              <div className="text-center py-12 text-awvs-text-muted">
                 暂无攻击演示数据
               </div>
             )}
@@ -348,20 +348,20 @@ const LabHome: React.FC = () => {
           <div className="space-y-4">
             {selectedScenario.remediation && selectedScenario.remediation.length > 0 ? (
               selectedScenario.remediation.map((item, index) => (
-                <div key={index} className="bg-[#1e2235] rounded-lg p-6">
-                  <h3 className="text-lg font-medium text-white mb-3">{item.title}</h3>
+                <div key={index} className="bg-white rounded-xl p-6 border border-awvs-border shadow-sm">
+                  <h3 className="text-lg font-medium text-awvs-text-primary mb-3">{item.title}</h3>
                   {item.description && (
-                    <p className="text-gray-400 mb-4">{item.description}</p>
+                    <p className="text-awvs-text-secondary mb-4">{item.description}</p>
                   )}
                   {item.code && (
-                    <pre className="bg-[#252a3d] rounded-lg p-4 overflow-x-auto">
-                      <code className="text-sm text-green-400">{item.code}</code>
+                    <pre className="bg-awvs-bg-light rounded-lg p-4 overflow-x-auto border border-awvs-border">
+                      <code className="text-sm text-green-600">{item.code}</code>
                     </pre>
                   )}
                 </div>
               ))
             ) : (
-              <div className="bg-[#1e2235] rounded-lg p-12 text-center text-gray-500">
+              <div className="bg-white rounded-xl p-12 text-center text-awvs-text-muted border border-awvs-border shadow-sm">
                 暂无修复方案
               </div>
             )}
@@ -370,29 +370,29 @@ const LabHome: React.FC = () => {
 
         {/* 原理讲解 Tab */}
         {activeTab === 'learning' && (
-          <div className="bg-[#1e2235] rounded-lg p-6">
+          <div className="bg-white rounded-xl p-6 border border-awvs-border shadow-sm">
             {selectedScenario.learning ? (
               <div className="space-y-6">
                 {/* 漏洞原理 */}
                 {selectedScenario.learning.principle && (
                   <div>
-                    <h3 className="text-lg font-medium text-white mb-3"> 漏洞原理</h3>
-                    <p className="text-gray-300 whitespace-pre-wrap">{selectedScenario.learning.principle}</p>
+                    <h3 className="text-lg font-medium text-awvs-text-primary mb-3"> 漏洞原理</h3>
+                    <p className="text-awvs-text-secondary whitespace-pre-wrap">{selectedScenario.learning.principle}</p>
                   </div>
                 )}
 
                 {/* CWE/OWASP 分类 */}
                 <div className="flex gap-4">
                   {selectedScenario.learning.cwe && (
-                    <div className="bg-[#252a3d] rounded-lg px-4 py-3">
-                      <span className="text-gray-500 text-sm">CWE: </span>
-                      <span className="text-blue-400 font-mono">{selectedScenario.learning.cwe}</span>
+                    <div className="bg-awvs-bg-light rounded-lg px-4 py-3 border border-awvs-border">
+                      <span className="text-awvs-text-muted text-sm">CWE: </span>
+                      <span className="text-blue-600 font-mono">{selectedScenario.learning.cwe}</span>
                     </div>
                   )}
                   {selectedScenario.learning.owasp && (
-                    <div className="bg-[#252a3d] rounded-lg px-4 py-3">
-                      <span className="text-gray-500 text-sm">OWASP: </span>
-                      <span className="text-orange-400 font-mono">{selectedScenario.learning.owasp}</span>
+                    <div className="bg-awvs-bg-light rounded-lg px-4 py-3 border border-awvs-border">
+                      <span className="text-awvs-text-muted text-sm">OWASP: </span>
+                      <span className="text-awvs-primary font-mono">{selectedScenario.learning.owasp}</span>
                     </div>
                   )}
                 </div>
@@ -400,15 +400,15 @@ const LabHome: React.FC = () => {
                 {/* 影响 */}
                 {selectedScenario.learning.impact && (
                   <div>
-                    <h3 className="text-lg font-medium text-white mb-3"> 安全影响</h3>
-                    <p className="text-gray-300">{selectedScenario.learning.impact}</p>
+                    <h3 className="text-lg font-medium text-awvs-text-primary mb-3"> 安全影响</h3>
+                    <p className="text-awvs-text-secondary">{selectedScenario.learning.impact}</p>
                   </div>
                 )}
 
                 {/* 参考资料 */}
                 {selectedScenario.learning.references && selectedScenario.learning.references.length > 0 && (
                   <div>
-                    <h3 className="text-lg font-medium text-white mb-3"> 参考资料</h3>
+                    <h3 className="text-lg font-medium text-awvs-text-primary mb-3"> 参考资料</h3>
                     <ul className="space-y-2">
                       {selectedScenario.learning.references.map((ref, index) => (
                         <li key={index}>
@@ -416,7 +416,7 @@ const LabHome: React.FC = () => {
                             href={ref}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-400 hover:text-blue-300 transition-colors"
+                            className="text-blue-600 hover:text-blue-700 transition-colors"
                           >
                             {ref}
                           </a>
@@ -427,7 +427,7 @@ const LabHome: React.FC = () => {
                 )}
               </div>
             ) : (
-              <div className="text-center py-12 text-gray-500">
+              <div className="text-center py-12 text-awvs-text-muted">
                 暂无学习资料
               </div>
             )}
@@ -442,17 +442,17 @@ const LabHome: React.FC = () => {
     <div className="p-6">
       {/* 标题 */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-black flex items-center gap-3">
+        <h1 className="text-2xl font-bold text-awvs-text-primary flex items-center gap-3">
           <span className="text-3xl"></span>
           漏洞实验室
         </h1>
-        <p className="text-gray-400 mt-2">
+        <p className="text-awvs-text-secondary mt-2">
           通过模拟攻击过程，深入了解各类Web漏洞的原理、利用方式和修复方法
         </p>
       </div>
 
       {/* 筛选区域 */}
-      <div className="bg-[#1e2235] rounded-lg p-4 mb-6">
+      <div className="bg-white rounded-xl p-4 mb-6 border border-awvs-border shadow-sm">
         <div className="flex flex-wrap items-center gap-4">
           {/* 搜索框 */}
           <div className="flex-1 min-w-[200px]">
@@ -461,7 +461,7 @@ const LabHome: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="搜索场景名称或描述..."
-              className="w-full bg-[#252a3d] border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-[#ff6b00]"
+              className="w-full bg-awvs-bg-light border border-awvs-border rounded-lg px-4 py-2 text-awvs-text-primary placeholder-awvs-text-muted focus:outline-none focus:border-awvs-primary focus:ring-2 focus:ring-awvs-primary/20 transition-all"
             />
           </div>
 
@@ -469,7 +469,7 @@ const LabHome: React.FC = () => {
           <select
             value={selectedType || ''}
             onChange={(e) => setSelectedType(e.target.value || null)}
-            className="bg-[#252a3d] border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#ff6b00]"
+            className="bg-awvs-bg-light border border-awvs-border rounded-lg px-4 py-2 text-awvs-text-primary focus:outline-none focus:border-awvs-primary focus:ring-2 focus:ring-awvs-primary/20 transition-all"
           >
             <option value="">所有漏洞类型</option>
             {vulnTypes.map((type) => (
@@ -483,7 +483,7 @@ const LabHome: React.FC = () => {
           <select
             value={selectedDifficulty || ''}
             onChange={(e) => setSelectedDifficulty(e.target.value || null)}
-            className="bg-[#252a3d] border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#ff6b00]"
+            className="bg-awvs-bg-light border border-awvs-border rounded-lg px-4 py-2 text-awvs-text-primary focus:outline-none focus:border-awvs-primary focus:ring-2 focus:ring-awvs-primary/20 transition-all"
           >
             <option value="">所有难度</option>
             <option value="easy">初级</option>
@@ -495,7 +495,7 @@ const LabHome: React.FC = () => {
           {(selectedType || selectedDifficulty || searchQuery) && (
             <button
               onClick={handleResetFilters}
-              className="text-gray-400 hover:text-white transition-colors"
+              className="px-3 py-2 text-awvs-text-secondary hover:text-awvs-primary transition-colors rounded-lg hover:bg-awvs-bg-light"
             >
               清除筛选
             </button>
@@ -506,12 +506,12 @@ const LabHome: React.FC = () => {
       {/* 场景列表 */}
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="w-8 h-8 border-2 border-[#ff6b00]/30 border-t-[#ff6b00] rounded-full animate-spin"></div>
+          <div className="w-8 h-8 border-2 border-awvs-primary/30 border-t-awvs-primary rounded-full animate-spin"></div>
         </div>
       ) : scenarios.length === 0 ? (
-        <div className="bg-[#1e2235] rounded-lg p-12 text-center">
-          <p className="text-gray-500">暂无漏洞场景数据</p>
-          <p className="text-gray-600 text-sm mt-2">请先在数据库中添加场景数据</p>
+        <div className="bg-white rounded-xl p-12 text-center border border-awvs-border shadow-sm">
+          <p className="text-awvs-text-muted">暂无漏洞场景数据</p>
+          <p className="text-awvs-text-secondary text-sm mt-2">请先在数据库中添加场景数据</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -519,26 +519,26 @@ const LabHome: React.FC = () => {
             <div
               key={scenario.id}
               onClick={() => setSelectedScenario(scenario)}
-              className="bg-[#1e2235] rounded-lg p-5 cursor-pointer hover:bg-[#252a3d] transition-colors border border-transparent hover:border-[#ff6b00]/30"
+              className="bg-white rounded-xl p-5 cursor-pointer hover:shadow-md transition-all border border-awvs-border hover:border-awvs-primary/30 shadow-sm"
             >
               <div className="flex items-start justify-between mb-3">
-                <h3 className="text-white font-medium">{scenario.name}</h3>
+                <h3 className="text-awvs-text-primary font-medium">{scenario.name}</h3>
                 <span className={`px-2 py-0.5 rounded text-xs font-medium border ${DIFFICULTY_COLORS[scenario.difficulty]}`}>
                   {DIFFICULTY_NAMES[scenario.difficulty]}
                 </span>
               </div>
               
               <div className="mb-3">
-                <span className={`px-2 py-0.5 rounded text-xs border ${VULN_TYPE_COLORS[scenario.vuln_type] || 'bg-gray-500/20 text-gray-400'}`}>
+                <span className={`px-2 py-0.5 rounded text-xs border ${VULN_TYPE_COLORS[scenario.vuln_type] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
                   {VULN_TYPE_NAMES[scenario.vuln_type] || scenario.vuln_type}
                 </span>
               </div>
 
               {scenario.description && (
-                <p className="text-gray-400 text-sm line-clamp-2">{scenario.description}</p>
+                <p className="text-awvs-text-secondary text-sm line-clamp-2">{scenario.description}</p>
               )}
 
-              <div className="flex items-center gap-2 mt-4 text-xs text-gray-500">
+              <div className="flex items-center gap-2 mt-4 text-xs text-awvs-text-muted">
                 <span>{scenario.attack_steps?.length || 0} 个攻击步骤</span>
                 <span>•</span>
                 <span>{scenario.remediation?.length || 0} 个修复方案</span>

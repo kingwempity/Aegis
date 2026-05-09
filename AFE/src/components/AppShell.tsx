@@ -361,7 +361,7 @@ const AppShell: React.FC<AppShellProps> = ({
               />
             </div>
           </div>
-          <span className={`text-black text-xl font-bold tracking-tight transition-all duration-300 whitespace-nowrap ${isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0 overflow-hidden'}`}>
+          <span className={`text-awvs-text-primary text-xl font-bold tracking-tight transition-all duration-300 whitespace-nowrap ${isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0 overflow-hidden'}`}>
             Aegis
           </span>
         </div>
@@ -386,18 +386,18 @@ const AppShell: React.FC<AppShellProps> = ({
                   onClick={item.onClick}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all text-left mb-0.5 border-l-[3px] ${
                     item.active
-                      ? 'bg-white border-l-awvs-primary shadow-md text-black'
-                      : 'text-awvs-text-muted hover:bg-awvs-sidebar/80 hover:text-awvs-text-primary border-l-transparent'
+                      ? 'bg-orange-50 border-l-awvs-primary shadow-sm text-awvs-primary'
+                      : 'text-awvs-text-secondary hover:bg-gray-100 hover:text-awvs-text-primary border-l-transparent'
                   }`}
                 >
                   {Icon ? (
                     <Icon
                       size={22}
                       strokeWidth={item.active ? 2.5 : 1.5}
-                      className={`flex-shrink-0 ${item.active ? 'text-black' : ''}`}
+                      className={`flex-shrink-0 ${item.active ? 'text-awvs-primary' : 'text-awvs-text-secondary'}`}
                     />
                   ) : null}
-                  <span className={`transition-all duration-300 whitespace-nowrap font-semibold ${item.active ? 'text-black' : ''} ${isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0 overflow-hidden'}`}>{item.label}</span>
+                  <span className={`transition-all duration-300 whitespace-nowrap font-semibold ${item.active ? 'text-awvs-primary' : 'text-awvs-text-secondary'} ${isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0 overflow-hidden'}`}>{item.label}</span>
                 </button>
               );
             })}
@@ -405,10 +405,10 @@ const AppShell: React.FC<AppShellProps> = ({
         </div>
 
         {/* 侧边栏底部 */}
-        <div className="p-3 border-t border-[#1e2d3d] space-y-1">
-          <button 
+        <div className="p-3 border-t border-awvs-border space-y-1">
+          <button
             onClick={() => setShowChangePassword(true)}
-            className="w-full flex items-center gap-3 text-[#6b7a8d] hover:text-white cursor-pointer transition-colors overflow-hidden px-3 py-2.5 rounded-lg hover:bg-[#1a2742]"
+            className="w-full flex items-center gap-3 text-awvs-text-secondary hover:text-awvs-primary cursor-pointer transition-colors overflow-hidden px-3 py-2.5 rounded-lg hover:bg-gray-100"
           >
             <div className="flex-shrink-0">
               <KeyRound size={18} />
@@ -417,10 +417,10 @@ const AppShell: React.FC<AppShellProps> = ({
               修改密码
             </span>
           </button>
-          
-          <button 
+
+          <button
             onClick={onLogout}
-            className="w-full flex items-center gap-3 text-[#6b7a8d] hover:text-red-400 cursor-pointer transition-colors overflow-hidden px-3 py-2.5 rounded-lg hover:bg-[#1a2742]"
+            className="w-full flex items-center gap-3 text-awvs-text-secondary hover:text-red-500 cursor-pointer transition-colors overflow-hidden px-3 py-2.5 rounded-lg hover:bg-red-50"
           >
             <div className="flex-shrink-0">
               <LogOut size={18} />

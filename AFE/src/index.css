@@ -6,13 +6,37 @@
   --color-aegis-sidebar: #1a1c23;    /* 侧边栏背景 */
   --color-aegis-active: #2d3343;     /* 菜单活跃项背景 */
   --color-aegis-text-muted: #8a92a6; /* 辅助文本 */
-  
-  /* 漏洞等级色彩 */
+
+  /* AWVS 专业风格色彩系统 - 完整定义 */
+  --color-awvs-primary: #ff6b00;
+  --color-awvs-primary-hover: #e66000;
+  --color-awvs-primary-light: #ff8c00;
+
+  /* 漏洞严重等级 */
+  --color-awvs-critical: #dc2626;    /* 严重 - 红色 */
+  --color-awvs-high: #ea580c;        /* 高危 - 橙色 */
+  --color-awvs-medium: #ca8a04;      /* 中危 - 黄色 */
+  --color-awvs-low: #2563eb;         /* 低危 - 蓝色 */
+  --color-awvs-info: #52c41a;        /* 信息 - 绿色 */
+
+  /* 背景和边框 */
+  --color-awvs-bg-dark: #1e293b;
+  --color-awvs-bg-light: #f8fafc;
+  --color-awvs-sidebar: #1e293b;
+  --color-awvs-card: #ffffff;
+  --color-awvs-border: #e2e8f0;
+  --color-awvs-header: #ffffff;
+
+  /* 文本颜色 */
+  --color-awvs-text-primary: #1e293b;
+  --color-awvs-text-secondary: #64748b;
+  --color-awvs-text-muted: #94a3b8;
+  --color-awvs-text-light: #ffffff;
+
+  /* 状态色彩（保留原有定义） */
   --color-severity-high: #343a40;    /* 高危 - 深灰/黑 */
   --color-severity-medium: #ff7a00;  /* 中危 - 橙色 */
   --color-severity-low: #4dabf7;     /* 低危 - 蓝色 */
-  
-  /* 状态色彩 */
   --color-status-success: #40c057;
   --color-status-error: #fa5252;
 }

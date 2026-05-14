@@ -83,6 +83,45 @@ def migrate_vulnerabilities_table():
         logger.warning(f"数据库迁移检查失败: {e}")
 
 
+def migrate_lab_scenarios_table():
+    """
+    为 lab_scenarios 表添加新字段（如果不存在）。
+    """
+    new_columns = [
+        ("is_auto_generated", "BOOLEAN DEFAULT FALSE"),
+        ("source_scan_task_id", "INT NULL"),
+        ("tags", "JSON"),
+    ]
+    
+    try:
+        inspector = inspect(engine)
+        
+        if 'lab_scenarios' not in inspector.get_table_names():
+            logger.info("lab_scenarios 表不存在，将由 create_all 创建")
+            return
+        
+        existing_columns = {col['name'] for col in inspector.get_columns('lab_scenarios')}
+        
+        with engine.connect() as conn:
+            for col_name, col_type in new_columns:
+                if col_name not in existing_columns:
+                    try:
+                        sql = f"ALTER TABLE lab_scenarios ADD COLUMN {col_name} {col_type}"
+                        conn.execute(text(sql))
+                        conn.commit()
+                        logger.info(f" 添加新列: lab_scenarios.{col_name}")
+                    except Exception as e:
+                        if "duplicate column" in str(e).lower() or "already exists" in str(e).lower():
+                            logger.info(f" 列已存在: lab_scenarios.{col_name}")
+                        else:
+                            logger.warning(f" 添加列失败 lab_scenarios.{col_name}: {e}")
+                else:
+                    logger.debug(f" 列已存在: lab_scenarios.{col_name}")
+        
+    except Exception as e:
+        logger.warning(f"lab_scenarios 迁移检查失败: {e}")
+
+
 def migrate_scan_tasks_display_id():
     """
     为 scan_tasks 表添加 display_id 字段并回填连续展示编号。
@@ -143,6 +182,7 @@ for i in range(max_retries):
         
         # 执行增量迁移
         migrate_vulnerabilities_table()
+        migrate_lab_scenarios_table()
         migrate_scan_tasks_display_id()
         
         break

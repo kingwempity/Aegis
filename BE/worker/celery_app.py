@@ -413,56 +413,67 @@ def execute_scan_task(
         else:
             logger.info("ℹ  [Worker] 未发现漏洞")
         
-        # 自动生成 Vuln Lab 场景
+        # 自动生成 Vuln Lab 场景（使用独立的事务，避免影响主扫描流程）
         if AUTO_GENERATE_LAB_SCENARIOS and found_vulns:
             try:
                 logger.info(" 开始自动生成 Vuln Lab 场景...")
                 from scanner.engine.lab_generator import LabScenarioGenerator, SEVERITY_ORDER
                 from app.models.lab import LabScenario
+                from app.db.database import SessionLocal
                 
                 generator = LabScenarioGenerator()
                 min_severity_level = SEVERITY_ORDER.get(LAB_SCENARIO_MIN_SEVERITY, 2)
                 generated_count = 0
                 
-                for vuln_data in found_vulns:
-                    if generated_count >= LAB_SCENARIO_MAX_PER_SCAN:
-                        logger.info(f" 已达到本次扫描场景生成上限 ({LAB_SCENARIO_MAX_PER_SCAN})")
-                        break
-                    
-                    vuln_severity = get_risk_level(vuln_data.get("severity", "HIGH"))
-                    vuln_severity_level = SEVERITY_ORDER.get(vuln_severity, 4)
-                    
-                    if vuln_severity_level > min_severity_level:
-                        logger.info(f" 跳过场景生成: {vuln_data.get('url')} (严重级别 {vuln_severity} 低于阈值 {LAB_SCENARIO_MIN_SEVERITY})")
-                        continue
-                    
-                    try:
-                        scenario_data = generator.generate_from_vuln_sync(vuln_data, scan_task_id=task_id)
+                # 使用独立的数据库会话，避免 lab 生成失败影响扫描任务状态
+                lab_db = SessionLocal()
+                try:
+                    for vuln_data in found_vulns:
+                        if generated_count >= LAB_SCENARIO_MAX_PER_SCAN:
+                            logger.info(f" 已达到本次扫描场景生成上限 ({LAB_SCENARIO_MAX_PER_SCAN})")
+                            break
                         
-                        if scenario_data:
-                            lab_scenario = LabScenario(
-                                name=scenario_data["name"],
-                                vuln_type=scenario_data["vuln_type"],
-                                difficulty=scenario_data["difficulty"],
-                                description=scenario_data.get("description", ""),
-                                attack_steps=scenario_data.get("attack_steps", []),
-                                remediation=scenario_data.get("remediation", []),
-                                learning=scenario_data.get("learning", {}),
-                                tags=scenario_data.get("tags", []),
-                                is_active=scenario_data.get("is_active", False),
-                                is_auto_generated=True,
-                                source_scan_task_id=task_id,
-                            )
-                            db.add(lab_scenario)
-                            generated_count += 1
-                            logger.info(f" 生成 Vuln Lab 场景: {scenario_data['name']}")
-                        else:
-                            logger.warning(f" 场景生成返回空数据: {vuln_data.get('url')}")
-                    except Exception as e:
-                        logger.warning(f" 生成单个场景失败: {e}")
-                
-                if generated_count > 0:
-                    logger.info(f" Vuln Lab 场景生成完成: {generated_count} 个场景")
+                        vuln_severity = get_risk_level(vuln_data.get("severity", "HIGH"))
+                        vuln_severity_level = SEVERITY_ORDER.get(vuln_severity, 4)
+                        
+                        if vuln_severity_level > min_severity_level:
+                            logger.info(f" 跳过场景生成: {vuln_data.get('url')} (严重级别 {vuln_severity} 低于阈值 {LAB_SCENARIO_MIN_SEVERITY})")
+                            continue
+                        
+                        try:
+                            scenario_data = generator.generate_from_vuln_sync(vuln_data, scan_task_id=task_id)
+                            
+                            if scenario_data:
+                                lab_scenario = LabScenario(
+                                    name=scenario_data["name"],
+                                    vuln_type=scenario_data["vuln_type"],
+                                    difficulty=scenario_data["difficulty"],
+                                    description=scenario_data.get("description", ""),
+                                    attack_steps=scenario_data.get("attack_steps", []),
+                                    remediation=scenario_data.get("remediation", []),
+                                    learning=scenario_data.get("learning", {}),
+                                    tags=scenario_data.get("tags", []),
+                                    is_active=scenario_data.get("is_active", False),
+                                    is_auto_generated=True,
+                                    source_scan_task_id=task_id,
+                                )
+                                lab_db.add(lab_scenario)
+                                lab_db.commit()
+                                generated_count += 1
+                                logger.info(f" 生成 Vuln Lab 场景: {scenario_data['name']}")
+                            else:
+                                logger.warning(f" 场景生成返回空数据: {vuln_data.get('url')}")
+                        except Exception as e:
+                            logger.warning(f" 生成单个场景失败: {e}")
+                            lab_db.rollback()
+                    
+                    if generated_count > 0:
+                        logger.info(f" Vuln Lab 场景生成完成: {generated_count} 个场景")
+                except Exception as e:
+                    logger.warning(f"自动生成 Vuln Lab 场景失败（会话级错误）: {e}")
+                    lab_db.rollback()
+                finally:
+                    lab_db.close()
             except Exception as e:
                 logger.warning(f"自动生成 Vuln Lab 场景失败: {e}")
         

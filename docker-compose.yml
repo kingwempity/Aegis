@@ -57,6 +57,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
   # ==================== 应用层 ====================
   
@@ -126,7 +127,9 @@ services:
       aegis-db:
         condition: service_healthy
       aegis-redis:
-        condition: service_started
+        condition: service_healthy
+      aegis-api:
+        condition: service_healthy
     deploy:
       resources:
         limits:

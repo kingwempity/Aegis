@@ -54,8 +54,9 @@ COPY --from=frontend-builder /AFE/dist /app/static
 # 暴露端口
 EXPOSE 8000
 
-# 启动命令 - WebSocket 优化：禁用超时以支持长连接
-# --timeout 0: 禁用 worker 超时，允许 WebSocket 持久连接
-# --keep-alive 5: 缩短 HTTP keep-alive 时间（仅影响普通 HTTP）
+# 启动命令 - WebSocket 优化
+# --timeout 300: 5分钟超时，足够处理长时间扫描请求，同时支持 WebSocket
+# --graceful-timeout 30: 优雅关闭等待时间
+# --keep-alive 5: 缩短 HTTP keep-alive 时间
 ENV PYTHONPATH=/app/BE:/app
-CMD ["gunicorn", "app.main:app", "-w", "1", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000", "--timeout", "0", "--threads", "2", "--keep-alive", "5"]
+CMD ["gunicorn", "app.main:app", "-w", "1", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000", "--timeout", "300", "--graceful-timeout", "30", "--threads", "2", "--keep-alive", "5"]

@@ -9,13 +9,6 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 from celery import Celery
 import httpx
-from app.database import SessionLocal
-from app.models.task import ScanTask, Vulnerability
-from scanner.engine.hybrid_engine import HybridScannerEngine
-
-AUTO_GENERATE_LAB_SCENARIOS = os.getenv("AUTO_GENERATE_LAB_SCENARIOS", "true").lower() == "true"
-LAB_SCENARIO_MIN_SEVERITY = os.getenv("LAB_SCENARIO_MIN_SEVERITY", "medium").lower()
-LAB_SCENARIO_MAX_PER_SCAN = int(os.getenv("LAB_SCENARIO_MAX_PER_SCAN", "3"))
 
 # 配置日志
 logging.basicConfig(
@@ -24,6 +17,38 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
+
+
+def wait_for_database(max_retries=10, retry_interval=5):
+    """
+    等待数据库连接就绪，避免 Worker 启动时因数据库未准备好而崩溃。
+    """
+    from sqlalchemy import text
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            db = SessionLocal()
+            db.execute(text("SELECT 1"))
+            db.close()
+            logger.info(" Database connection established successfully")
+            return True
+        except Exception as e:
+            if attempt < max_retries:
+                logger.warning(f" Database connection attempt {attempt}/{max_retries} failed: {e}")
+                logger.info(f" Retrying in {retry_interval} seconds...")
+                time.sleep(retry_interval)
+            else:
+                logger.error(f" Database connection failed after {max_retries} attempts: {e}")
+                raise
+
+
+from app.database import SessionLocal
+from app.models.task import ScanTask, Vulnerability
+from scanner.engine.hybrid_engine import HybridScannerEngine
+
+AUTO_GENERATE_LAB_SCENARIOS = os.getenv("AUTO_GENERATE_LAB_SCENARIOS", "true").lower() == "true"
+LAB_SCENARIO_MIN_SEVERITY = os.getenv("LAB_SCENARIO_MIN_SEVERITY", "medium").lower()
+LAB_SCENARIO_MAX_PER_SCAN = int(os.getenv("LAB_SCENARIO_MAX_PER_SCAN", "3"))
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://aegis-redis:6379/0")
 # 通知回调地址：FastAPI 后端服务地址
@@ -40,7 +65,18 @@ try:
     _IN_PROCESS_NOTIFICATION = True
 except Exception:
     _IN_PROCESS_NOTIFICATION = False
+
+# 启动时等待数据库就绪（所有模块导入完成后）
+wait_for_database()
+
 celery_app = Celery("aegis_worker", broker=REDIS_URL, backend=REDIS_URL)
+
+# Celery 配置
+celery_app.conf.update(
+    broker_connection_retry_on_startup=True,
+    worker_prefetch_multiplier=1,
+    task_acks_late=True,
+)
 
 
 def _emit_notification(event_type: str, data: Dict[str, Any], source: str = "scanner_worker"):
@@ -419,14 +455,14 @@ def execute_scan_task(
                 logger.info(" 开始自动生成 Vuln Lab 场景...")
                 from scanner.engine.lab_generator import LabScenarioGenerator, SEVERITY_ORDER
                 from app.models.lab import LabScenario
-                from app.db.database import SessionLocal
+                from app.db.database import SessionLocal as LabSessionLocal
                 
                 generator = LabScenarioGenerator()
                 min_severity_level = SEVERITY_ORDER.get(LAB_SCENARIO_MIN_SEVERITY, 2)
                 generated_count = 0
                 
                 # 使用独立的数据库会话，避免 lab 生成失败影响扫描任务状态
-                lab_db = SessionLocal()
+                lab_db = LabSessionLocal()
                 try:
                     for vuln_data in found_vulns:
                         if generated_count >= LAB_SCENARIO_MAX_PER_SCAN:

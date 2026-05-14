@@ -256,7 +256,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             </div>
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Aegis</h1>
-          <p className="text-gray-400">Web 应用程序漏洞检测系统</p>
+          <p className="text-gray-400">Web 应用程序漏洞扫描系统</p>
         </div>
 
         {/* 表单卡片 */}

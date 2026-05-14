@@ -54,7 +54,8 @@ COPY --from=frontend-builder /AFE/dist /app/static
 # 暴露端口
 EXPOSE 8000
 
-# 启动命令 - 低配服务器优化：单 worker 减少内存占用
-# PYTHONPATH 包含 /app/BE，使得 from app.xxx 等导入正常工作
+# 启动命令 - WebSocket 优化：禁用超时以支持长连接
+# --timeout 0: 禁用 worker 超时，允许 WebSocket 持久连接
+# --keep-alive 5: 缩短 HTTP keep-alive 时间（仅影响普通 HTTP）
 ENV PYTHONPATH=/app/BE:/app
-CMD ["gunicorn", "app.main:app", "-w", "1", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000", "--timeout", "120", "--threads", "2"]
+CMD ["gunicorn", "app.main:app", "-w", "1", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000", "--timeout", "0", "--threads", "2", "--keep-alive", "5"]

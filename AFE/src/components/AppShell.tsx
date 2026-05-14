@@ -140,18 +140,21 @@ const AppShell: React.FC<AppShellProps> = ({
       return;
     }
 
+    // 获取认证令牌
+    const token = localStorage.getItem('aegis_token');
+    
     // 根据当前页面协议和主机构建 WebSocket URL
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/notifications`;
+    const wsUrl = `${protocol}//${window.location.host}/ws/notifications${token ? `?token=${encodeURIComponent(token)}` : ''}`;
 
     try {
+      console.log('[AppShell] Connecting to WebSocket:', wsUrl.replace(token || '', '***'));
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('[AppShell] WebSocket connected:', wsUrl);
+        console.log('[AppShell] WebSocket connected successfully');
         resetReconnectDelay();
-        // 连接成功后立即刷新一次通知，获取所有未读
         fetchNotifications();
       };
 
@@ -189,17 +192,23 @@ const AppShell: React.FC<AppShellProps> = ({
       };
 
       ws.onclose = (event) => {
-        console.log('[AppShell] WebSocket disconnected, code:', event.code, 'reason:', event.reason || 'N/A');
         wsRef.current = null;
         
-        // 如果是正常关闭（1000）或组件主动关闭（1000），不重连
-        if (event.code === 1000) {
+        // 1000: 正常关闭, 1001: 离开, 1005: 未指定状态码
+        if (event.code === 1000 || event.code === 1001 || event.code === 1005) {
+          console.log('[AppShell] WebSocket closed normally, code:', event.code);
           return;
         }
 
+        // 1006: 异常断开（网络问题、服务器重启、代理配置错误等）
+        const reason = event.code === 1006 
+          ? 'Abnormal closure (network/server/proxy issue)' 
+          : (event.reason || 'N/A');
+        console.warn('[AppShell] WebSocket disconnected, code:', event.code, '- reason:', reason);
+
         increaseReconnectDelay();
         const delay = wsReconnectDelayRef.current;
-        console.log(`[AppShell] Attempting WebSocket reconnect in ${delay / 1000}s...`);
+        console.log(`[AppShell] Reconnecting in ${delay / 1000}s...`);
         
         wsReconnectTimerRef.current = setTimeout(() => {
           connectWebSocket();
@@ -207,9 +216,7 @@ const AppShell: React.FC<AppShellProps> = ({
       };
 
       ws.onerror = (error) => {
-        // WebSocket 错误事件不提供详细信息，通常是网络或连接问题
-        console.error('[AppShell] WebSocket error occurred. This is often due to network issues, server unavailability, or reverse proxy misconfiguration.');
-        // 不在这里关闭连接，让 onclose 事件处理重连逻辑
+        console.error('[AppShell] WebSocket error (check network/proxy config)');
       };
     } catch (error) {
       console.error('[AppShell] Failed to create WebSocket:', error);

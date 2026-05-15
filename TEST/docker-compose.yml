@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  sqli-test:
+    build: .
+    container_name: aegis-sqli-test
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./test_data:/app/test_data
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai

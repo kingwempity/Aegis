@@ -2,13 +2,10 @@
 FROM node:22-slim AS frontend-builder
 WORKDIR /AFE
 
-# 配置 npm/pnpm 使用国内镜像源加速
-RUN npm config set registry https://registry.npmmirror.com && \
-    npm install -g pnpm && \
-    pnpm config set registry https://registry.npmmirror.com
+# 配置 npm/pnpm 使用官方源
+RUN npm install -g pnpm
 
 COPY AFE/package*json ./
-COPY AFE/.npmrc ./
 ENV NPM_CONFIG_IGNORE_SCRIPTS=false
 RUN pnpm install --no-frozen-lockfile
 COPY AFE/ ./
@@ -16,12 +13,6 @@ RUN pnpm run build
 
 # 第二阶段：后端运行环境
 FROM python:3.10-slim-bookworm
-
-# 设置 Debian 清华源
-RUN rm -rf /etc/apt/sources.list.d/* && \
-    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main contrib non-free non-free-firmware" > /etc/apt/sources.list && \
-    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
-    echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian-security bookworm-security main contrib non-free non-free-firmware" >> /etc/apt/sources.list
 
 # 安装系统依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -38,10 +29,9 @@ WORKDIR /app
 
 # 安装 Python 依赖
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+RUN pip install --no-cache-dir -r requirements.txt
 
-# 安装 Playwright 浏览器（使用淘宝镜像加速）
-ENV PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright
+# 安装 Playwright 浏览器
 RUN playwright install chromium
 
 # 复制后端代码（BE 目录包含所有后端模块）

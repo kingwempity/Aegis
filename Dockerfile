@@ -2,14 +2,14 @@
 FROM node:22-slim AS frontend-builder
 WORKDIR /AFE
 
-# 配置 npm/pnpm 使用国内镜像源加速
+# 配置 npm/pnpm 使用国内镜像源；固定 pnpm 10.28（支持 allowBuilds，避免 v11 配置断裂）
 RUN npm config set registry https://registry.npmmirror.com && \
-    npm install -g pnpm && \
-    pnpm config set registry https://registry.npmmirror.com && \
-    pnpm config set ignore-scripts false
+    npm install -g pnpm@10.28.2 && \
+    pnpm config set registry https://registry.npmmirror.com
 
 COPY AFE/package*json ./
 COPY AFE/.npmrc ./
+COPY AFE/pnpm-workspace.yaml ./
 RUN pnpm install --no-frozen-lockfile
 COPY AFE/ ./
 RUN pnpm run build

@@ -1,0 +1,10 @@
+packages:
+  - '.'
+
+# pnpm 10.26+：显式允许 esbuild 运行 install 脚本（Docker/CI 非交互环境必需）
+allowBuilds:
+  esbuild: true
+
+# pnpm 10.x 兼容
+onlyBuiltDependencies:
+  - esbuild

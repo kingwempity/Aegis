@@ -441,6 +441,13 @@ A: 请联系系统管理员申请相应权限。
 # 添加审计中间件
 add_audit_middleware(app)
 
+
+@app.get("/health", tags=["Health"])
+async def liveness():
+    """存活探针：供 Docker/K8s 健康检查，无需认证、不访问数据库。"""
+    return {"status": "ok"}
+
+
 # 应用启动时初始化默认帮助内容
 @app.on_event("startup")
 async def startup_event():

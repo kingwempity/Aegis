@@ -70,6 +70,8 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
+      # 保留镜像内构建的前端静态资源，避免宿主机 bind mount 覆盖 /app/static
+      - /app/static
     environment:
       - DB_USER=root
       - DB_PASSWORD=aegis_password
@@ -97,11 +99,11 @@ services:
       - frontend-network
       - backend-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/auth/verify-token"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
 
   # Worker 服务（后端）
   aegis-worker:
@@ -111,6 +113,7 @@ services:
     command: celery -A worker.celery_app worker --loglevel=info --concurrency=1 --max-tasks-per-child=10
     volumes:
       - .:/app
+      - /app/static
     environment:
       - DB_USER=root
       - DB_PASSWORD=aegis_password

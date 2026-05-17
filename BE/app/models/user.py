@@ -20,7 +20,7 @@ class User(Base):
         id (int): 主键 ID
         email (str): 用户邮箱地址（唯一）
         username (str): 用户名
-        role (str): 用户角色 (Administrator, Auditor, Viewer)
+        role (str): 用户角色 (Administrator, Scanner, Auditor)
         status (str): 账户状态 (Active, Inactive)
         is_verified (bool): 邮箱是否已验证
         last_login_at (datetime): 最后登录时间
@@ -32,7 +32,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     username = Column(String(100), nullable=True)
-    role = Column(String(50), default="Viewer")
+    role = Column(String(50), default="Auditor")
     status = Column(String(20), default="Active")
     is_verified = Column(Boolean, default=False)
     last_login_at = Column(DateTime, nullable=True)

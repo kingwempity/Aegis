@@ -10,7 +10,7 @@
 
 Notes:
     - 权限格式：resource:action（如 scan:create, report:download）
-    - 角色层级：Administrator > Scanner = Auditor > Viewer
+    - 角色层级：Administrator > Scanner = Auditor
     - Scanner和Auditor为平级角色，职责不同，权限独立
     - 支持资源所有者权限：用户对自己创建的资源有额外权限
 """
@@ -30,7 +30,6 @@ class Role(str, Enum):
     ADMINISTRATOR = "Administrator"
     SCANNER = "Scanner"
     AUDITOR = "Auditor"
-    VIEWER = "Viewer"
 
 
 class Permission(str, Enum):
@@ -72,7 +71,6 @@ class Permission(str, Enum):
 # 设计原则：
 # - Scanner: 专注于扫描任务执行，能管理自己创建的任务及其报告
 # - Auditor: 专注于审查和审计，不能执行扫描，但能查看所有结果和审计日志
-# - Viewer: 仅查看，无操作权限
 ROLE_PERMISSIONS: Dict[Role, Set[Permission]] = {
     Role.ADMINISTRATOR: {
         # 管理员拥有所有权限
@@ -102,12 +100,6 @@ ROLE_PERMISSIONS: Dict[Role, Set[Permission]] = {
         Permission.REPORT_READ, Permission.REPORT_DOWNLOAD,
         Permission.VULN_READ, Permission.VULN_EXPORT,
         Permission.AUDIT_READ, Permission.AUDIT_EXPORT,
-    },
-    Role.VIEWER: {
-        # 查看者：仅查看权限
-        Permission.SCAN_READ,
-        Permission.REPORT_READ,
-        Permission.VULN_READ,
     },
 }
 
@@ -210,7 +202,6 @@ class PermissionService:
             Role.ADMINISTRATOR.value: 3,
             Role.SCANNER.value: 2,
             Role.AUDITOR.value: 2,
-            Role.VIEWER.value: 1,
         }
         return levels.get(role, 0)
 

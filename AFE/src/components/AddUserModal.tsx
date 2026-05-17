@@ -119,7 +119,6 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onSuccess,
               <option value="Administrator">管理员 (Administrator)</option>
               <option value="Scanner">扫描员 (Scanner)</option>
               <option value="Auditor">审计员 (Auditor)</option>
-              <option value="Viewer">只读用户 (Viewer)</option>
             </select>
           </div>
 

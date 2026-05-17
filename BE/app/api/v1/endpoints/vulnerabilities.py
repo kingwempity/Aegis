@@ -57,10 +57,10 @@ async def get_vulnerabilities(
     
     # 严重程度映射（前端参数 -> 数据库值）
     severity_mapping = {
-        "critical": ["Critical", "critical"],
-        "high": ["High", "high"],
-        "medium": ["Medium", "medium"],
-        "low": ["Low", "low", "Info", "info"],
+        "critical": ["Critical", "critical", "CRITICAL"],
+        "high": ["High", "high", "HIGH"],
+        "medium": ["Medium", "medium", "MEDIUM"],
+        "low": ["Low", "low", "LOW", "Info", "info", "INFO"],
     }
     
     # 应用筛选条件
@@ -94,26 +94,17 @@ async def get_vulnerabilities(
 
 
 def _normalize_severity(severity: Optional[str]) -> str:
-    """
-    标准化严重程度名称。
-    
-    Args:
-        severity: 原始严重程度
-        
-    Returns:
-        标准化后的严重程度（lowercase）
-    """
     if not severity:
         return "info"
     
     mapping = {
-        "Critical": "critical",
-        "High": "high",
-        "Medium": "medium",
-        "Low": "low",
-        "Info": "info",
+        "critical": "critical",
+        "high": "high",
+        "medium": "medium",
+        "low": "low",
+        "info": "info",
     }
-    return mapping.get(severity, severity.lower())
+    return mapping.get(severity.lower(), severity.lower())
 
 
 def _get_description(vuln: VulnerabilityModel) -> Optional[str]:

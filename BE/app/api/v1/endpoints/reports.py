@@ -32,6 +32,7 @@ class ReportResponse(BaseModel):
     validated_findings: int
     payload_count: int
     attack_path_count: int
+    scan_strategy: Optional[str] = None
     created_at: datetime
 
 
@@ -114,6 +115,7 @@ def get_reports(db: Session = Depends(get_db)):
             "validated_findings": evidence_count,
             "payload_count": payload_count,
             "attack_path_count": attack_path_count,
+            "scan_strategy": task.scan_strategy,
             "created_at": task.updated_at or task.created_at
         })
     

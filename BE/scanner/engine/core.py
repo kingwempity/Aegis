@@ -1609,31 +1609,62 @@ class ScannerEngine:
     def _build_attack_path_from_execution(self, execution: AttackExecution) -> Dict[str, Any]:
         steps = []
         for index, stage in enumerate(execution.stage_records, start=1):
-            if not stage.success:
-                continue
-            steps.append(
-                {
-                    "step": index,
-                    "stage_id": stage.stage_id,
-                    "stage_name": stage.stage_name,
-                    "stage_title": stage.stage_title,
-                    "stage_goal": stage.stage_goal,
-                    "method": stage.request.get("method", "GET"),
-                    "url": stage.request.get("url", ""),
-                    "description": stage.reason,
-                    "matched_conditions": stage.matched_conditions,
-                    "success": stage.success,
-                    "duration_ms": stage.duration_ms,
-                    "response_status": stage.response.get("status"),
-                    "extracted": stage.extracted,
-                    "artifacts": stage.artifacts,
+
+            step_data = {
+                "step": index,
+                "stage_id": stage.stage_id,
+                "stage_name": stage.stage_name,
+                "stage_title": stage.stage_title,
+                "stage_goal": stage.stage_goal,
+                "method": stage.request.get("method", "GET"),
+                "url": stage.request.get("url", ""),
+                "description": stage.reason,
+                "matched_conditions": stage.matched_conditions,
+                "success": stage.success,
+                "duration_ms": stage.duration_ms,
+                "response_status": stage.response.get("status"),
+                "extracted": stage.extracted,
+                "artifacts": stage.artifacts,
+            }
+
+            if stage.request:
+                step_data["request"] = stage.request
+            if stage.response:
+                step_data["response"] = stage.response
+            if stage.request.get("body"):
+                step_data["payload"] = stage.request.get("body")
+
+            step_evidence = {}
+            if stage.matched_conditions:
+                step_evidence["matched_conditions"] = stage.matched_conditions
+            if stage.response:
+                step_evidence["response"] = {
+                    "status_code": stage.response.get("status"),
+                    "body_snippet": stage.response.get("body_snippet"),
                 }
-            )
+            if stage.request:
+                step_evidence["request"] = {
+                    "method": stage.request.get("method"),
+                    "url": stage.request.get("url"),
+                }
+            if stage.duration_ms:
+                step_evidence["timing_ms"] = stage.duration_ms
+            if step_evidence:
+                step_data["evidence"] = step_evidence
+
+            steps.append(step_data)
 
         request_snapshot = {}
         if execution.stage_records:
             final_stage = execution.stage_records[-1]
             request_snapshot = final_stage.request
+
+        attack_vector = None
+        entry_point = None
+        if steps:
+            first_step = steps[0]
+            attack_vector = first_step.get("method", "GET")
+            entry_point = first_step.get("url", "")
 
         return {
             "scenario_id": execution.scenario_id,
@@ -1642,6 +1673,8 @@ class ScannerEngine:
             "request": request_snapshot,
             "artifacts": [artifact.to_dict() for artifact in execution.artifacts],
             "final_reason": execution.final_reason,
+            "attack_vector": attack_vector,
+            "entry_point": entry_point,
         }
 
     def _capture_state_changes(

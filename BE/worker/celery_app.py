@@ -437,17 +437,71 @@ def execute_scan_task(
                         "encoding_used": evidence_data.get("encoding_used"),
                         "mutation_type": evidence_data.get("mutation_type"),
                     })
-                
+
+                # 将 request/response 提升到顶层，方便报告预览端点访问
+                raw_request = v.get("request")
+                raw_response = v.get("response")
+                if raw_request and isinstance(raw_request, dict):
+                    evidence_dict["request"] = raw_request
+                if raw_response and isinstance(raw_response, dict):
+                    evidence_dict["response"] = raw_response
+
+                # 生成漏洞描述
+                description_parts = []
+                if payload and payload != "N/A":
+                    description_parts.append(f"攻击载荷命中: {str(payload)[:80]}")
+                if attack_path and isinstance(attack_path, dict) and attack_path.get("steps"):
+                    description_parts.append(f"攻击链包含 {len(attack_path['steps'])} 个阶段")
+                llm_analysis = v.get("llm_analysis")
+                if llm_analysis:
+                    description_parts.append(str(llm_analysis)[:200])
+                description = "；".join(description_parts) if description_parts else None
+
+                # 生成修复建议
+                remediation = None
+                if vuln_type:
+                    remediation_map = {
+                        "SQL Injection": "使用参数化查询（Prepared Statements），禁止拼接用户输入到 SQL 语句中；部署 WAF 规则拦截常见注入模式。",
+                        "Cross-Site Scripting (XSS)": "对所有用户输入进行 HTML 实体编码输出；启用 Content-Security-Policy (CSP) 头；使用现代框架的自动转义机制。",
+                        "Command Injection": "禁止将用户输入传入系统命令；使用白名单校验；采用语言内置的安全 API 替代 shell 调用。",
+                        "Local File Inclusion": "禁止用户输入直接作为文件路径；使用白名单限制可访问文件；启用 open_basedir 限制。",
+                        "Server-Side Request Forgery (SSRF)": "限制服务端请求的目标地址范围；禁止请求内网地址；使用 URL 白名单机制。",
+                        "Information Disclosure": "移除生产环境的调试接口和配置文件暴露；禁用目录列表；检查 .git/config 等敏感文件访问权限。",
+                        "Arbitrary File Upload": "限制上传文件类型和大小；使用随机文件名重命名；将上传文件存储在 Web 根目录之外。",
+                    }
+                    for key, value in remediation_map.items():
+                        if key.lower() in (vuln_type or "").lower():
+                            remediation = value
+                            break
+
+                # 提取 HTTP 方法
+                method = v.get("method")
+                if not method and raw_request and isinstance(raw_request, dict):
+                    method = raw_request.get("method")
+                if not method and attack_path and isinstance(attack_path, dict):
+                    req = attack_path.get("request", {})
+                    if isinstance(req, dict):
+                        method = req.get("method")
+
+                # 标准化 severity
+                raw_severity = v.get("severity", "High")
+                severity_normalized = get_risk_level(raw_severity).capitalize()
+                if severity_normalized not in ("Critical", "High", "Medium", "Low", "Info"):
+                    severity_normalized = "High"
+
                 vuln_record = Vulnerability(
                     task_id=task_id,
                     vuln_name=vuln_name,
-                    severity="HIGH",
+                    severity=severity_normalized,
                     url=v["url"],
                     payload=payload,
                     evidence=evidence_dict,
                     attack_path=attack_path,
                     vuln_type=vuln_type,
                     parameter=parameter,
+                    method=method,
+                    description=description,
+                    remediation=remediation,
                 )
                 db.add(vuln_record)
                 

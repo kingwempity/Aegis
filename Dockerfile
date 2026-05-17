@@ -8,7 +8,6 @@ RUN npm config set registry https://registry.npmmirror.com && \
     pnpm config set registry https://registry.npmmirror.com
 
 COPY AFE/package*json ./
-COPY AFE/.npmrc ./
 ENV NPM_CONFIG_IGNORE_SCRIPTS=false
 RUN pnpm install --no-frozen-lockfile
 COPY AFE/ ./

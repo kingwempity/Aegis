@@ -67,7 +67,15 @@ except Exception:
     _IN_PROCESS_NOTIFICATION = False
 
 # 启动时等待数据库就绪（所有模块导入完成后）
-wait_for_database()
+# 注意：仅在 Celery Worker 独立运行时才阻塞等待，API 服务中由 FastAPI 自行处理数据库连接
+def _should_wait_for_db():
+    """判断是否应该等待数据库连接（仅在独立 Worker 进程中）"""
+    import sys
+    # 如果是通过 celery worker 命令启动，则等待数据库
+    return 'celery' in sys.argv[0] if sys.argv else False
+
+if _should_wait_for_db():
+    wait_for_database()
 
 celery_app = Celery("aegis_worker", broker=REDIS_URL, backend=REDIS_URL)
 

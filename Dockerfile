@@ -1,8 +1,5 @@
-# 配置镜像源（默认 Docker Hub，构建时可通过 --build-arg 指定国内镜像源）
-ARG DOCKER_REGISTRY=docker.io
-
 # 第一阶段：前端构建
-FROM ${DOCKER_REGISTRY}/library/node:22-slim AS frontend-builder
+FROM node:22-slim AS frontend-builder
 WORKDIR /AFE
 
 # 配置 npm/pnpm 使用官方源
@@ -15,7 +12,7 @@ COPY AFE/ ./
 RUN pnpm run build
 
 # 第二阶段：后端运行环境
-FROM ${DOCKER_REGISTRY}/library/python:3.10-slim-bookworm
+FROM python:3.10-slim-bookworm
 
 # 安装系统依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -5,11 +5,11 @@ WORKDIR /AFE
 # 配置 npm/pnpm 使用国内镜像源加速
 RUN npm config set registry https://registry.npmmirror.com && \
     npm install -g pnpm && \
-    pnpm config set registry https://registry.npmmirror.com
+    pnpm config set registry https://registry.npmmirror.com && \
+    pnpm config set ignore-scripts false
 
 COPY AFE/package*json ./
 COPY AFE/.npmrc ./
-ENV NPM_CONFIG_IGNORE_SCRIPTS=false
 RUN pnpm install --no-frozen-lockfile
 COPY AFE/ ./
 RUN pnpm run build

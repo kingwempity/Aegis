@@ -262,6 +262,8 @@ export interface DashboardStats {
     medium: number;
     low: number;
   };
+  total_vulnerabilities: number;
+  validated_findings: number;
   top_threats: TopThreat[];
 }
 

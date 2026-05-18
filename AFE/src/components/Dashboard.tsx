@@ -89,19 +89,19 @@ const Dashboard: React.FC = () => {
     );
   }
 
-  const totalVulns = stats ? (
-    stats.vulnerabilities.critical + 
-    stats.vulnerabilities.high + 
-    stats.vulnerabilities.medium + 
-    stats.vulnerabilities.low
-  ) : 0;
+  const totalVulns = stats
+    ? (stats.total_vulnerabilities ??
+      stats.vulnerabilities.critical +
+        stats.vulnerabilities.high +
+        stats.vulnerabilities.medium +
+        stats.vulnerabilities.low)
+    : 0;
 
-  const validatedFindings = totalVulns;
-  const attackCoverage = stats ? (
-    stats.total_scans > 0
-      ? Math.round(((stats.running_scans + validatedFindings) / Math.max(stats.total_scans, 1)) * 100)
-      : 0
-  ) : 0;
+  const validatedFindings = stats?.validated_findings ?? 0;
+  const attackCoverage =
+    totalVulns > 0
+      ? Math.min(100, Math.round((validatedFindings / totalVulns) * 100))
+      : 0;
 
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto">

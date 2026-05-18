@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, case
 
 from app.database import get_db
 from app.db.query_utils import fetch_top_threat_rows
@@ -43,6 +43,8 @@ class DashboardStats(BaseModel):
     open_ports: int
     total_targets: int
     vulnerabilities: VulnStats
+    total_vulnerabilities: int = 0  # 全部漏洞数（与分母口径一致）
+    validated_findings: int = 0  # 已保留证据链的漏洞数
     top_threats: List[TopThreat] = []  # 新增：主要威胁列表
 
 # 简单的内存缓存，避免频繁查询数据库
@@ -124,10 +126,19 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
     }
     
     for severity, count in vulnerability_counts:
-        if severity:
-            normalized_severity = severity_mapping.get(severity, severity.lower())
-            if normalized_severity in severity_map:
-                severity_map[normalized_severity] += count
+        if not severity:
+            severity_map["low"] += count
+            continue
+        normalized_severity = severity_mapping.get(severity, severity.lower())
+        if normalized_severity in severity_map:
+            severity_map[normalized_severity] += count
+        else:
+            severity_map["low"] += count
+
+    total_vulnerabilities = int(db.query(func.count(Vulnerability.id)).scalar() or 0)
+    evidence_flag = case((Vulnerability.evidence.isnot(None), 1), else_=0)
+    validated_findings = int(db.query(func.sum(evidence_flag)).scalar() or 0)
+    validated_findings = min(validated_findings, total_vulnerabilities)
     
     # Top 威胁：仅查询轻量列，避免对大 JSON 字段排序导致 sort buffer 溢出
     top_threats = [
@@ -152,6 +163,8 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
             medium=severity_map["medium"],
             low=severity_map["low"],
         ),
+        total_vulnerabilities=total_vulnerabilities,
+        validated_findings=validated_findings,
         top_threats=top_threats
     )
     

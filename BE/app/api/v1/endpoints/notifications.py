@@ -99,6 +99,7 @@ class TestNotificationRequest(BaseModel):
 
 # ============== API 端点 ==============
 
+@router.get("", response_model=NotificationListResponse)
 @router.get("/", response_model=NotificationListResponse)
 async def get_notifications(
     category: Optional[str] = Query(None, description="按分类过滤"),

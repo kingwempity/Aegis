@@ -12,9 +12,10 @@ from pydantic import BaseModel
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc
+from sqlalchemy import func
 
 from app.database import get_db
+from app.db.query_utils import fetch_top_threat_rows
 from app.models.task import ScanTask, Vulnerability
 from app.models.discovery import DiscoveryResult
 
@@ -128,32 +129,15 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
             if normalized_severity in severity_map:
                 severity_map[normalized_severity] += count
     
-    # 查询主要威胁（按严重程度排序，获取前5个高危漏洞）
-    # 优先级：Critical > High > Medium > Low
-    severity_order = ["Critical", "critical", "High", "high", "Medium", "medium", "Low", "low"]
-    
-    # 获取所有漏洞，按严重程度和创建时间排序
-    all_vulns = db.query(Vulnerability).order_by(Vulnerability.created_at.desc()).limit(50).all()
-    
-    # 按严重程度排序漏洞
-    def get_severity_rank(vuln):
-        """获取漏洞严重程度排名（数值越小优先级越高）"""
-        if vuln.severity in severity_order:
-            return severity_order.index(vuln.severity)
-        return 999  # 未知严重程度排最后
-    
-    sorted_vulns = sorted(all_vulns, key=get_severity_rank)
-    top_vulns = sorted_vulns[:5]  # 取前5个作为主要威胁
-    
-    # 转换为 TopThreat 格式
+    # Top 威胁：仅查询轻量列，避免对大 JSON 字段排序导致 sort buffer 溢出
     top_threats = [
         TopThreat(
-            id=v.id,
-            title=v.vuln_name or "未知漏洞",
-            severity=_normalize_severity(v.severity),
-            target_url=v.url or ""
+            id=row.id,
+            title=row.vuln_name or "未知漏洞",
+            severity=_normalize_severity(row.severity),
+            target_url=row.url or "",
         )
-        for v in top_vulns
+        for row in fetch_top_threat_rows(db, limit=5)
     ]
     
     stats = DashboardStats(

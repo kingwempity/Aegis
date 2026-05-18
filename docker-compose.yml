@@ -6,11 +6,13 @@ services:
     image: mysql:8.0
     container_name: aegis-db
     restart: always
+    command: >
+      --sort-buffer-size=2097152
+      --innodb-buffer-pool-size=128M
+      --innodb-log-buffer-size=8M
     environment:
       MYSQL_DATABASE: aegis
       MYSQL_ROOT_PASSWORD: aegis_password
-      MYSQL_INNODB_BUFFER_POOL_SIZE: 128M
-      MYSQL_INNODB_LOG_BUFFER_SIZE: 8M
     expose:
       - "3306"
     volumes:

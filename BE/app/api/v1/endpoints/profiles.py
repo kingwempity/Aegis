@@ -25,6 +25,7 @@ db_profiles = [
     {"id": 3, "name": "XSS Only", "description": "Targeted scan for Cross-Site Scripting", "is_default": False, "speed": "standard", "vulnerability_types": ["XSS"]},
 ]
 
+@router.get("", response_model=List[ScanProfile])
 @router.get("/", response_model=List[ScanProfile])
 async def get_profiles():
     return db_profiles

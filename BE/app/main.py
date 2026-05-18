@@ -83,6 +83,27 @@ def migrate_vulnerabilities_table():
         logger.warning(f"数据库迁移检查失败: {e}")
 
 
+def ensure_vulnerabilities_indexes():
+    """为 vulnerabilities 表添加列表/排序常用索引。"""
+    try:
+        inspector = inspect(engine)
+        if "vulnerabilities" not in inspector.get_table_names():
+            return
+
+        existing = {idx["name"] for idx in inspector.get_indexes("vulnerabilities")}
+        with engine.connect() as conn:
+            if "idx_vulnerabilities_task_id" not in existing:
+                conn.execute(text("CREATE INDEX idx_vulnerabilities_task_id ON vulnerabilities (task_id)"))
+                conn.commit()
+                logger.info(" 添加索引: idx_vulnerabilities_task_id")
+            if "idx_vulnerabilities_created_at" not in existing:
+                conn.execute(text("CREATE INDEX idx_vulnerabilities_created_at ON vulnerabilities (created_at)"))
+                conn.commit()
+                logger.info(" 添加索引: idx_vulnerabilities_created_at")
+    except Exception as e:
+        logger.warning(f"漏洞表索引检查失败: {e}")
+
+
 def migrate_lab_scenarios_table():
     """
     为 lab_scenarios 表添加新字段（如果不存在）。
@@ -182,6 +203,7 @@ for i in range(max_retries):
         
         # 执行增量迁移
         migrate_vulnerabilities_table()
+        ensure_vulnerabilities_indexes()
         migrate_lab_scenarios_table()
         migrate_scan_tasks_display_id()
         
@@ -192,6 +214,7 @@ for i in range(max_retries):
             # 即使表已存在，也尝试迁移
             try:
                 migrate_vulnerabilities_table()
+                ensure_vulnerabilities_indexes()
                 migrate_scan_tasks_display_id()
             except Exception as migrate_err:
                 logger.warning(f"Migration failed: {migrate_err}")
@@ -471,9 +494,9 @@ if os.path.exists(static_path):
 
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str = ""):
-        # 如果请求的是 API，则不拦截（虽然路由已经注册，但为了保险）
+        # API 路径应由上方已注册的路由处理；若落到此处说明未匹配到具体端点
         if full_path.startswith("api/"):
-            raise StarletteHTTPException(status_code=404)
+            raise StarletteHTTPException(status_code=404, detail="API route not found")
         
         # 检查文件是否存在
         file_path = os.path.join(static_path, full_path)

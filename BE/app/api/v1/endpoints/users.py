@@ -173,6 +173,7 @@ _mock_users = [
 
 # ============== API 端点 ==============
 
+@router.get("", response_model=List[User])
 @router.get("/", response_model=List[User])
 async def get_users():
     """

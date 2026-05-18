@@ -711,9 +711,16 @@ const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
   );
 };
 
-const Reports: React.FC = () => {
+interface ReportsProps {
+  /** 从任务列表跳转时自动打开对应报告预览 */
+  highlightTaskId?: number | null;
+  onHighlightConsumed?: () => void;
+}
+
+const Reports: React.FC<ReportsProps> = ({ highlightTaskId, onHighlightConsumed }) => {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [activeDropdown, setActiveDropdown] = useState<number | null>(null);
   const [preview, setPreview] = useState<ReportPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -730,8 +737,10 @@ const Reports: React.FC = () => {
     try {
       const data = await api.getReports();
       setReports(data);
+      setLoadError(null);
     } catch (error) {
       console.error('Error fetching reports:', error);
+      setLoadError('报告列表加载失败，请检查后端服务或点击刷新重试');
     } finally {
       setLoading(false);
     }
@@ -739,7 +748,26 @@ const Reports: React.FC = () => {
 
   useEffect(() => {
     fetchReports();
+    const interval = setInterval(fetchReports, 8000);
+    return () => clearInterval(interval);
   }, [fetchReports]);
+
+  useEffect(() => {
+    if (!highlightTaskId) return;
+    const openHighlighted = async () => {
+      try {
+        setPreviewLoading(true);
+        const data = await api.getReportPreview(highlightTaskId);
+        setPreview(data);
+      } catch {
+        alert('报告预览加载失败，请稍后重试');
+      } finally {
+        setPreviewLoading(false);
+        onHighlightConsumed?.();
+      }
+    };
+    void openHighlighted();
+  }, [highlightTaskId, onHighlightConsumed]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -816,8 +844,12 @@ const Reports: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {loading ? (
           <div className="col-span-full text-center py-12 text-gray-400">加载中...</div>
+        ) : loadError ? (
+          <div className="col-span-full text-center py-12 text-red-500">{loadError}</div>
         ) : reports.length === 0 ? (
-          <div className="col-span-full text-center py-12 text-gray-400">暂无报告</div>
+          <div className="col-span-full text-center py-12 text-gray-400">
+            暂无报告。请先在「模拟攻击验证」中完成扫描任务。
+          </div>
         ) : (
           reports.map((report) => (
             <ReportCard

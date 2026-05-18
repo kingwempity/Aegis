@@ -27,6 +27,7 @@ const AppContent: React.FC = () => {
   const { isAuthenticated, isLoading, logout } = useAuth();
   const [currentPage, setCurrentPage] = useState<'overview' | 'discovery' | 'targets' | 'scans' | 'vulnerabilities' | 'reports' | 'lab' | 'users' | 'settings' | 'help'>('overview');
   const [isNewScanModalOpen, setIsNewScanModalOpen] = useState(false);
+  const [highlightReportTaskId, setHighlightReportTaskId] = useState<number | null>(null);
 
   // 加载中状态
   if (isLoading) {
@@ -120,7 +121,7 @@ const AppContent: React.FC = () => {
   };
 
   const handleViewReport = (taskId: number) => {
-    console.log(`Navigating to report for task ${taskId}`);
+    setHighlightReportTaskId(taskId);
     setCurrentPage('reports');
   };
 
@@ -142,7 +143,12 @@ const AppContent: React.FC = () => {
       case 'vulnerabilities':
         return <VulnerabilityList />;
       case 'reports':
-        return <Reports />;
+        return (
+          <Reports
+            highlightTaskId={highlightReportTaskId}
+            onHighlightConsumed={() => setHighlightReportTaskId(null)}
+          />
+        );
       case 'lab':
         return <LabHome />;
       case 'users':

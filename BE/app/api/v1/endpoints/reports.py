@@ -13,6 +13,7 @@ import os
 import logging
 
 from app.db.database import get_db
+from app.db.query_utils import aggregate_vuln_stats_by_task
 from app.models.task import ScanTask
 from app.services.report import ReportGenerator
 
@@ -74,6 +75,7 @@ SUPPORTED_FORMATS = {
 }
 
 
+@router.get("", response_model=List[ReportResponse])
 @router.get("/", response_model=List[ReportResponse])
 def get_reports(db: Session = Depends(get_db)):
     """
@@ -83,42 +85,42 @@ def get_reports(db: Session = Depends(get_db)):
         List[ReportResponse]: 报告列表
     """
     # 查询所有已完成的任务
-    completed_tasks = db.query(ScanTask).filter(
-        ScanTask.status == "COMPLETED"
-    ).order_by(ScanTask.id.desc()).all()
-    
+    completed_tasks = (
+        db.query(ScanTask)
+        .filter(ScanTask.status == "COMPLETED")
+        .order_by(ScanTask.id.desc())
+        .all()
+    )
+
+    task_ids = [task.id for task in completed_tasks]
+    vuln_stats = aggregate_vuln_stats_by_task(db, task_ids)
+
     reports = []
     for task in completed_tasks:
-        # 计算风险分数 (简单逻辑：高危 20分，中危 10分，低危 5分，封顶 100)
-        vuln_count = len(task.vulnerabilities)
-        score = 0
-        for v in task.vulnerabilities:
-            sev = (v.severity or "").lower()
-            if 'high' in sev or 'critical' in sev:
-                score += 20
-            elif 'medium' in sev:
-                score += 10
-            else:
-                score += 5
-
-        payload_count = len([v for v in task.vulnerabilities if getattr(v, "payload", None)])
-        attack_path_count = len([v for v in task.vulnerabilities if getattr(v, "attack_path", None)])
-        evidence_count = len([v for v in task.vulnerabilities if getattr(v, "evidence", None)])
-
+        stats = vuln_stats.get(
+            task.id,
+            {
+                "vuln_count": 0,
+                "payload_count": 0,
+                "attack_path_count": 0,
+                "evidence_count": 0,
+                "risk_score": 0,
+            },
+        )
         reports.append({
             "id": task.id,
             "task_id": task.id,
             "display_id": task.display_id,
             "target_url": task.target_url,
-            "risk_score": min(score, 100),
-            "vuln_count": vuln_count,
-            "validated_findings": evidence_count,
-            "payload_count": payload_count,
-            "attack_path_count": attack_path_count,
+            "risk_score": stats["risk_score"],
+            "vuln_count": stats["vuln_count"],
+            "validated_findings": stats["evidence_count"],
+            "payload_count": stats["payload_count"],
+            "attack_path_count": stats["attack_path_count"],
             "scan_strategy": task.scan_strategy,
-            "created_at": task.updated_at or task.created_at
+            "created_at": task.updated_at or task.created_at,
         })
-    
+
     return reports
 
 

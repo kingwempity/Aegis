@@ -3,6 +3,7 @@ import { api, ApiError, Asset, DiscoveryScanStatus } from '../api';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
 import { Play, StopCircle, Wifi, Info, Trash2 } from './Icons';
 import ValidationWorkflow from './ValidationWorkflow';
+import { formatDateTime } from '../utils/formatDateTime';
 
 
 const isValidIPv4 = (value: string): boolean => {
@@ -356,7 +357,7 @@ const Discovery: React.FC = () => {
                   <td className="px-8 py-5 text-gray-500 text-sm">
                     {asset.services.length > 0 ? asset.services.join(', ') : '-'}
                   </td>
-                  <td className="px-8 py-5 text-gray-400 text-xs">{new Date(asset.last_seen).toLocaleString()}</td>
+                  <td className="px-8 py-5 text-gray-400 text-xs">{formatDateTime(asset.last_seen)}</td>
                 </tr>
               ))
             )}

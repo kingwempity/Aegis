@@ -101,21 +101,8 @@ class Notification:
         }
     
     def _format_time(self) -> str:
-        """格式化时间为友好显示"""
-        now = datetime.now()
-        diff = now - self.time
-        
-        if diff.total_seconds() < 60:
-            return "刚刚"
-        elif diff.total_seconds() < 3600:
-            minutes = int(diff.total_seconds() / 60)
-            return f"{minutes}分钟前"
-        elif diff.total_seconds() < 86400:
-            hours = int(diff.total_seconds() / 3600)
-            return f"{hours}小时前"
-        else:
-            days = int(diff.total_seconds() / 86400)
-            return f"{days}天前"
+        """格式化为精确本地时钟时间（年-月-日 时:分:秒）"""
+        return self.time.strftime("%Y-%m-%d %H:%M:%S")
 
 
 class NotificationEvent:

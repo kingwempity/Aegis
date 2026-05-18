@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api, ScanTask } from '../api';
 import { getScanStrategyMeta } from '../utils/scanStrategy';
+import { formatDateTime } from '../utils/formatDateTime';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
 import { Plus, Eye, StopSquare, Search, Trash2 } from './Icons';
 import ValidationWorkflow from './ValidationWorkflow';
@@ -179,7 +180,7 @@ const formatDuration = (seconds: number): string => {
                       <span className="text-xs font-semibold text-[#64748b]">{task.progress || (task.status === 'COMPLETED' ? 100 : 0)}%</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-[#64748b] text-xs">{new Date(task.created_at).toLocaleString()}</td>
+                  <td className="px-6 py-4 text-[#64748b] text-xs">{formatDateTime(task.created_at)}</td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
                       {task.status === 'RUNNING' && (

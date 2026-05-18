@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { api, getApiResourceUrl, type Report, type ReportPreview, type ReportPreviewVulnerability } from '../api';
 import { getScanStrategyMeta } from '../utils/scanStrategy';
+import { formatDateTime } from '../utils/formatDateTime';
 import { Trash2, Download, ChevronDown, X, ChevronRight, CheckCircle, XCircle, Clock, Zap, Target, Code, FileText, AlertTriangle, Globe, FileEdit, BarChart3 } from './Icons';
 import ValidationWorkflow from './ValidationWorkflow';
 import AttackChainTimeline from './AttackChainTimeline';
@@ -80,7 +81,7 @@ const ReportCard: React.FC<ReportCardProps> = ({
       <div className="flex justify-between items-start">
         <div className="flex flex-col">
           <span className="font-bold text-[#2d3343] truncate max-w-[200px]">{report.target_url}</span>
-          <span className="text-xs text-gray-400">{new Date(report.created_at).toLocaleString()}</span>
+          <span className="text-xs text-gray-400">{formatDateTime(report.created_at)}</span>
         </div>
         <div className={`px-3 py-1 rounded-lg text-xs font-bold ${getRiskScoreColor(report.risk_score)}`}>
           Score: {report.risk_score}

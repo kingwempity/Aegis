@@ -4,6 +4,7 @@ import { LayoutDashboard, Target, Shield, FileText, Settings, Bot, Plus, Search,
 import ChangePasswordModal from './ChangePasswordModal';
 import { api } from '../api';
 import type { HelpContent, Notification } from '../api';
+import { formatDateTime } from '../utils/formatDateTime';
 
 interface NavItemData {
   icon?: React.FC<any> | string;
@@ -593,7 +594,7 @@ const AppShell: React.FC<AppShellProps> = ({
                               </div>
                               <p className="text-sm font-semibold text-[#1e293b] leading-tight">{notification.title}</p>
                               <p className="text-xs text-[#64748b] mt-0.5 line-clamp-2">{notification.message}</p>
-                              <p className="text-xs text-[#94a3b8] mt-1">{notification.time}</p>
+                              <p className="text-xs text-[#94a3b8] mt-1">{formatDateTime(notification.time)}</p>
                             </div>
                             {!notification.read && (
                               <div className="w-2 h-2 bg-[#ff6b00] rounded-full mt-2 flex-shrink-0"></div>
@@ -762,7 +763,7 @@ const AppShell: React.FC<AppShellProps> = ({
                             )}
                           </div>
                         )}
-                        <p className="text-xs text-gray-400 mt-2">{notification.time}</p>
+                        <p className="text-xs text-gray-400 mt-2">{formatDateTime(notification.time)}</p>
                       </div>
                     </div>
                   </div>

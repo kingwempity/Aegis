@@ -4,6 +4,7 @@ import AddTargetModal from './AddTargetModal';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
 import { Plus, Trash2 } from './Icons';
 import ValidationWorkflow from './ValidationWorkflow';
+import { formatDateTime } from '../utils/formatDateTime';
 
 const TargetList: React.FC = () => {
   const [targets, setTargets] = useState<Target[]>([]);
@@ -74,7 +75,7 @@ const TargetList: React.FC = () => {
                   </span>
                 </div>
                 <div className="text-xs text-gray-400">
-                  纳入验证时间: {new Date(target.created_at || target.last_scanned || '').toLocaleString()}
+                  纳入验证时间: {formatDateTime(target.created_at || target.last_scanned)}
                 </div>
                 <div className="flex justify-between items-center text-sm mt-4 pt-4 border-t border-gray-100">
                   <div className="flex flex-col items-center">

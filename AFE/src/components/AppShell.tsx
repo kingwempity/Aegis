@@ -186,6 +186,10 @@ const AppShell: React.FC<AppShellProps> = ({
           } else if (message.type === 'unread_count') {
             // 未读数更新
             setUnreadCount(message.data.unread_count);
+          } else if (message.type === 'scan_execution_event') {
+            window.dispatchEvent(
+              new CustomEvent('aegis:scan-event', { detail: message.data }),
+            );
           }
         } catch (e) {
           console.error('[AppShell] Failed to parse WebSocket message:', e);

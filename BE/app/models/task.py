@@ -34,11 +34,20 @@ class ScanTask(Base):
     target_paths = Column(JSON)
     target_vuln_types = Column(JSON)
     target_parameters = Column(JSON)
+    progress = Column(Integer, default=0)
+    current_stage = Column(String(255), nullable=True)
+    vulnerabilities_found = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     # 关联关系：一个任务包含多个漏洞
     vulnerabilities = relationship("Vulnerability", back_populates="task", cascade="all, delete-orphan")
+    execution_events = relationship(
+        "ScanExecutionEvent",
+        back_populates="task",
+        cascade="all, delete-orphan",
+        order_by="ScanExecutionEvent.seq",
+    )
 
 class Vulnerability(Base):
     """

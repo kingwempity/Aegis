@@ -3,15 +3,16 @@ import { api, ScanTask } from '../api';
 import { getScanStrategyMeta } from '../utils/scanStrategy';
 import { formatDateTime } from '../utils/formatDateTime';
 // 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
-import { Plus, Eye, StopSquare, Search, Trash2 } from './Icons';
+import { Plus, Eye, StopSquare, Search, Trash2, Activity } from './Icons';
 import ValidationWorkflow from './ValidationWorkflow';
 
 interface TaskListProps {
   onCreateTask?: () => void;
   onViewReport?: (taskId: number) => void;
+  onViewExecution?: (taskId: number) => void;
 }
 
-const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport }) => {
+const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport, onViewExecution }) => {
   const [tasks, setTasks] = useState<ScanTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -183,6 +184,15 @@ const formatDuration = (seconds: number): string => {
                   <td className="px-6 py-4 text-[#64748b] text-xs">{formatDateTime(task.created_at)}</td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
+                      {(task.status === 'RUNNING' || task.status === 'COMPLETED') && onViewExecution && (
+                        <button
+                          onClick={() => onViewExecution(task.id)}
+                          className="p-1.5 text-[#2563eb] hover:bg-blue-50 rounded-md transition-colors"
+                          title="查看执行"
+                        >
+                          <Activity size={18} />
+                        </button>
+                      )}
                       {task.status === 'RUNNING' && (
                         <button 
                           onClick={() => handleStopTask(task.id)}

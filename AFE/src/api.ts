@@ -57,8 +57,26 @@ export interface ScanTask {
   target_vuln_types?: string[];
   target_parameters?: string[];
   progress?: number;
+  current_stage?: string;
+  vulnerabilities_found?: number;
   created_at: string;
   duration_seconds?: number;
+}
+
+export interface ScanExecutionEvent {
+  id: number;
+  task_id: number;
+  seq: number;
+  event_type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ScanExecutionEventList {
+  task_id: number;
+  events: ScanExecutionEvent[];
+  next_after_seq: number;
+  has_more: boolean;
 }
 
 export interface Vulnerability {
@@ -285,6 +303,26 @@ export const api = {
   async getTasks(): Promise<ScanTask[]> {
     const response = await fetch(joinApiPath('/tasks'));
     if (!response.ok) throw new Error('Failed to fetch tasks');
+    return response.json();
+  },
+
+  async getTask(taskId: number): Promise<ScanTask> {
+    const response = await fetch(joinApiPath(`/tasks/${taskId}`));
+    if (!response.ok) throw new Error('Failed to fetch task');
+    return response.json();
+  },
+
+  async getTaskExecutionEvents(
+    taskId: number,
+    afterSeq = 0,
+    limit = 200,
+  ): Promise<ScanExecutionEventList> {
+    const params = new URLSearchParams({
+      after_seq: String(afterSeq),
+      limit: String(limit),
+    });
+    const response = await fetch(joinApiPath(`/tasks/${taskId}/execution-events?${params}`));
+    if (!response.ok) throw new Error('Failed to fetch execution events');
     return response.json();
   },
 

@@ -29,6 +29,7 @@ class HybridScannerEngine:
         target_paths: Optional[List[str]] = None,
         target_vuln_types: Optional[List[str]] = None,
         target_parameters: Optional[List[str]] = None,
+        progress_reporter=None,
         **kwargs
     ):
         self.target = target.rstrip("/")
@@ -37,6 +38,7 @@ class HybridScannerEngine:
         self.target_vuln_types = target_vuln_types or []
         self.target_parameters = target_parameters or []
         self.mode_config = get_scan_mode_config(strategy)
+        self.progress_reporter = progress_reporter
         self.kwargs = kwargs
         
     async def run(self) -> List[Dict[str, Any]]:
@@ -64,6 +66,15 @@ class HybridScannerEngine:
         logger.info("=" * 60)
         logger.info(" 阶段1: ScannerEngine 扫描...")
         logger.info("=" * 60)
+
+        if self.progress_reporter:
+            try:
+                self.progress_reporter(
+                    "phase_started",
+                    {"phase": "scanner", "label": "阶段1: 插件扫描", "progress": 5},
+                )
+            except Exception:
+                pass
         
         scanner = ScannerEngine(
             target=self.target,
@@ -76,6 +87,7 @@ class HybridScannerEngine:
             target_parameters=self.target_parameters if self.target_parameters else None,
             enable_discovery_scan=self.mode_config.enable_discovery_scan,
             payload_set=self.mode_config.payload_set,
+            progress_reporter=self.progress_reporter,
         )
         
         fast_vulns = await scanner.run()
@@ -93,6 +105,15 @@ class HybridScannerEngine:
                 logger.info("=" * 60)
                 logger.info(f" 阶段2: AttackSimulator 智能探索 (策略: {self.mode_config.simulator_strategy})...")
                 logger.info("=" * 60)
+
+                if self.progress_reporter:
+                    try:
+                        self.progress_reporter(
+                            "phase_started",
+                            {"phase": "simulator", "label": "阶段2: LLM 模拟攻击", "progress": 55},
+                        )
+                    except Exception:
+                        pass
                 
                 simulator = AttackSimulator(
                     target=self.target,

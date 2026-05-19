@@ -32,9 +32,11 @@ class TaskOut(BaseModel):
     target_url: str
     status: str
     scan_strategy: str
+    progress: Optional[int] = 0
+    current_stage: Optional[str] = None
+    vulnerabilities_found: Optional[int] = 0
     created_at: datetime
     duration_seconds: Optional[float] = None
-    # vulnerabilities: List[VulnerabilityOut] = [] 
 
     class Config:
         from_attributes = True

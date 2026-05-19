@@ -19,6 +19,7 @@ import ScanProfiles from './components/ScanProfiles';
 import NewScanModal from './components/NewScanModal';
 import HelpContentManage from './components/HelpContentManage';
 import LabHome from './components/LabHome';
+import ScanExecutionConsole from './components/ScanExecutionConsole';
 
 /**
  * 主应用内容组件（在 AuthProvider 内部）
@@ -28,6 +29,7 @@ const AppContent: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<'overview' | 'discovery' | 'targets' | 'scans' | 'vulnerabilities' | 'reports' | 'lab' | 'users' | 'settings' | 'help'>('overview');
   const [isNewScanModalOpen, setIsNewScanModalOpen] = useState(false);
   const [highlightReportTaskId, setHighlightReportTaskId] = useState<number | null>(null);
+  const [executionTaskId, setExecutionTaskId] = useState<number | null>(null);
 
   // 加载中状态
   if (isLoading) {
@@ -138,6 +140,7 @@ const AppContent: React.FC = () => {
           <TaskList
             onCreateTask={() => setIsNewScanModalOpen(true)}
             onViewReport={handleViewReport}
+            onViewExecution={(taskId) => setExecutionTaskId(taskId)}
           />
         );
       case 'vulnerabilities':
@@ -177,6 +180,13 @@ const AppContent: React.FC = () => {
         onClose={() => setIsNewScanModalOpen(false)}
         onSuccess={handleNewScanSuccess}
       />
+
+      {executionTaskId != null && (
+        <ScanExecutionConsole
+          taskId={executionTaskId}
+          onClose={() => setExecutionTaskId(null)}
+        />
+      )}
     </>
   );
 };

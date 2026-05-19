@@ -7,7 +7,9 @@ from sqlalchemy.exc import IntegrityError
 from typing import List
 from app.database import get_db
 from app.models.task import ScanTask
+from app.models.scan_execution_event import ScanExecutionEvent
 from app.schemas.task import TaskCreate, TaskOut
+from app.schemas.execution_event import ExecutionEventOut, ExecutionEventListOut
 from worker.celery_app import run_scan_task, execute_scan_task
 
 router = APIRouter()
@@ -163,12 +165,46 @@ def read_tasks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return results
 
 
+@router.get("/{task_id}/execution-events", response_model=ExecutionEventListOut)
+def read_execution_events(
+    task_id: int,
+    after_seq: int = 0,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+):
+    """获取扫描执行事件流（用于实时控制台与回放）。"""
+    task = db.query(ScanTask).filter(ScanTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    limit = max(1, min(limit, 500))
+    rows = (
+        db.query(ScanExecutionEvent)
+        .filter(ScanExecutionEvent.task_id == task_id, ScanExecutionEvent.seq > after_seq)
+        .order_by(ScanExecutionEvent.seq.asc())
+        .limit(limit + 1)
+        .all()
+    )
+    has_more = len(rows) > limit
+    events = rows[:limit]
+    next_after = events[-1].seq if events else after_seq
+
+    return ExecutionEventListOut(
+        task_id=task_id,
+        events=[ExecutionEventOut.model_validate(e) for e in events],
+        next_after_seq=next_after,
+        has_more=has_more,
+    )
+
+
 @router.get("/{task_id}", response_model=TaskOut)
 def read_task(task_id: int, db: Session = Depends(get_db)):
     task = db.query(ScanTask).filter(ScanTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    return task
+    task_out = TaskOut.model_validate(task)
+    task_out.duration_seconds = _calculate_duration_seconds(task)
+    return task_out
 
 
 @router.delete("/{task_id}")

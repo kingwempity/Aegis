@@ -30,7 +30,7 @@ import re
 import string
 import json
 from urllib.parse import urljoin, urlparse
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Callable
 from dataclasses import dataclass, field
 import logging
 
@@ -305,6 +305,7 @@ class ScannerEngine:
         target_parameters: Optional[List[str]] = None,
         enable_discovery_scan: bool = True,
         payload_set: str = "standard",
+        progress_reporter: Optional[Callable[[str, Dict[str, Any]], None]] = None,
     ):
         self.target = target.rstrip("/")
         self.strategy = strategy
@@ -318,6 +319,8 @@ class ScannerEngine:
         self.target_parameters = target_parameters or []
         self.enable_discovery_scan = enable_discovery_scan
         self.payload_set = payload_set
+        self.progress_reporter = progress_reporter
+        self._progress_total_estimate = max(len(self.target_paths) * 10, 50) if self.target_paths else 200
         
         # 优化插件路径解析：支持绝对路径和项目根目录相对路径
         if os.path.isabs(plugin_dir):
@@ -359,7 +362,8 @@ class ScannerEngine:
         
         plugin_ids = [p.get('id', 'unknown') for p in self.plugins]
         logger.info(f" 已加载 {len(self.plugins)} 个插件: {plugin_ids}")
-        
+        self._progress_total_estimate = max(len(self.plugins) * 8, 80)
+
         self.script_generator = AttackScriptGenerator(strategy=strategy)
         self.path_explorer = AttackPathExplorer(learning_enabled=enable_learning)
         
@@ -379,7 +383,7 @@ class ScannerEngine:
         
         self._judgment_log: List[Dict[str, Any]] = []
         self._attack_executions: Dict[str, AttackExecution] = {}
-        
+
         # Phase 1: 初始化模拟攻击增强模块（带异常处理和降级策略）
         self._recon_engine = None
         self._weaponizer = None
@@ -492,6 +496,21 @@ class ScannerEngine:
             logger.info(" Phase 3 智能学习功能已启用 - Aegis现在具备自我进化能力！")
         else:
             logger.debug("ℹ Phase 3 功能不可用，使用Phase 1-2能力")
+
+    def _estimate_progress(self) -> int:
+        if self._progress_total_estimate <= 0:
+            return 0
+        return min(95, int(self._stats.total_requests / self._progress_total_estimate * 100))
+
+    def _emit_progress(self, event_type: str, payload: Dict[str, Any]) -> None:
+        if not self.progress_reporter:
+            return
+        try:
+            if "progress" not in payload:
+                payload = {**payload, "progress": self._estimate_progress()}
+            self.progress_reporter(event_type, payload)
+        except Exception as e:
+            logger.debug(f"progress_reporter failed: {e}")
     
     async def run(self) -> List[Dict[str, Any]]:
         """
@@ -939,6 +958,17 @@ class ScannerEngine:
                             "content_length": len(resp.content),
                             "response_time_ms": round(request_elapsed_ms, 2),
                         }
+                        self._emit_progress(
+                            "request_completed",
+                            {
+                                "plugin_id": plugin_id,
+                                "url": url,
+                                "request": request_snapshot,
+                                "response": response_snapshot,
+                                "duration_ms": round(request_elapsed_ms, 2),
+                                "current_stage": f"{plugin_id} · {stage_name}",
+                            },
+                        )
                         matcher_hit = self._check_matchers(resp, matchers, matchers_condition)
                         if not matcher_hit and is_sequential:
                             miss_reason = self._explain_sequential_miss(plugin, req_def, resp, url)
@@ -1117,6 +1147,14 @@ class ScannerEngine:
                                 judgment_record["final_reason"] = final_reason
                                 judgment_record["suppressed_reason"] = final_reason if not final_report else ""
                                 self._judgment_log.append(judgment_record)
+                                self._emit_progress(
+                                    "judgment",
+                                    {
+                                        **judgment_record,
+                                        "plugin_id": plugin_id,
+                                        "current_stage": f"初判 · {plugin_id}",
+                                    },
+                                )
                                 
                                 if final_report:
                                     if not is_sequential:
@@ -1184,6 +1222,16 @@ class ScannerEngine:
                                     )
                                     self._vulnerabilities.append(result)
                                     self._stats.vulnerabilities_found += 1
+                                    self._emit_progress(
+                                        "vulnerability_confirmed",
+                                        {
+                                            "vuln_name": result.vuln_name,
+                                            "url": url,
+                                            "severity": result.severity,
+                                            "confidence": round(adjusted_confidence, 3),
+                                            "plugin_id": plugin_id,
+                                        },
+                                    )
                                     
                                     level = "" if adjusted_confidence > 0.6 else "" if adjusted_confidence > 0.3 else ""
                                     logger.info(
@@ -1842,6 +1890,29 @@ class ScannerEngine:
             )
         )
         execution.shared_state = self._snapshot_plugin_state(plugin.get("id", "unknown"))
+        if execution.stage_records:
+            last = execution.stage_records[-1]
+            step_data = {
+                "step": len(execution.stage_records),
+                "stage_id": last.stage_id,
+                "stage_name": last.stage_name,
+                "stage_title": last.stage_title,
+                "method": last.request.get("method", "GET"),
+                "url": last.request.get("url", ""),
+                "success": last.success,
+                "duration_ms": last.duration_ms,
+                "request": last.request,
+                "response": last.response,
+                "matched_conditions": last.matched_conditions,
+                "result": last.reason,
+            }
+            self._emit_progress(
+                "stage_recorded",
+                {
+                    "step": step_data,
+                    "current_stage": f"{plugin.get('id', 'unknown')} · {last.stage_name}",
+                },
+            )
 
     def _finalize_attack_execution(self, plugin: Dict[str, Any], status: str, reason: str) -> None:
         execution = self._get_attack_execution(plugin)

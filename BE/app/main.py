@@ -25,6 +25,7 @@ from app.db.database import engine, Base, SessionLocal
 from app.models import discovery as discovery_model
 from app.models.help import HelpContent
 from app.models.task import ScanTask, Vulnerability
+from app.models.scan_execution_event import ScanExecutionEvent  # noqa: F401 — register table
 from app.services.lab_init import init_lab_scenarios
 
 logging.basicConfig(level=logging.INFO)
@@ -143,6 +144,33 @@ def migrate_lab_scenarios_table():
         logger.warning(f"lab_scenarios 迁移检查失败: {e}")
 
 
+def migrate_scan_tasks_execution_fields():
+    """为 scan_tasks 添加 progress / current_stage / vulnerabilities_found。"""
+    try:
+        inspector = inspect(engine)
+        if "scan_tasks" not in inspector.get_table_names():
+            return
+
+        existing_columns = {col["name"] for col in inspector.get_columns("scan_tasks")}
+        new_columns = [
+            ("progress", "INTEGER DEFAULT 0"),
+            ("current_stage", "VARCHAR(255)"),
+            ("vulnerabilities_found", "INTEGER DEFAULT 0"),
+        ]
+        with engine.connect() as conn:
+            for col_name, col_type in new_columns:
+                if col_name not in existing_columns:
+                    if engine.dialect.name == "sqlite":
+                        sqlite_type = "INTEGER" if "INTEGER" in col_type else "TEXT"
+                        conn.execute(text(f"ALTER TABLE scan_tasks ADD COLUMN {col_name} {sqlite_type}"))
+                    else:
+                        conn.execute(text(f"ALTER TABLE scan_tasks ADD COLUMN {col_name} {col_type}"))
+                    conn.commit()
+                    logger.info(f" 已添加字段: scan_tasks.{col_name}")
+    except Exception as e:
+        logger.warning(f"scan_tasks execution fields 迁移检查失败: {e}")
+
+
 def migrate_scan_tasks_display_id():
     """
     为 scan_tasks 表添加 display_id 字段并回填连续展示编号。
@@ -206,6 +234,7 @@ for i in range(max_retries):
         ensure_vulnerabilities_indexes()
         migrate_lab_scenarios_table()
         migrate_scan_tasks_display_id()
+        migrate_scan_tasks_execution_fields()
         
         break
     except Exception as e:
@@ -216,6 +245,7 @@ for i in range(max_retries):
                 migrate_vulnerabilities_table()
                 ensure_vulnerabilities_indexes()
                 migrate_scan_tasks_display_id()
+                migrate_scan_tasks_execution_fields()
             except Exception as migrate_err:
                 logger.warning(f"Migration failed: {migrate_err}")
             break

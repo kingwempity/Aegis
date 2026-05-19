@@ -307,6 +307,7 @@ def execute_scan_task(
     logger.info("=" * 60)
     
     task = None
+    reporter = None
     
     try:
         # 更新状态 -> RUNNING
@@ -316,7 +317,19 @@ def execute_scan_task(
             return
         
         task.status = "RUNNING"
+        task.progress = 0
+        task.current_stage = "准备扫描"
         db.commit()
+
+        from app.services.execution_event_service import (
+            ExecutionEventReporter,
+            make_progress_callback,
+            reset_task_seq,
+        )
+        reset_task_seq(task_id)
+        reporter = ExecutionEventReporter(task_id, db)
+        progress_callback = make_progress_callback(reporter)
+        reporter.phase_started("init", "扫描任务已启动")
         
         # 发射扫描启动通知
         _emit_notification(
@@ -343,6 +356,7 @@ def execute_scan_task(
             target_paths=target_paths,
             target_vuln_types=target_vuln_types,
             target_parameters=target_parameters,
+            progress_reporter=progress_callback,
         )
         
         # 执行混合扫描
@@ -577,7 +591,10 @@ def execute_scan_task(
         
         # 更新状态 -> COMPLETED
         task.status = "COMPLETED"
+        task.progress = 100
+        task.current_stage = "扫描完成"
         task.vulnerabilities_found = vuln_count
+        reporter.scan_progress(100, "扫描完成")
         db.commit()
         
         # 按严重级别统计漏洞
@@ -637,6 +654,12 @@ def execute_scan_task(
         logger.error(traceback.format_exc())
         if task:
             task.status = "FAILED"
+            task.current_stage = "扫描失败"
+            if reporter is not None:
+                try:
+                    reporter.scan_progress(task.progress or 0, f"失败: {str(e)[:120]}")
+                except Exception:
+                    pass
             db.commit()
             
             # 发射扫描失败通知

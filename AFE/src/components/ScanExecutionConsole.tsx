@@ -5,6 +5,29 @@ import { RequestResponseViewer } from './AttackChainTimeline';
 import { X, Activity } from './Icons';
 import { getScanStrategyMeta } from '../utils/scanStrategy';
 
+/** UI labels (Unicode escapes avoid encoding corruption in CI/Docker builds) */
+const UI = {
+  title: '\u6A21\u62DF\u653B\u51FB\u6267\u884C',
+  taskPrefix: ' \u00B7 \u4EFB\u52A1 #',
+  loading: '\u52A0\u8F7D\u4E2D...',
+  validating: '\u9A8C\u8BC1\u4E2D',
+  requests: '\u8BF7\u6C42',
+  judgments: '\u521D\u5224',
+  confirmed: '\u786E\u8BA4',
+  waitingEvents: '\u7B49\u5F85\u4E8B\u4EF6...',
+  close: '\u5173\u95ED',
+  loadingData: '\u52A0\u8F7D\u6267\u884C\u6570\u636E...',
+  timeline: '\u653B\u51FB\u94FE\u65F6\u95F4\u7EBF',
+  httpDetail: 'HTTP \u8BE6\u60C5',
+  waitingSteps: '\u7B49\u5F85\u653B\u51FB\u6B65\u9AA4\u6570\u636E...',
+  vulnJudgment: '\u521D\u6B65\u6F0F\u6D1E\u5224\u65AD',
+  noJudgments: '\u6682\u65E0\u521D\u5224\u8BB0\u5F55',
+  unknownPlugin: '\u672A\u77E5\u63D2\u4EF6',
+  confidence: '\u7F6E\u4FE1\u5EA6',
+  evidence: '\u8BC1\u636E',
+  sep: '\u00B7',
+} as const;
+
 interface ScanExecutionConsoleProps {
   taskId: number;
   onClose: () => void;
@@ -176,14 +199,15 @@ const ScanExecutionConsole: React.FC<ScanExecutionConsoleProps> = ({ taskId, onC
               </div>
               <div>
                 <h2 className="text-lg font-bold text-[#1e293b]">
-                  模拟攻击执行
-                  {task ? ` · 任务 #${task.display_id}` : ''}
+                  {UI.title}
+                  {task ? `${UI.taskPrefix}${task.display_id}` : ''}
                 </h2>
-                <p className="font-mono text-xs text-[#64748b]">{task?.target_url || '加载�?..'}</p>
+                <p className="font-mono text-xs text-[#64748b]">{task?.target_url || UI.loading}</p>
               </div>
               {task?.status === 'RUNNING' && (
                 <span className="rounded-md bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-600">
-                  验证�?                </span>
+                  {UI.validating}
+                </span>
               )}
             </div>
             <div className="flex flex-wrap items-center gap-4 text-xs text-[#64748b]">
@@ -192,10 +216,10 @@ const ScanExecutionConsole: React.FC<ScanExecutionConsoleProps> = ({ taskId, onC
                   {strategyMeta.label}
                 </span>
               )}
-              <span>请求 {stats.requests}</span>
-              <span>初判 {stats.judgments}</span>
-              <span>确认 {stats.confirmed}</span>
-              <span>{task?.current_stage || '等待事件...'}</span>
+              <span>{UI.requests} {stats.requests}</span>
+              <span>{UI.judgments} {stats.judgments}</span>
+              <span>{UI.confirmed} {stats.confirmed}</span>
+              <span>{task?.current_stage || UI.waitingEvents}</span>
             </div>
             <div className="flex h-2 w-full max-w-md items-center gap-2">
               <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#e2e8f0]">
@@ -211,22 +235,24 @@ const ScanExecutionConsole: React.FC<ScanExecutionConsoleProps> = ({ taskId, onC
             type="button"
             onClick={onClose}
             className="rounded-lg p-2 text-[#64748b] hover:bg-[#f1f5f9]"
-            title="关闭"
+            title={UI.close}
           >
             <X size={20} />
           </button>
         </div>
 
         {loading && steps.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center text-[#94a3b8]">加载执行数据...</div>
+          <div className="flex flex-1 items-center justify-center text-[#94a3b8]">
+            {UI.loadingData}
+          </div>
         ) : (
           <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-12">
             <div className="min-h-0 overflow-auto lg:col-span-4">
-              <AttackChainTimeline steps={steps} title="攻击链时间线" />
+              <AttackChainTimeline steps={steps} title={UI.timeline} />
             </div>
             <div className="flex min-h-0 flex-col overflow-auto lg:col-span-5">
               <div className="rounded-2xl border border-[#e2e8f0] bg-white p-4">
-                <h3 className="mb-3 text-sm font-bold text-[#2d3343]">HTTP 详情</h3>
+                <h3 className="mb-3 text-sm font-bold text-[#2d3343]">{UI.httpDetail}</h3>
                 {selectedStep ? (
                   <RequestResponseViewer
                     request={selectedStep.request}
@@ -235,15 +261,15 @@ const ScanExecutionConsole: React.FC<ScanExecutionConsoleProps> = ({ taskId, onC
                     payload={selectedStep.payload}
                   />
                 ) : (
-                  <p className="py-8 text-center text-sm text-[#94a3b8]">等待攻击步骤数据...</p>
+                  <p className="py-8 text-center text-sm text-[#94a3b8]">{UI.waitingSteps}</p>
                 )}
               </div>
             </div>
             <div className="min-h-0 overflow-auto lg:col-span-3">
               <div className="rounded-2xl border border-[#e2e8f0] bg-white p-4">
-                <h3 className="mb-3 text-sm font-bold text-[#2d3343]">初步漏洞判断</h3>
+                <h3 className="mb-3 text-sm font-bold text-[#2d3343]">{UI.vulnJudgment}</h3>
                 {judgments.length === 0 ? (
-                  <p className="py-6 text-center text-xs text-[#94a3b8]">暂无初判记录</p>
+                  <p className="py-6 text-center text-xs text-[#94a3b8]">{UI.noJudgments}</p>
                 ) : (
                   <div className="space-y-3">
                     {[...judgments].reverse().map((j) => (
@@ -255,21 +281,21 @@ const ScanExecutionConsole: React.FC<ScanExecutionConsoleProps> = ({ taskId, onC
                             : 'border-red-200 bg-red-50/60'
                         }`}
                       >
-                        <p className="font-semibold text-[#2d3343]">{j.plugin_id || '未知插件'}</p>
+                        <p className="font-semibold text-[#2d3343]">{j.plugin_id || UI.unknownPlugin}</p>
                         {j.url && (
                           <p className="mt-1 truncate font-mono text-[#64748b]" title={j.url}>
                             {j.url}
                           </p>
                         )}
                         <p className="mt-2">
-                          置信度{' '}
+                          {UI.confidence}{' '}
                           <strong>
                             {j.adjusted_confidence != null
                               ? `${(j.adjusted_confidence * 100).toFixed(1)}%`
-                              : '�?}
+                              : '-'}
                           </strong>
-                          {' · '}
-                          证据 {j.evidence_count ?? 0}
+                          {` ${UI.sep} `}
+                          {UI.evidence} {j.evidence_count ?? 0}
                         </p>
                         <p
                           className={`mt-1 font-bold uppercase ${
@@ -278,7 +304,7 @@ const ScanExecutionConsole: React.FC<ScanExecutionConsoleProps> = ({ taskId, onC
                         >
                           {j.final_decision === 'report' ? 'REPORT' : 'SUPPRESS'}
                         </p>
-                        <p className="mt-1 text-[#64748b]">{j.final_reason || '�?}</p>
+                        <p className="mt-1 text-[#64748b]">{j.final_reason || '-'}</p>
                       </div>
                     ))}
                   </div>

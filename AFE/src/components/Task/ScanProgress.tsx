@@ -5,7 +5,7 @@ interface ScanProgressProps {
   label?: string;
 }
 
-/** 扫描进度条（供执行控制台顶栏复用�?*/
+/** \u626b\u63cf\u8fdb\u5ea6\u6761\uff08\u4f9b\u6267\u884c\u63a7\u5236\u53f0\u9876\u680f\u590d\u7528\uff09 */
 const ScanProgress: React.FC<ScanProgressProps> = ({ progress, label }) => (
   <div className="flex h-2 w-full items-center gap-2">
     <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#e2e8f0]">

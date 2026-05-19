@@ -22,6 +22,7 @@ try:
     from sqlalchemy import text, inspect
     # 必须显式导入模型，否则 Base.metadata 无法识别它们
     from app.models.task import ScanTask, Vulnerability
+    from app.models.scan_execution_event import ScanExecutionEvent  # noqa: F401
 except ImportError as e:
     logger.error(f"导入模块失败，请检查目录结构或 __init__.py 文件: {e}")
     sys.exit(1)

@@ -44,6 +44,7 @@ def wait_for_database(max_retries=10, retry_interval=5):
 
 from app.database import SessionLocal
 from app.models.task import ScanTask, Vulnerability
+from app.models.scan_execution_event import ScanExecutionEvent  # noqa: F401 — register mapper
 from scanner.engine.hybrid_engine import HybridScannerEngine
 
 AUTO_GENERATE_LAB_SCENARIOS = os.getenv("AUTO_GENERATE_LAB_SCENARIOS", "true").lower() == "true"

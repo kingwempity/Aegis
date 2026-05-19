@@ -4,7 +4,7 @@ import asyncio
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from typing import List
+from typing import List, Optional
 from app.database import get_db
 from app.models.task import ScanTask
 from app.models.scan_execution_event import ScanExecutionEvent
@@ -170,6 +170,7 @@ def read_execution_events(
     task_id: int,
     after_seq: int = 0,
     limit: int = 200,
+    event_types: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """获取扫描执行事件流（用于实时控制台与回放）。"""
@@ -178,10 +179,17 @@ def read_execution_events(
         raise HTTPException(status_code=404, detail="Task not found")
 
     limit = max(1, min(limit, 500))
+    query = db.query(ScanExecutionEvent).filter(
+        ScanExecutionEvent.task_id == task_id,
+        ScanExecutionEvent.seq > after_seq,
+    )
+    if event_types:
+        types_list = [t.strip() for t in event_types.split(",") if t.strip()]
+        if types_list:
+            query = query.filter(ScanExecutionEvent.event_type.in_(types_list))
+
     rows = (
-        db.query(ScanExecutionEvent)
-        .filter(ScanExecutionEvent.task_id == task_id, ScanExecutionEvent.seq > after_seq)
-        .order_by(ScanExecutionEvent.seq.asc())
+        query.order_by(ScanExecutionEvent.seq.asc())
         .limit(limit + 1)
         .all()
     )

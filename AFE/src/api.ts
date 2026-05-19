@@ -316,11 +316,15 @@ export const api = {
     taskId: number,
     afterSeq = 0,
     limit = 200,
+    eventTypes?: string[],
   ): Promise<ScanExecutionEventList> {
     const params = new URLSearchParams({
       after_seq: String(afterSeq),
       limit: String(limit),
     });
+    if (eventTypes?.length) {
+      params.set('event_types', eventTypes.join(','));
+    }
     const response = await fetch(joinApiPath(`/tasks/${taskId}/execution-events?${params}`));
     if (!response.ok) throw new Error('Failed to fetch execution events');
     return response.json();

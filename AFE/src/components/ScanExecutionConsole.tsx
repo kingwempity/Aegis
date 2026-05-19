@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { api, AttackStep, ScanExecutionEvent, ScanTask } from '../api';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { api } from '../api';
+import type { AttackStep, ScanExecutionEvent, ScanTask } from '../api';
 import AttackChainTimeline from './AttackChainTimeline';
 import { RequestResponseViewer } from './AttackChainTimeline';
 import { X, Activity } from './Icons';
@@ -28,6 +29,18 @@ const UI = {
   sep: '\u00B7',
 } as const;
 
+/** Console replays these only; skips bulky request_completed payloads. */
+const CONSOLE_EVENT_TYPES = [
+  'stage_recorded',
+  'judgment',
+  'vulnerability_confirmed',
+  'scan_progress',
+  'phase_started',
+];
+
+const INITIAL_EVENT_PAGE = 80;
+const EVENT_PAGE_SIZE = 120;
+
 interface ScanExecutionConsoleProps {
   taskId: number;
   onClose: () => void;
@@ -41,6 +54,42 @@ interface JudgmentItem {
   final_decision?: string;
   final_reason?: string;
   evidence_count?: number;
+}
+
+type ExecutionStats = { requests?: number; judgments?: number; confirmed?: number };
+
+function extractStats(
+  source: { stats?: ExecutionStats; payload?: Record<string, unknown> },
+): ExecutionStats | undefined {
+  if (source.stats) return source.stats;
+  const nested = source.payload?.stats;
+  if (nested && typeof nested === 'object') {
+    return nested as ExecutionStats;
+  }
+  return undefined;
+}
+
+function applyStats(
+  stats: ExecutionStats,
+  setStats: React.Dispatch<
+    React.SetStateAction<{ requests: number; judgments: number; confirmed: number }>
+  >,
+) {
+  setStats({
+    requests: stats.requests ?? 0,
+    judgments: stats.judgments ?? 0,
+    confirmed: stats.confirmed ?? 0,
+  });
+}
+
+function applyStatsFromEvents(
+  events: ScanExecutionEvent[],
+  setStats: React.Dispatch<
+    React.SetStateAction<{ requests: number; judgments: number; confirmed: number }>
+  >,
+) {
+  const st = extractStats(events[events.length - 1]);
+  if (st) applyStats(st, setStats);
 }
 
 function foldEvents(
@@ -89,69 +138,148 @@ const ScanExecutionConsole: React.FC<ScanExecutionConsoleProps> = ({ taskId, onC
   const [steps, setSteps] = useState<AttackStep[]>([]);
   const [judgments, setJudgments] = useState<JudgmentItem[]>([]);
   const [stats, setStats] = useState({ requests: 0, judgments: 0, confirmed: 0 });
-  const [loading, setLoading] = useState(true);
+  const [eventsLoading, setEventsLoading] = useState(true);
   const afterSeqRef = useRef(0);
   const timelineRef = useRef({ steps: [] as AttackStep[], judgments: [] as JudgmentItem[] });
+  const backfillRunningRef = useRef(false);
+
+  const advanceAfterSeq = useCallback((seq: number) => {
+    if (seq > afterSeqRef.current) {
+      afterSeqRef.current = seq;
+    }
+  }, []);
 
   useEffect(() => {
     timelineRef.current = { steps, judgments };
   }, [steps, judgments]);
 
-  const mergeEvents = useCallback((events: ScanExecutionEvent[]) => {
-    if (!events.length) return;
-    const folded = foldEvents(
-      timelineRef.current.steps,
-      timelineRef.current.judgments,
-      events,
-    );
-    timelineRef.current = folded;
-    setSteps(folded.steps);
-    setJudgments(folded.judgments);
-    afterSeqRef.current = events[events.length - 1].seq;
-  }, []);
+  const mergeEvents = useCallback(
+    (events: ScanExecutionEvent[]) => {
+      if (!events.length) return;
+      const folded = foldEvents(
+        timelineRef.current.steps,
+        timelineRef.current.judgments,
+        events,
+      );
+      timelineRef.current = folded;
+      setSteps(folded.steps);
+      setJudgments(folded.judgments);
+      advanceAfterSeq(events[events.length - 1].seq);
+      applyStatsFromEvents(events, setStats);
+    },
+    [advanceAfterSeq],
+  );
 
-  const fetchData = useCallback(async () => {
+  const fetchEventsPage = useCallback(
+    async (afterSeq: number, limit: number) =>
+      api.getTaskExecutionEvents(taskId, afterSeq, limit, CONSOLE_EVENT_TYPES),
+    [taskId],
+  );
+
+  const backfillRemainingEvents = useCallback(async () => {
+    if (backfillRunningRef.current) return;
+    backfillRunningRef.current = true;
     try {
-      const [taskData, eventData] = await Promise.all([
-        api.getTask(taskId),
-        api.getTaskExecutionEvents(taskId, afterSeqRef.current),
-      ]);
-      setTask(taskData);
-      if (eventData.events.length) {
-        mergeEvents(eventData.events);
-        const last = eventData.events[eventData.events.length - 1];
-        const st = last.payload?.stats as
-          | { requests?: number; judgments?: number; confirmed?: number }
-          | undefined;
-        if (st) {
-          setStats({
-            requests: st.requests ?? 0,
-            judgments: st.judgments ?? 0,
-            confirmed: st.confirmed ?? 0,
-          });
+      let hasMore = true;
+      while (hasMore) {
+        const page = await fetchEventsPage(afterSeqRef.current, EVENT_PAGE_SIZE);
+        if (page.events.length) {
+          mergeEvents(page.events);
         }
+        advanceAfterSeq(page.next_after_seq);
+        hasMore = page.has_more;
+        if (!hasMore) break;
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        });
       }
     } catch (e) {
-      console.error('Failed to load execution console:', e);
+      console.error('Failed to backfill execution events:', e);
     } finally {
-      setLoading(false);
+      backfillRunningRef.current = false;
     }
-  }, [taskId, mergeEvents]);
+  }, [fetchEventsPage, mergeEvents, advanceAfterSeq]);
 
-  useEffect(() => {
-    setLoading(true);
-    setSteps([]);
-    setJudgments([]);
-    timelineRef.current = { steps: [], judgments: [] };
-    afterSeqRef.current = 0;
-    fetchData();
+  const pollEvents = useCallback(async () => {
+    try {
+      const eventData = await fetchEventsPage(afterSeqRef.current, EVENT_PAGE_SIZE);
+      if (eventData.events.length) {
+        mergeEvents(eventData.events);
+      }
+    } catch (e) {
+      console.error('Failed to poll execution events:', e);
+    }
+  }, [fetchEventsPage, mergeEvents]);
+
+  const refreshTask = useCallback(async () => {
+    try {
+      const taskData = await api.getTask(taskId);
+      setTask(taskData);
+    } catch (e) {
+      console.error('Failed to refresh task:', e);
+    }
   }, [taskId]);
 
   useEffect(() => {
-    const pollMs = task?.status === 'RUNNING' ? 2000 : 8000;
-    const interval = setInterval(fetchData, pollMs);
+    let cancelled = false;
+
+    const load = async () => {
+      setEventsLoading(true);
+      setTask(null);
+      setSteps([]);
+      setJudgments([]);
+      setStats({ requests: 0, judgments: 0, confirmed: 0 });
+      timelineRef.current = { steps: [], judgments: [] };
+      afterSeqRef.current = 0;
+      backfillRunningRef.current = false;
+
+      try {
+        const taskData = await api.getTask(taskId);
+        if (cancelled) return;
+        setTask(taskData);
+
+        const firstPage = await fetchEventsPage(0, INITIAL_EVENT_PAGE);
+        if (cancelled) return;
+        if (firstPage.events.length) {
+          mergeEvents(firstPage.events);
+        }
+        advanceAfterSeq(firstPage.next_after_seq);
+        setEventsLoading(false);
+
+        if (firstPage.has_more) {
+          void backfillRemainingEvents();
+        }
+      } catch (e) {
+        console.error('Failed to load execution console:', e);
+        if (!cancelled) {
+          setEventsLoading(false);
+        }
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [taskId, fetchEventsPage, mergeEvents, backfillRemainingEvents, advanceAfterSeq]);
+
+  useEffect(() => {
+    if (!task) return;
+    const pollMs = task.status === 'RUNNING' ? 2000 : 12000;
+    const interval = setInterval(() => {
+      void pollEvents();
+    }, pollMs);
     return () => clearInterval(interval);
-  }, [fetchData, task?.status]);
+  }, [pollEvents, task?.status]);
+
+  useEffect(() => {
+    if (!task) return;
+    const taskPollMs = task.status === 'RUNNING' ? 10000 : 15000;
+    const interval = setInterval(() => {
+      void refreshTask();
+    }, taskPollMs);
+    return () => clearInterval(interval);
+  }, [refreshTask, task?.status]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -160,39 +288,64 @@ const ScanExecutionConsole: React.FC<ScanExecutionConsoleProps> = ({ taskId, onC
         seq?: number;
         event_type?: string;
         payload?: Record<string, unknown>;
-        stats?: { requests?: number; judgments?: number; confirmed?: number };
+        stats?: ExecutionStats;
+        progress?: number;
+        current_stage?: string;
       };
       if (detail?.task_id !== taskId || !detail.seq || detail.seq <= afterSeqRef.current) return;
-      mergeEvents([
-        {
-          id: 0,
-          task_id: taskId,
-          seq: detail.seq,
-          event_type: detail.event_type || 'unknown',
-          payload: detail.payload || {},
-          created_at: new Date().toISOString(),
-        },
-      ]);
-      if (detail.stats) {
-        setStats({
-          requests: detail.stats.requests ?? 0,
-          judgments: detail.stats.judgments ?? 0,
-          confirmed: detail.stats.confirmed ?? 0,
-        });
+
+      const eventType = detail.event_type || 'unknown';
+      if (eventType !== 'request_completed' && CONSOLE_EVENT_TYPES.includes(eventType)) {
+        mergeEvents([
+          {
+            id: 0,
+            task_id: taskId,
+            seq: detail.seq,
+            event_type: eventType,
+            payload: detail.payload || {},
+            created_at: new Date().toISOString(),
+          },
+        ]);
       }
+
+      const stats = extractStats(detail);
+      if (stats) {
+        applyStats(stats, setStats);
+      }
+
+      if (detail.progress != null || detail.current_stage != null) {
+        setTask((prev) =>
+          prev
+            ? {
+                ...prev,
+                progress: detail.progress ?? prev.progress,
+                current_stage:
+                  detail.current_stage != null ? detail.current_stage : prev.current_stage,
+              }
+            : prev,
+        );
+      }
+
+      // Advance for every WS event (including skipped request_completed) so polling stays in sync.
+      advanceAfterSeq(detail.seq);
     };
     window.addEventListener('aegis:scan-event', handler);
     return () => window.removeEventListener('aegis:scan-event', handler);
-  }, [taskId, mergeEvents]);
+  }, [taskId, mergeEvents, advanceAfterSeq]);
 
-  const selectedStep = steps.length > 0 ? steps[steps.length - 1] : undefined;
+  const selectedStep = useMemo(
+    () => (steps.length > 0 ? steps[steps.length - 1] : undefined),
+    [steps],
+  );
+  const judgmentsReversed = useMemo(() => [...judgments].reverse(), [judgments]);
   const strategyMeta = task ? getScanStrategyMeta(task.scan_strategy) : null;
+  const showContentSkeleton = eventsLoading && steps.length === 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="flex h-[92vh] w-full max-w-[1400px] flex-col overflow-hidden rounded-2xl border border-[#e2e8f0] bg-[#f8fafc] shadow-2xl">
         <div className="flex items-start justify-between border-b border-[#e2e8f0] bg-white px-6 py-4">
-          <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#ff6b00]">
                 <Activity size={18} className="text-white" />
@@ -241,7 +394,7 @@ const ScanExecutionConsole: React.FC<ScanExecutionConsoleProps> = ({ taskId, onC
           </button>
         </div>
 
-        {loading && steps.length === 0 ? (
+        {showContentSkeleton ? (
           <div className="flex flex-1 items-center justify-center text-[#94a3b8]">
             {UI.loadingData}
           </div>
@@ -272,7 +425,7 @@ const ScanExecutionConsole: React.FC<ScanExecutionConsoleProps> = ({ taskId, onC
                   <p className="py-6 text-center text-xs text-[#94a3b8]">{UI.noJudgments}</p>
                 ) : (
                   <div className="space-y-3">
-                    {[...judgments].reverse().map((j) => (
+                    {judgmentsReversed.map((j) => (
                       <div
                         key={j.seq}
                         className={`rounded-xl border p-3 text-xs ${

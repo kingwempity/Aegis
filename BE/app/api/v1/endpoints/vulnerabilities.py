@@ -2,9 +2,6 @@
 aegis.app.api.v1.endpoints.vulnerabilities
 ------------------------------------------
 漏洞管理 API，从数据库查询漏洞数据。
-
-Author: Aegis Architect
-Created: 2026-01-21
 """
 
 from fastapi import APIRouter, Depends

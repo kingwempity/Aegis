@@ -2,9 +2,6 @@
 aegis.app.models.user
 ---------------------
 定义用户 (User) 和 邮箱验证码 (EmailVerificationCode) 的数据库模型。
-
-Author: Aegis Architect
-Created: 2026-03-30
 """
 
 from datetime import datetime

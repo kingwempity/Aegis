@@ -1,9 +1,6 @@
 /**
  * 帮助内容管理组件
  * 管理员可以编辑帮助中心的内容
- * 
- * Author: Aegis Architect
- * Created: 2026-02-23
  */
 
 import React, { useEffect, useState, useRef } from 'react';

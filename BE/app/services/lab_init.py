@@ -3,9 +3,6 @@
 app.services.lab_init
 ---------------------
 漏洞实验室初始数据。
-
-Author: Aegis Architect
-Created: 2026-03-01
 """
 
 from typing import List, Dict, Any

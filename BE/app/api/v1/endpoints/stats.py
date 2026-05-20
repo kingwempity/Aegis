@@ -2,9 +2,6 @@
 aegis.app.api.v1.endpoints.stats
 --------------------------------
 仪表盘统计 API，从数据库查询真实统计数据。
-
-Author: Aegis Architect
-Created: 2026-01-21
 """
 
 from fastapi import APIRouter, Depends

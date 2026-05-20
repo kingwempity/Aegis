@@ -2,9 +2,6 @@
 app.api.v1.endpoints.lab
 ------------------------
 漏洞实验室 API 端点。
-
-Author: Aegis Architect
-Created: 2026-03-01
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query

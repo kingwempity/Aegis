@@ -2,9 +2,6 @@
 app.models.lab
 --------------
 漏洞实验室数据模型。
-
-Author: Aegis Architect
-Created: 2026-03-01
 """
 
 from typing import Optional, List, Dict, Any

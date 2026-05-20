@@ -2,9 +2,6 @@
 aegis.app.api.v1.endpoints.help
 --------------------------------
 帮助中心内容管理 API 端点。
-
-Author: Aegis Architect
-Created: 2026-02-23
 """
 
 from typing import List, Optional

@@ -2,9 +2,6 @@
 aegis.app.models.help
 ---------------------
 帮助中心内容数据模型。
-
-Author: Aegis Architect
-Created: 2026-02-23
 """
 
 from datetime import datetime

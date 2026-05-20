@@ -2,9 +2,6 @@
 app.schemas.lab
 ---------------
 漏洞实验室 Pydantic Schema。
-
-Author: Aegis Architect
-Created: 2026-03-01
 """
 
 from typing import Optional, List, Dict, Any

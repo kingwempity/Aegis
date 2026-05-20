@@ -2,9 +2,6 @@
 aegis.app.api.v1.endpoints.discovery
 ------------------------------------
 资产发现与目标管理 API。
-
-Author: Aegis Architect
-Created: 2026-01-21
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status

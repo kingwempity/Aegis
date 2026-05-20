@@ -2,9 +2,6 @@
 aegis.app.models.task
 ---------------------
 定义扫描任务 (Task) 和 漏洞 (Vulnerability) 的数据库模型。
-
-Author: Aegis Architect
-Created: 2026-01-21
 """
 
 from datetime import datetime

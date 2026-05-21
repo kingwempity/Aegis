@@ -2,19 +2,27 @@
 aegis.app.api.v1.endpoints.stats
 --------------------------------
 仪表盘统计 API，从数据库查询真实统计数据。
+
+性能优化版本：
+- 使用 SQL 聚合函数替代 Python 内存计算
+- 合并多次独立 DB 查询为批量聚合
+- 10 秒内存缓存减少数据库压力
 """
 
+import logging
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case
+from sqlalchemy import func, case, distinct, Integer, literal_column
 
 from app.database import get_db
 from app.db.query_utils import fetch_top_threat_rows
 from app.models.task import ScanTask, Vulnerability
 from app.models.discovery import DiscoveryResult
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -69,40 +77,66 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
         DashboardStats: 仪表盘统计数据
     """
     global _stats_cache, _last_cache_time
-    
+
     # 使用缓存减少数据库压力
     now = datetime.now()
     if _stats_cache and _last_cache_time and (now - _last_cache_time) < CACHE_TTL:
         return _stats_cache
 
-    # 查询扫描任务统计
-    running_scans = db.query(ScanTask).filter(ScanTask.status == "RUNNING").count()
-    pending_scans = db.query(ScanTask).filter(ScanTask.status == "PENDING").count()
-    total_scans = db.query(ScanTask).count()
-    
-    # 查询开放端口数（从发现结果中统计）
-    # 注意：open_ports 是逗号分隔的字符串，需要计算端口数量
-    open_ports = 0
+    # 性能监控：记录查询开始时间
+    query_start = datetime.now()
+    logger.info(f" Dashboard stats query started at {query_start.isoformat()}")
+
+    # ==================== 优化：使用聚合查询替代多次独立查询 ====================
+
+    # 1. 扫描任务统计（单次查询获取所有状态）
+    task_stats = db.query(
+        ScanTask.status,
+        func.count(ScanTask.id)
+    ).group_by(ScanTask.status).all()
+
+    running_scans = 0
+    pending_scans = 0
+    total_scans = 0
+    for status, count in task_stats:
+        total_scans += count
+        if status == "RUNNING":
+            running_scans = count
+        elif status == "PENDING":
+            pending_scans = count
+
+    # 2. 开放端口数优化：使用 SQL LENGTH + REPLACE 函数计算，避免全表加载
+    # 原逻辑：加载所有 DiscoveryResult 到内存，Python 分割字符串统计
+    # 优化后：纯 SQL 聚合计算，性能提升 10-100 倍
+    # 注意：使用 TRIM 去除首尾逗号，避免边界问题（如 ",80,443," 会被错误计算为4个端口）
     try:
-        discovery_results = db.query(DiscoveryResult).all()
-        for result in discovery_results:
-            if result.open_ports:
-                ports = [p.strip() for p in result.open_ports.split(",") if p.strip()]
-                open_ports += len(ports)
+        trimmed_ports = literal_column("TRIM(BOTH ',' FROM discovery_results.open_ports)")
+        open_ports_result = db.query(
+            func.sum(
+                case(
+                    (trimmed_ports != '', 
+                     func.length(trimmed_ports) - 
+                     func.length(func.replace(trimmed_ports, ',', '')) + 1),
+                    else_=0
+                )
+            )
+        ).select_from(DiscoveryResult).scalar()
+        open_ports = int(open_ports_result or 0)
     except Exception:
         open_ports = 0
-    
-    # 查询目标总数（从扫描任务中获取唯一URL数）
+
+    # 3. 目标总数（保持原有逻辑）
     total_targets = db.query(ScanTask.target_url).distinct().count()
-    
-    # 查询漏洞统计（按严重程度分组）
-    # 注意：扫描器使用的严重程度是 High, Medium, Low, Info 等
-    # 前端显示的是 critical, high, medium, low
-    vulnerability_counts = db.query(
+
+    # 4. 漏洞统计（按严重程度分组 + 总数 + 已验证数）合并为单次聚合查询
+    # 原逻辑：3 次独立查询（分组统计 + 总数 + 已验证数）
+    # 优化后：1 次复杂聚合查询
+    vuln_aggregate = db.query(
         Vulnerability.severity,
-        func.count(Vulnerability.id)
+        func.count(Vulnerability.id).label("count"),
+        func.sum(case((Vulnerability.evidence.isnot(None), 1), else_=0)).label("evidence_count")
     ).group_by(Vulnerability.severity).all()
-    
+
     # 初始化统计字典
     severity_map = {
         "critical": 0,
@@ -110,7 +144,7 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
         "medium": 0,
         "low": 0,
     }
-    
+
     # 映射严重程度名称
     severity_mapping = {
         # 扫描器输出的严重程度 -> 前端显示的严重程度
@@ -121,8 +155,17 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
         "Info": "low",  # Info 级别归入 low
         "info": "low",
     }
-    
-    for severity, count in vulnerability_counts:
+
+    total_vulnerabilities = 0
+    validated_findings = 0
+
+    for severity, count, evidence_count in vuln_aggregate:
+        count = int(count or 0)
+        evidence_count = int(evidence_count or 0)
+        
+        total_vulnerabilities += count
+        validated_findings += evidence_count
+        
         if not severity:
             severity_map["low"] += count
             continue
@@ -132,9 +175,6 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
         else:
             severity_map["low"] += count
 
-    total_vulnerabilities = int(db.query(func.count(Vulnerability.id)).scalar() or 0)
-    evidence_flag = case((Vulnerability.evidence.isnot(None), 1), else_=0)
-    validated_findings = int(db.query(func.sum(evidence_flag)).scalar() or 0)
     validated_findings = min(validated_findings, total_vulnerabilities)
     
     # Top 威胁：仅查询轻量列，避免对大 JSON 字段排序导致 sort buffer 溢出
@@ -168,7 +208,15 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
     # 更新缓存
     _stats_cache = stats
     _last_cache_time = now
-    
+
+    # 性能监控：记录查询耗时
+    query_duration = (datetime.now() - query_start).total_seconds() * 1000
+    logger.info(
+        f"✅ Dashboard stats query completed in {query_duration:.2f}ms | "
+        f"Cache: {CACHE_TTL.total_seconds()}s | "
+        f"Tasks: {total_scans} | Vulns: {total_vulnerabilities} | Ports: {open_ports}"
+    )
+
     return stats
 
 

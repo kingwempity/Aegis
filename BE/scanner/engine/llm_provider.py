@@ -24,11 +24,11 @@ logger = logging.getLogger(__name__)
 
 class LLMProvider:
     """
-    LLM 服务提供者，支持 OpenAI、SiliconFlow、DeepSeek 和本地 Ollama。
-    默认使用 SiliconFlow 的 DeepSeek-R1-Distill-Qwen-7B 模型。
+    LLM 服务提供者，支持 OpenAI、SiliconFlow、DeepSeek、NVIDIA 和本地 Ollama。
+    默认使用 NVIDIA 的 deepseek-ai/deepseek-v4-pro 模型。
     """
-    DEFAULT_BASE_URL = "https://api.siliconflow.cn/v1"
-    DEFAULT_MODEL = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
+    DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
+    DEFAULT_MODEL = "deepseek-ai/deepseek-v4-pro"
 
     def __init__(self, model: str = None, base_url: str = None, api_key: str = None):
         if not OPENAI_AVAILABLE:
@@ -193,7 +193,8 @@ DECISION RULES:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                max_tokens=500
+                max_tokens=500,
+                extra_body={"chat_template_kwargs": {"thinking": False}}
             )
 
             raw_content = response.choices[0].message.content
@@ -368,7 +369,8 @@ RULES:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
-                max_tokens=3000
+                max_tokens=3000,
+                extra_body={"chat_template_kwargs": {"thinking": False}}
             )
             
             raw_content = response.choices[0].message.content
@@ -429,7 +431,8 @@ Rules:
                 messages=[
                     {"role": "system", "content": "Output ONLY valid JSON on a single line. No markdown."},
                     {"role": "user", "content": prompt}
-                ]
+                ],
+                extra_body={"chat_template_kwargs": {"thinking": False}}
             )
             content = self._clean_json_content(response.choices[0].message.content)
             result = json.loads(content)

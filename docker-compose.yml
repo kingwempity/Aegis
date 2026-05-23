@@ -83,9 +83,9 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-aegis-secret-key-change-in-production}
       - JWT_EXPIRE_HOURS=${JWT_EXPIRE_HOURS:-3}
       - PYTHONPATH=/app/BE:/app
-      - LLM_API_KEY=${LLM_API_KEY}
-      - LLM_BASE_URL=${LLM_BASE_URL:-https://integrate.api.nvidia.com/v1}
-      - LLM_MODEL=${LLM_MODEL:-deepseek-ai/deepseek-v4-pro}
+      - LLM_API_KEY=${LLM_API_KEY:-sk-covriagouzycewpggelzlohqhjqpredfigahjucjouguwonb}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.siliconflow.cn/v1}
+      - LLM_MODEL=${LLM_MODEL:-deepseek-ai/DeepSeek-R1-0528-Qwen3-8B}
     depends_on:
       aegis-db:
         condition: service_healthy
@@ -124,9 +124,9 @@ services:
       - REDIS_URL=redis://aegis-redis:6379/0
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-aegis-secret-key-change-in-production}
       - PYTHONPATH=/app/BE:/app
-      - LLM_API_KEY=${LLM_API_KEY}
-      - LLM_BASE_URL=${LLM_BASE_URL:-https://integrate.api.nvidia.com/v1}
-      - LLM_MODEL=${LLM_MODEL:-deepseek-ai/deepseek-v4-pro}
+      - LLM_API_KEY=${LLM_API_KEY:-sk-covriagouzycewpggelzlohqhjqpredfigahjucjouguwonb}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.siliconflow.cn/v1}
+      - LLM_MODEL=${LLM_MODEL:-deepseek-ai/DeepSeek-R1-0528-Qwen3-8B}
       - FASTAPI_URL=http://aegis-api:8000
     depends_on:
       aegis-db:

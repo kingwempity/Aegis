@@ -25,10 +25,10 @@ logger = logging.getLogger(__name__)
 class LLMProvider:
     """
     LLM 服务提供者，支持 OpenAI、SiliconFlow、DeepSeek、NVIDIA 和本地 Ollama。
-    默认使用 NVIDIA 的 deepseek-ai/deepseek-v4-pro 模型。
+    默认使用 SiliconFlow 的 deepseek-ai/DeepSeek-R1-0528-Qwen3-8B 模型。
     """
-    DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
-    DEFAULT_MODEL = "deepseek-ai/deepseek-v4-pro"
+    DEFAULT_BASE_URL = "https://api.siliconflow.cn/v1"
+    DEFAULT_MODEL = "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B"
 
     def __init__(self, model: str = None, base_url: str = None, api_key: str = None):
         if not OPENAI_AVAILABLE:

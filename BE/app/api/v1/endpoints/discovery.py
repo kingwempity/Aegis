@@ -287,6 +287,10 @@ async def get_targets(db: Session = Depends(get_db)):
     
     从扫描任务中提取唯一的目标URL，并统计每个目标的漏洞数量。
     
+    性能优化版本：
+    - 使用单次聚合查询替代 N+1 查询
+    - 避免在 Python 中遍历大量数据
+    
     Args:
         db: 数据库会话
         
@@ -295,45 +299,25 @@ async def get_targets(db: Session = Depends(get_db)):
     """
     logger.info("正在查询目标列表...")
     
-    # 从扫描任务中获取唯一的目标URL
     targets_query = db.query(
         ScanTask.target_url,
         func.max(ScanTask.created_at).label('last_scanned'),
         func.count(ScanTask.id).label('scan_count')
     ).group_by(ScanTask.target_url).all()
 
+    target_urls = [url for url, _, _ in targets_query]
+
+    vuln_stats_by_url = _aggregate_vuln_stats_by_target_urls(db, target_urls)
+
     scanned_targets_by_url: Dict[str, dict] = {}
     for url, last_scanned, scan_count in targets_query:
-        # 查询该目标的漏洞统计
-        # 使用 URL 匹配或包含关系来关联漏洞
-        vuln_query = db.query(Vulnerability).filter(
-            Vulnerability.url.like(f"%{url}%")
-        ).all()
-        
-        # 统计各级别漏洞数量
-        critical_count = 0
-        high_count = 0
-        medium_count = 0
-        low_count = 0
-        
-        for v in vuln_query:
-            if v.severity:
-                sev = v.severity.lower()
-                if sev == "critical":
-                    critical_count += 1
-                elif sev == "high":
-                    high_count += 1
-                elif sev == "medium":
-                    medium_count += 1
-                elif sev in ["low", "info"]:
-                    low_count += 1
-
+        stats = vuln_stats_by_url.get(url, {"critical": 0, "high": 0, "medium": 0, "low": 0})
         scanned_targets_by_url[url] = {
             "last_scanned": last_scanned,
             "scan_count": scan_count,
-            "critical_vulns": critical_count,
-            "high_vulns": high_count,
-            "low_vulns": low_count + medium_count,  # 前端显示 low 包含 medium
+            "critical_vulns": stats["critical"],
+            "high_vulns": stats["high"],
+            "low_vulns": stats["low"] + stats["medium"],
         }
 
     manual_targets_by_url = {target["url"]: target for target in _mock_targets}
@@ -363,6 +347,76 @@ async def get_targets(db: Session = Depends(get_db)):
     
     logger.info(f"返回 {len(targets)} 个目标")
     return targets
+
+
+def _aggregate_vuln_stats_by_target_urls(
+    db: Session, target_urls: List[str]
+) -> Dict[str, Dict[str, int]]:
+    """
+    按目标 URL 聚合漏洞统计（单次查询优化版本）。
+    
+    使用 SQL CASE WHEN 聚合，避免 N+1 查询问题。
+    使用最长匹配原则，避免重复统计。
+    
+    Args:
+        db: 数据库会话
+        target_urls: 目标 URL 列表
+        
+    Returns:
+        url -> {"critical": int, "high": int, "medium": int, "low": int}
+    """
+    if not target_urls:
+        return {}
+
+    from sqlalchemy import case, literal_column
+
+    severity_lower = func.lower(func.coalesce(Vulnerability.severity, ""))
+    
+    critical_cond = case((severity_lower == "critical", 1), else_=0)
+    high_cond = case((severity_lower == "high", 1), else_=0)
+    medium_cond = case((severity_lower == "medium", 1), else_=0)
+    low_cond = case((severity_lower.in_(["low", "info"]), 1), else_=0)
+
+    or_conditions = []
+    for url in target_urls:
+        or_conditions.append(Vulnerability.url.like(f"%{url}%"))
+    
+    from sqlalchemy import or_
+    
+    rows = (
+        db.query(
+            Vulnerability.url,
+            func.sum(critical_cond).label("critical_count"),
+            func.sum(high_cond).label("high_count"),
+            func.sum(medium_cond).label("medium_count"),
+            func.sum(low_cond).label("low_count"),
+        )
+        .filter(or_(*or_conditions))
+        .group_by(Vulnerability.url)
+        .all()
+    )
+
+    result: Dict[str, Dict[str, int]] = {}
+    for url in target_urls:
+        result[url] = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    
+    sorted_target_urls = sorted(target_urls, key=len, reverse=True)
+    
+    for row in rows:
+        vuln_url = row.url or ""
+        matched_target = None
+        for target_url in sorted_target_urls:
+            if target_url in vuln_url:
+                matched_target = target_url
+                break
+        
+        if matched_target:
+            result[matched_target]["critical"] += int(row.critical_count or 0)
+            result[matched_target]["high"] += int(row.high_count or 0)
+            result[matched_target]["medium"] += int(row.medium_count or 0)
+            result[matched_target]["low"] += int(row.low_count or 0)
+
+    return result
 
 @router.post("/targets", response_model=TargetResponse)
 async def create_target(target_in: TargetCreate, db: Session = Depends(get_db)):

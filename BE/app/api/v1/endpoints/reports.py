@@ -2,10 +2,14 @@
 报告管理 API 端点
 
 提供报告列表查询、报告生成和下载功能，支持多种导出格式。
+
+性能优化版本：
+- 使用 eager loading 预加载关联数据
+- 避免懒加载导致的 N+1 查询
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
@@ -239,13 +243,20 @@ def preview_report(task_id: int, db: Session = Depends(get_db)):
     """
     预览报告（返回JSON格式的报告数据）
     
+    性能优化：使用 joinedload 预加载漏洞数据，避免懒加载 N+1 查询
+    
     Args:
         task_id: 任务ID
         
     Returns:
         JSONResponse: 报告数据
     """
-    task = db.query(ScanTask).filter(ScanTask.id == task_id).first()
+    task = (
+        db.query(ScanTask)
+        .options(joinedload(ScanTask.vulnerabilities))
+        .filter(ScanTask.id == task_id)
+        .first()
+    )
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
     

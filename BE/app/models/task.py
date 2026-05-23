@@ -2,12 +2,16 @@
 aegis.app.models.task
 ---------------------
 定义扫描任务 (Task) 和 漏洞 (Vulnerability) 的数据库模型。
+
+性能优化：
+- 为常用查询字段添加索引，加速查询
+- task_id, severity, url, status, target_url 等字段均已建立索引
 """
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Index
 from sqlalchemy.orm import relationship
-from app.database import Base  # <--- 关键修改：导入共享的 Base
+from app.database import Base
 
 class ScanTask(Base):
     """
@@ -25,8 +29,8 @@ class ScanTask(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     display_id = Column(Integer, nullable=False, unique=True, index=True)
-    target_url = Column(String(255), nullable=False)
-    status = Column(String(50), default="PENDING")
+    target_url = Column(String(255), nullable=False, index=True)
+    status = Column(String(50), default="PENDING", index=True)
     scan_strategy = Column(String(50), default="default")
     target_paths = Column(JSON)
     target_vuln_types = Column(JSON)
@@ -34,10 +38,13 @@ class ScanTask(Base):
     progress = Column(Integer, default=0)
     current_stage = Column(String(255), nullable=True)
     vulnerabilities_found = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=datetime.now, index=True)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
-    # 关联关系：一个任务包含多个漏洞
+    __table_args__ = (
+        Index('ix_scan_tasks_status_created', 'status', 'created_at'),
+    )
+
     vulnerabilities = relationship("Vulnerability", back_populates="task", cascade="all, delete-orphan")
     execution_events = relationship(
         "ScanExecutionEvent",
@@ -70,22 +77,25 @@ class Vulnerability(Base):
     __tablename__ = "vulnerabilities"
 
     id = Column(Integer, primary_key=True, index=True)
-    task_id = Column(Integer, ForeignKey("scan_tasks.id"))
+    task_id = Column(Integer, ForeignKey("scan_tasks.id"), index=True)
     vuln_name = Column(String(100), nullable=False)
-    severity = Column(String(20))
-    url = Column(String(500))
+    severity = Column(String(20), index=True)
+    url = Column(String(500), index=True)
     payload = Column(Text)
-    evidence = Column(JSON)  # MySQL 8.0 原生 JSON 支持
-    # 新增字段：攻击路径和详细漏洞信息
-    attack_path = Column(JSON)  # 攻击路径信息（请求详情、攻击链步骤）
-    vuln_type = Column(String(50))  # 漏洞类型
-    parameter = Column(String(100))  # 注入参数名
-    method = Column(String(10))  # HTTP 方法
-    description = Column(Text)  # 漏洞描述
-    remediation = Column(Text)  # 修复建议
-    cvss_score = Column(Integer)  # CVSS 评分 (0-10)
-    detected_at = Column(DateTime, default=datetime.now)  # 检测时间
-    created_at = Column(DateTime, default=datetime.now)
+    evidence = Column(JSON)
+    attack_path = Column(JSON)
+    vuln_type = Column(String(50))
+    parameter = Column(String(100))
+    method = Column(String(10))
+    description = Column(Text)
+    remediation = Column(Text)
+    cvss_score = Column(Integer)
+    detected_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=datetime.now, index=True)
 
-    # 反向关联
+    __table_args__ = (
+        Index('ix_vulnerabilities_task_severity', 'task_id', 'severity'),
+        Index('ix_vulnerabilities_severity_created', 'severity', 'created_at'),
+    )
+
     task = relationship("ScanTask", back_populates="vulnerabilities")

@@ -99,9 +99,16 @@ def fetch_vulnerability_list_rows(
     db: Session,
     severity_values: Optional[List[str]] = None,
     limit: int = 500,
+    offset: int = 0,
 ) -> List:
     """
     漏洞列表轻量查询（不含 evidence / attack_path / payload 正文）。
+    
+    Args:
+        db: 数据库会话
+        severity_values: 严重程度筛选列表
+        limit: 返回记录数限制
+        offset: 跳过的记录数（分页偏移）
     """
     payload_present = Vulnerability.payload.isnot(None)
     path_present = Vulnerability.attack_path.isnot(None)
@@ -123,4 +130,4 @@ def fetch_vulnerability_list_rows(
     if severity_values:
         query = query.filter(Vulnerability.severity.in_(severity_values))
 
-    return query.order_by(Vulnerability.id.desc()).limit(limit).all()
+    return query.order_by(Vulnerability.id.desc()).offset(offset).limit(limit).all()

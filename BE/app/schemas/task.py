@@ -40,3 +40,8 @@ class TaskOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class TaskListResponse(BaseModel):
+    """任务列表响应（带分页信息，确保数据一致性）"""
+    total: int
+    items: List[TaskOut]

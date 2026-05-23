@@ -2,16 +2,22 @@
 aegis.app.api.v1.endpoints.vulnerabilities
 ------------------------------------------
 漏洞管理 API，从数据库查询漏洞数据。
+
+性能优化版本：
+- 支持分页查询，避免一次性加载大量数据
+- 使用轻量查询，不加载大 JSON 字段
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.database import get_db
 from app.db.query_utils import fetch_vulnerability_list_rows
+from app.models.task import Vulnerability
 
 VULN_LIST_LIMIT = 500
 
@@ -36,21 +42,31 @@ class VulnerabilityResponse(BaseModel):
         from_attributes = True
 
 
-@router.get("", response_model=List[VulnerabilityResponse])
-@router.get("/", response_model=List[VulnerabilityResponse])
+class VulnerabilityListResponse(BaseModel):
+    """漏洞列表响应（带分页信息）"""
+    total: int
+    items: List[VulnerabilityResponse]
+
+
+@router.get("", response_model=VulnerabilityListResponse)
+@router.get("/", response_model=VulnerabilityListResponse)
 async def get_vulnerabilities(
     severity: Optional[str] = None,
+    skip: int = Query(default=0, ge=0, description="跳过的记录数"),
+    limit: int = Query(default=50, ge=1, le=500, description="返回的记录数"),
     db: Session = Depends(get_db)
 ):
     """
-    获取漏洞列表。
+    获取漏洞列表（支持分页）。
     
     Args:
         severity: 可选的严重程度筛选（critical, high, medium, low）
+        skip: 跳过的记录数（分页偏移）
+        limit: 返回的记录数（每页大小）
         db: 数据库会话
         
     Returns:
-        漏洞列表
+        VulnerabilityListResponse: 包含总数和漏洞列表
     """
     severity_mapping = {
         "critical": ["Critical", "critical", "CRITICAL"],
@@ -60,14 +76,22 @@ async def get_vulnerabilities(
     }
 
     allowed_values = None
-    if severity and severity.lower() in severity_mapping:
-        allowed_values = severity_mapping[severity.lower()]
+    if severity:
+        allowed_values = severity_mapping.get(severity.lower())
+        if allowed_values is None:
+            return VulnerabilityListResponse(total=0, items=[])
+
+    base_query = db.query(Vulnerability)
+    if allowed_values:
+        base_query = base_query.filter(Vulnerability.severity.in_(allowed_values))
+    
+    total = base_query.count()
 
     rows = fetch_vulnerability_list_rows(
-        db, severity_values=allowed_values, limit=VULN_LIST_LIMIT
+        db, severity_values=allowed_values, limit=limit, offset=skip
     )
 
-    return [
+    items = [
         VulnerabilityResponse(
             id=row.id,
             title=row.vuln_name,
@@ -83,6 +107,8 @@ async def get_vulnerabilities(
         )
         for row in rows
     ]
+
+    return VulnerabilityListResponse(total=total, items=items)
 
 
 def _normalize_severity(severity: Optional[str]) -> str:

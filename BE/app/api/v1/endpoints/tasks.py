@@ -8,7 +8,7 @@ from typing import List, Optional
 from app.database import get_db
 from app.models.task import ScanTask
 from app.models.scan_execution_event import ScanExecutionEvent
-from app.schemas.task import TaskCreate, TaskOut
+from app.schemas.task import TaskCreate, TaskOut, TaskListResponse
 from app.schemas.execution_event import ExecutionEventOut, ExecutionEventListOut
 from worker.celery_app import run_scan_task, execute_scan_task
 
@@ -152,17 +152,32 @@ def create_scan_task(task_in: TaskCreate, db: Session = Depends(get_db)):
 
 
 # 新增：获取任务列表接口
-@router.get("/list", response_model=List[TaskOut])
-@router.get("", response_model=List[TaskOut])
+@router.get("/list", response_model=TaskListResponse)
+@router.get("", response_model=TaskListResponse)
 def read_tasks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    """获取所有任务列表"""
+    """
+    获取任务列表（支持分页，单次请求返回总数和列表确保数据一致性）。
+    
+    Args:
+        skip: 跳过的记录数（分页偏移）
+        limit: 返回的记录数（每页大小）
+        db: 数据库会话
+        
+    Returns:
+        TaskListResponse: 包含总数和任务列表
+    """
+    limit = min(limit, 500)
+    
+    total = db.query(ScanTask).count()
+    
     tasks = db.query(ScanTask).order_by(ScanTask.id.desc()).offset(skip).limit(limit).all()
     results = []
     for task in tasks:
         task_out = TaskOut.model_validate(task)
         task_out.duration_seconds = _calculate_duration_seconds(task)
         results.append(task_out)
-    return results
+    
+    return TaskListResponse(total=total, items=results)
 
 
 @router.get("/{task_id}/execution-events", response_model=ExecutionEventListOut)

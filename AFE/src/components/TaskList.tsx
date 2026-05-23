@@ -1,9 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { api, ScanTask } from '../api';
 import { getScanStrategyMeta } from '../utils/scanStrategy';
 import { formatDateTime } from '../utils/formatDateTime';
-// 使用自定义的轻量级图标组件，彻底摆脱 lucide-react 库
-import { Plus, Eye, StopSquare, Search, Trash2, Activity } from './Icons';
+import { Plus, Eye, StopSquare, Search, Trash2, Activity, ChevronLeft, ChevronRight } from './Icons';
 import ValidationWorkflow from './ValidationWorkflow';
 
 interface TaskListProps {
@@ -12,28 +11,35 @@ interface TaskListProps {
   onViewExecution?: (taskId: number) => void;
 }
 
+const PAGE_SIZE = 20;
+
 const TaskList: React.FC<TaskListProps> = ({ onCreateTask, onViewReport, onViewExecution }) => {
   const [tasks, setTasks] = useState<ScanTask[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     try {
-      const data = await api.getTasks();
-      setTasks(data);
+      const skip = (page - 1) * PAGE_SIZE;
+      const data = await api.getTasks(skip, PAGE_SIZE);
+      setTasks(data.items);
+      setTotal(data.total);
     } catch (error) {
       console.error('Error fetching tasks:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [page]);
 
   useEffect(() => {
     fetchTasks();
-    // 每 5 秒高频轮询任务状态，确保进度条实时更新
-    const interval = setInterval(fetchTasks, 5000);
+    const interval = setInterval(fetchTasks, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchTasks]);
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const handleStopTask = async (taskId: number) => {
     try {
@@ -226,6 +232,29 @@ const formatDuration = (seconds: number): string => {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex justify-center items-center gap-4 mt-4">
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <span className="text-sm text-gray-600">
+            第 {page} / {totalPages} 页，共 {total} 条
+          </span>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <ChevronRight size={18} />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

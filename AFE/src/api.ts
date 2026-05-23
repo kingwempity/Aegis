@@ -293,6 +293,16 @@ export interface DiscoveryScanStatus {
   completed_at: string | null;
 }
 
+export interface VulnerabilityListResponse {
+  total: number;
+  items: Vulnerability[];
+}
+
+export interface TaskListResponse {
+  total: number;
+  items: ScanTask[];
+}
+
 export const api = {
   async getStats(): Promise<DashboardStats> {
     const response = await fetch(joinApiPath('/stats/dashboard'));
@@ -300,8 +310,8 @@ export const api = {
     return response.json();
   },
 
-  async getTasks(): Promise<ScanTask[]> {
-    const response = await fetch(joinApiPath('/tasks'));
+  async getTasks(skip: number = 0, limit: number = 100): Promise<TaskListResponse> {
+    const response = await fetch(joinApiPath(`/tasks?skip=${skip}&limit=${limit}`));
     if (!response.ok) throw new Error('Failed to fetch tasks');
     return response.json();
   },
@@ -362,11 +372,13 @@ export const api = {
     if (!response.ok) return parseErrorResponse(response, '删除目标失败');
   },
 
-  async getVulnerabilities(severity?: string): Promise<Vulnerability[]> {
-    const url =
-      severity
-        ? joinApiPath(`/vulnerabilities?severity=${encodeURIComponent(severity)}`)
-        : joinApiPath('/vulnerabilities');
+  async getVulnerabilities(severity?: string, skip: number = 0, limit: number = 50): Promise<VulnerabilityListResponse> {
+    const params = new URLSearchParams();
+    if (severity) params.append('severity', severity);
+    params.append('skip', String(skip));
+    params.append('limit', String(limit));
+    
+    const url = joinApiPath(`/vulnerabilities?${params.toString()}`);
     const response = await fetch(url);
     if (!response.ok) throw new Error('Failed to fetch vulnerabilities');
     return response.json();

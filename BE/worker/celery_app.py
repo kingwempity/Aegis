@@ -566,7 +566,7 @@ def execute_scan_task(
                                     remediation=scenario_data.get("remediation", []),
                                     learning=scenario_data.get("learning", {}),
                                     tags=scenario_data.get("tags", []),
-                                    is_active=scenario_data.get("is_active", False),
+                                    is_active=scenario_data.get("is_active", True),
                                     is_auto_generated=True,
                                     source_scan_task_id=task_id,
                                 )

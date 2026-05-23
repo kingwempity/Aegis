@@ -59,7 +59,7 @@ class LabScenarioGenerator:
             "remediation": llm_result.get("remediation", []),
             "learning": llm_result.get("learning", {}),
             "tags": llm_result.get("tags", []) + ["auto-generated"],
-            "is_active": False,
+            "is_active": True,
             "is_auto_generated": True,
             "source_scan_task_id": scan_task_id,
         }
